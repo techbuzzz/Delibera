@@ -56,7 +56,16 @@ jobs:
     needs: build
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    environment: nuget
+    # Trusted publishing (OIDC): GitHub issues a short-lived token bound to
+    # this workflow; nuget.org validates it against the trusted publishing
+    # policy configured on https://www.nuget.org and returns a temporary
+    # API key (valid for ~1 hour). No NUGET_API_KEY secret required.
+    permissions:
+      id-token: write   # required for OIDC token issuance
+      contents: read
+    environment:
+      name: nuget-prod
+      url: https://www.nuget.org/packages/Delibera.Core
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -64,12 +73,19 @@ jobs:
           name: nuget-artifacts
           path: ./artifacts
 
+      - name: NuGet login (OIDC → short-lived API key)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          # Use your nuget.org profile name (case-insensitive). DO NOT use email.
+          user: ${{ vars.NUGET_USER }}
+
       - name: Push to NuGet.org
         run: |
           for pkg in ./artifacts/*.nupkg; do
             echo "Pushing $pkg"
             dotnet nuget push "$pkg" \
               --source https://api.nuget.org/v3/index.json \
-              --api-key ${{ secrets.NUGET_API_KEY }} \
+              --api-key ${{ steps.login.outputs.NUGET_API_KEY }} \
               --skip-duplicate
           done
