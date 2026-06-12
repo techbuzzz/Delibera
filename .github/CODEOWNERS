@@ -1,0 +1,54 @@
+# CODEOWNERS — https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Syntax:  <pattern>  <owner1>  <owner2>  ...
+# Owners can be individuals (@username) or teams (@org/team-name).
+# Order matters: the LAST matching pattern wins, so the catch-all must be at the bottom.
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CI/CD — release pipeline is the blast radius for the whole project
+# ──────────────────────────────────────────────────────────────────────────────
+/.github/workflows/                @techbuzzz
+/.github/dependabot.yml            @techbuzzz
+/.github/CODEOWNERS                @techbuzzz
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Solution & build configuration
+# ──────────────────────────────────────────────────────────────────────────────
+/src/Delibera.slnx                 @techbuzzz
+/src/Directory.Build.props         @techbuzzz
+/src/Directory.Packages.props      @techbuzzz
+/global.json                       @techbuzzz
+/NuGet.config                      @techbuzzz
+*.sln                              @techbuzzz
+*.slnx                             @techbuzzz
+*.csproj                           @techbuzzz
+*.props                            @techbuzzz
+*.targets                          @techbuzzz
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Delibera.Core — the published NuGet package, highest review bar
+# ──────────────────────────────────────────────────────────────────────────────
+/src/Delibera.Core/                @techbuzzz
+/src/Delibera.Core/README.md       @techbuzzz
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Delibera.ConsoleApp — sample application, ships only as a demo
+# ──────────────────────────────────────────────────────────────────────────────
+/src/Delibera.ConsoleApp/          @techbuzzz
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Top-level repository metadata
+# ──────────────────────────────────────────────────────────────────────────────
+/README.md                         @techbuzzz
+/CONTRIBUTING.md                   @techbuzzz
+/LICENSE                           @techbuzzz
+/docs/                             @techbuzzz
+/.dockerignore                     @techbuzzz
+/docker-compose.yml                @techbuzzz
+/img/                              @techbuzzz
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Default — any file not matched above
+# (must be the last rule; order is significant)
+# ──────────────────────────────────────────────────────────────────────────────
+*                                   @techbuzzz
