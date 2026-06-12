@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS9057</NoWarn>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>Delibera.Core</PackageId>
+    <Version>3.1.0</Version>
+    <Title>Delibera</Title>
+    <Description>Delibera — Thoughtful AI Decisions. A framework for collective decision making through structured AI deliberation. Supports multi-model councils with RAG (Qdrant, PgVector), debate strategies, Knowledge Keeper, Chairman roles, dependency injection, and context compression.</Description>
+    <Authors>Delibera Project</Authors>
+    <Company>Delibera Project</Company>
+    <Product>Delibera</Product>
+    <Copyright>Copyright © 2024 Delibera Project</Copyright>
+    <PackageTags>llm;ai;debate;council;deliberation;rag;qdrant;pgvector;ollama;openai;vector-search;embeddings;dependency-injection</PackageTags>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/delibera/Delibera</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/delibera/Delibera</PackageProjectUrl>
+    <PackageReleaseNotes>v3.1.0 — Rebrand to Delibera. Dependency injection integration, execution logging, separate file saving, interface extraction, context compression, and RAG (Qdrant + PgVector) support.</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\branding\delibera\delibera-square-1024x1024.png" Pack="true" PackagePath="icon.png" />
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.9" />
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+    <PackageReference Include="OllamaSharp" Version="5.4.25" />
+    <PackageReference Include="Pgvector" Version="0.3.2" />
+    <PackageReference Include="Qdrant.Client" Version="1.18.1" />
+  </ItemGroup>
+
+</Project>

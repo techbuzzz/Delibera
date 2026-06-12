@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Delibera.ConsoleApp/Delibera.ConsoleApp.csproj" />
+  <Project Path="Delibera.Core/Delibera.Core.csproj" />
+</Solution>
