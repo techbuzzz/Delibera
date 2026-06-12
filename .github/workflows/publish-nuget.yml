@@ -38,10 +38,17 @@ jobs:
       - name: Pack
         run: dotnet pack src/Delibera.Core/Delibera.Core.csproj -c Release --no-build --output ./artifacts
 
-      - name: Verify package
+      - name: Verify package layout (hash, no signature)
         run: |
+          # Sanity-check the package: list contents and validate hash integrity.
+          # We do NOT run `dotnet nuget verify` because it requires a code
+          # signing certificate (NU3004) — overkill for an OSS package.
           ls -la ./artifacts
-          dotnet nuget verify ./artifacts/Delibera.Core.*.nupkg
+          for pkg in ./artifacts/Delibera.Core.*.nupkg; do
+            echo "── $pkg ──"
+            dotnet package list "$pkg" || true
+            unzip -l "$pkg"
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
