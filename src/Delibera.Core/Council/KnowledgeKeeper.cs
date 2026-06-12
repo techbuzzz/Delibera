@@ -5,30 +5,17 @@ namespace Delibera.Core.Council;
 ///    Connects to a RAG provider and uses a dedicated LLM model to answer
 ///    fact-based queries during debate rounds.
 /// </summary>
-public sealed class KnowledgeKeeper
+public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember model, string collectionName)
 {
+   private readonly IRagProvider _ragProvider = ragProvider ?? throw new ArgumentNullException(nameof(ragProvider));
+   private readonly CouncilMember _model = model ?? throw new ArgumentNullException(nameof(model));
    private readonly List<KnowledgeInteraction> _interactions = [];
-   private readonly CouncilMember _model;
-   private readonly IRagProvider _ragProvider;
 
-   /// <summary>
-   ///    Creates a Knowledge Keeper.
-   /// </summary>
-   /// <param name="ragProvider">RAG provider for vector search.</param>
-   /// <param name="model">Dedicated LLM council member for generating answers.</param>
-   /// <param name="collectionName">Vector collection to search against.</param>
-   public KnowledgeKeeper(IRagProvider ragProvider, CouncilMember model, string collectionName)
-   {
-      _ragProvider = ragProvider ?? throw new ArgumentNullException(nameof(ragProvider));
-      _model = model ?? throw new ArgumentNullException(nameof(model));
-      CollectionName = collectionName ?? throw new ArgumentNullException(nameof(collectionName));
-   }
+   /// <summary>RAG collection used for searching.</summary>
+   public string CollectionName { get; } = collectionName ?? throw new ArgumentNullException(nameof(collectionName));
 
    /// <summary>Display name shown in debate logs.</summary>
    public string DisplayName => $"📚 Knowledge Keeper ({_model.ModelName})";
-
-   /// <summary>RAG collection used for searching.</summary>
-   public string CollectionName { get; }
 
    /// <summary>All interactions recorded during this session.</summary>
    public IReadOnlyList<KnowledgeInteraction> Interactions => _interactions.AsReadOnly();
@@ -40,11 +27,9 @@ public sealed class KnowledgeKeeper
    /// <param name="limit">Maximum number of chunks to retrieve.</param>
    /// <param name="ct">Cancellation token.</param>
    /// <returns>Scored search results from the vector store.</returns>
-   public async Task<IReadOnlyList<VectorSearchResult>> SearchKnowledgeAsync(
-      string query, int limit = 5, CancellationToken ct = default)
-   {
-      return await _ragProvider.SearchAsync(CollectionName, query, limit, ct: ct);
-   }
+   public Task<IReadOnlyList<VectorSearchResult>> SearchKnowledgeAsync(
+      string query, int limit = 5, CancellationToken ct = default) =>
+      _ragProvider.SearchAsync(CollectionName, query, limit, ct: ct);
 
    /// <summary>
    ///    Generates an answer to a question using RAG context.
@@ -64,13 +49,13 @@ public sealed class KnowledgeKeeper
       // 1. Retrieve context from RAG
       var context = await _ragProvider.GetContextAsync(CollectionName, question, limit, ct);
 
-      var systemPrompt = """
-                         You are the Knowledge Keeper — a librarian and fact-checker for an AI council debate.
-                         Your role is to provide accurate, well-sourced answers based ONLY on the context provided.
-                         If the context does not contain sufficient information, clearly state what you know
-                         and what is uncertain. Always cite which source chunks support your answer.
-                         Be concise and factual.
-                         """;
+      const string SystemPrompt = """
+                                  You are the Knowledge Keeper — a librarian and fact-checker for an AI council debate.
+                                  Your role is to provide accurate, well-sourced answers based ONLY on the context provided.
+                                  If the context does not contain sufficient information, clearly state what you know
+                                  and what is uncertain. Always cite which source chunks support your answer.
+                                  Be concise and factual.
+                                  """;
 
       string userPrompt;
       int sourceChunks;
@@ -103,7 +88,7 @@ public sealed class KnowledgeKeeper
       }
 
       // 2. Generate answer via dedicated LLM
-      var answer = await _model.AskAsync(systemPrompt, userPrompt, temperature, ct);
+      var answer = await _model.AskAsync(SystemPrompt, userPrompt, temperature, ct);
 
       // 3. Log the interaction
       _interactions.Add(new KnowledgeInteraction(question, answer, sourceChunks));
@@ -121,6 +106,8 @@ public sealed class KnowledgeKeeper
       float temperature = 0.3f,
       CancellationToken ct = default)
    {
+      ArgumentNullException.ThrowIfNull(searchResults);
+
       var sb = new StringBuilder();
       for (var i = 0; i < searchResults.Count; i++)
       {
@@ -129,10 +116,10 @@ public sealed class KnowledgeKeeper
          sb.AppendLine();
       }
 
-      var systemPrompt = """
-                         You are the Knowledge Keeper — a librarian and fact-checker for an AI council debate.
-                         Provide accurate answers based ONLY on the context provided. Cite source numbers.
-                         """;
+      const string SystemPrompt = """
+                                  You are the Knowledge Keeper — a librarian and fact-checker for an AI council debate.
+                                  Provide accurate answers based ONLY on the context provided. Cite source numbers.
+                                  """;
 
       var userPrompt = $"""
                         ### Retrieved Context:
@@ -142,7 +129,7 @@ public sealed class KnowledgeKeeper
                         {question}
                         """;
 
-      var answer = await _model.AskAsync(systemPrompt, userPrompt, temperature, ct);
+      var answer = await _model.AskAsync(SystemPrompt, userPrompt, temperature, ct);
       _interactions.Add(new KnowledgeInteraction(question, answer, searchResults.Count));
       return answer;
    }
@@ -234,10 +221,8 @@ public sealed class KnowledgeKeeper
       Dictionary<string, string>? metadata = null,
       int chunkSize = 500,
       int chunkOverlap = 50,
-      CancellationToken ct = default)
-   {
-      return _ragProvider.IndexDocumentAsync(CollectionName, documentText, metadata, chunkSize, chunkOverlap, ct);
-   }
+      CancellationToken ct = default) =>
+      _ragProvider.IndexDocumentAsync(CollectionName, documentText, metadata, chunkSize, chunkOverlap, ct);
 
    /// <summary>
    ///    Indexes a file into the Knowledge Keeper's collection.
@@ -246,8 +231,6 @@ public sealed class KnowledgeKeeper
       string filePath,
       int chunkSize = 500,
       int chunkOverlap = 50,
-      CancellationToken ct = default)
-   {
-      return _ragProvider.IndexFileAsync(CollectionName, filePath, chunkSize, chunkOverlap, ct);
-   }
+      CancellationToken ct = default) =>
+      _ragProvider.IndexFileAsync(CollectionName, filePath, chunkSize, chunkOverlap, ct);
 }

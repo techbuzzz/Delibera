@@ -39,48 +39,25 @@ public sealed record ExecutionLog(
    /// <summary>
    ///    Creates an <see cref="ExecutionLog" /> with <see cref="LogLevel.Info" /> and the current UTC time.
    /// </summary>
-   /// <param name="source">Component source name.</param>
-   /// <param name="message">Log message.</param>
-   public static ExecutionLog Info(string source, string message)
-   {
-      return new ExecutionLog(LogLevel.Info, source, message, DateTime.UtcNow);
-   }
+   public static ExecutionLog Info(string source, string message) => new(LogLevel.Info, source, message, DateTime.UtcNow);
 
    /// <summary>
    ///    Creates an <see cref="ExecutionLog" /> with <see cref="LogLevel.Trace" /> and the current UTC time.
    /// </summary>
-   /// <param name="source">Component source name.</param>
-   /// <param name="message">Log message.</param>
-   public static ExecutionLog Trace(string source, string message)
-   {
-      return new ExecutionLog(LogLevel.Trace, source, message, DateTime.UtcNow);
-   }
+   public static ExecutionLog Trace(string source, string message) => new(LogLevel.Trace, source, message, DateTime.UtcNow);
 
    /// <summary>
    ///    Creates an <see cref="ExecutionLog" /> with <see cref="LogLevel.Warning" /> and the current UTC time.
    /// </summary>
-   /// <param name="source">Component source name.</param>
-   /// <param name="message">Log message.</param>
-   public static ExecutionLog Warn(string source, string message)
-   {
-      return new ExecutionLog(LogLevel.Warning, source, message, DateTime.UtcNow);
-   }
+   public static ExecutionLog Warn(string source, string message) => new(LogLevel.Warning, source, message, DateTime.UtcNow);
 
    /// <summary>
    ///    Creates an <see cref="ExecutionLog" /> with <see cref="LogLevel.Error" /> and the current UTC time.
    /// </summary>
-   /// <param name="source">Component source name.</param>
-   /// <param name="message">Log message.</param>
-   public static ExecutionLog Error(string source, string message)
-   {
-      return new ExecutionLog(LogLevel.Error, source, message, DateTime.UtcNow);
-   }
+   public static ExecutionLog Error(string source, string message) => new(LogLevel.Error, source, message, DateTime.UtcNow);
 
    /// <summary>
    ///    Formats the log entry as a single-line string.
    /// </summary>
-   public override string ToString()
-   {
-      return $"[{Timestamp:HH:mm:ss.fff}] [{Level,-7}] [{Source}] {Message}";
-   }
+   public override string ToString() => $"[{Timestamp:HH:mm:ss.fff}] [{Level,-7}] [{Source}] {Message}";
 }

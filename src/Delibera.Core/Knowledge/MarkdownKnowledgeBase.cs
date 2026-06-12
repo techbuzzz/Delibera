@@ -6,7 +6,7 @@ namespace Delibera.Core.Knowledge;
 /// </summary>
 public sealed class MarkdownKnowledgeBase : IKnowledgeBase
 {
-   private readonly Dictionary<string, string> _documents = [];
+   private readonly Dictionary<string, string> _documents = new(StringComparer.OrdinalIgnoreCase);
 
    /// <summary>Creates a Markdown knowledge base with an optional name.</summary>
    public MarkdownKnowledgeBase(string name = "Markdown Knowledge Base")
@@ -37,6 +37,7 @@ public sealed class MarkdownKnowledgeBase : IKnowledgeBase
    /// <inheritdoc />
    public async Task LoadManyAsync(IEnumerable<string> sources)
    {
+      ArgumentNullException.ThrowIfNull(sources);
       foreach (var s in sources) await LoadAsync(s);
    }
 
@@ -58,6 +59,7 @@ public sealed class MarkdownKnowledgeBase : IKnowledgeBase
    /// <inheritdoc />
    public IReadOnlyList<string> Search(string query, int maxResults = 5)
    {
+      ArgumentNullException.ThrowIfNull(query);
       if (string.IsNullOrWhiteSpace(query)) return [];
 
       var keywords = query.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -75,14 +77,16 @@ public sealed class MarkdownKnowledgeBase : IKnowledgeBase
          }
       }
 
-      return scored.OrderByDescending(r => r.score).Take(maxResults).Select(r => r.chunk).ToList().AsReadOnly();
+      return scored
+         .OrderByDescending(r => r.score)
+         .Take(maxResults)
+         .Select(r => r.chunk)
+         .ToList()
+         .AsReadOnly();
    }
 
    /// <inheritdoc />
-   public IReadOnlyList<string> GetLoadedSources()
-   {
-      return _documents.Keys.ToList().AsReadOnly();
-   }
+   public IReadOnlyList<string> GetLoadedSources() => _documents.Keys.ToList().AsReadOnly();
 
    /// <summary>Loads all matching files from a directory.</summary>
    public async Task LoadDirectoryAsync(string directoryPath, string pattern = "*.md")

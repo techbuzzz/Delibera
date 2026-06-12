@@ -17,21 +17,12 @@ namespace Delibera.Core.Compression;
 ///       when the limit is reached.
 ///    </para>
 /// </remarks>
-public sealed class CompressionCache
+public sealed class CompressionCache(int maxEntries = 256)
 {
    private readonly ConcurrentDictionary<string, CacheEntry> _cache = new();
-   private readonly int _maxEntries;
+   private readonly int _maxEntries = Math.Max(1, maxEntries);
    private long _hitCount;
    private long _missCount;
-
-   /// <summary>
-   ///    Creates a compression cache.
-   /// </summary>
-   /// <param name="maxEntries">Maximum number of cached entries (default 256).</param>
-   public CompressionCache(int maxEntries = 256)
-   {
-      _maxEntries = Math.Max(1, maxEntries);
-   }
 
    /// <summary>Number of entries currently in the cache.</summary>
    public int Count => _cache.Count;
@@ -113,10 +104,7 @@ public sealed class CompressionCache
    /// <summary>
    ///    Returns a formatted summary of cache performance.
    /// </summary>
-   public string GetSummary()
-   {
-      return $"Cache: {Count} entries, {HitCount} hits / {MissCount} misses ({HitRate:P1} hit rate)";
-   }
+   public string GetSummary() => $"Cache: {Count} entries, {HitCount} hits / {MissCount} misses ({HitRate:P1} hit rate)";
 
    // ──────────────────────────────────────────────
 

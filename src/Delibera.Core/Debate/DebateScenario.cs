@@ -58,6 +58,7 @@ public abstract class DebateScenario : IDebateStrategy
    /// <summary>Formats a single round's responses into readable text.</summary>
    protected static string FormatRoundResponses(DebateRound round)
    {
+      ArgumentNullException.ThrowIfNull(round);
       var sb = new StringBuilder();
       sb.AppendLine($"=== {round.RoundName} ===");
       foreach (var (member, response) in round.Responses)
@@ -70,10 +71,8 @@ public abstract class DebateScenario : IDebateStrategy
    }
 
    /// <summary>Formats all rounds into a single text block.</summary>
-   protected static string FormatAllRounds(IReadOnlyList<DebateRound> rounds)
-   {
-      return string.Join("\n\n", rounds.Select(FormatRoundResponses));
-   }
+   protected static string FormatAllRounds(IReadOnlyList<DebateRound> rounds) =>
+      string.Join("\n\n", rounds.Select(FormatRoundResponses));
 
    /// <summary>Creates a completed debate round.</summary>
    protected static DebateRound CreateRound(
@@ -82,9 +81,8 @@ public abstract class DebateScenario : IDebateStrategy
       string? description,
       Dictionary<string, string> responses,
       string? prompt = null,
-      IReadOnlyList<KnowledgeInteraction>? knowledgeInteractions = null)
-   {
-      return new DebateRound
+      IReadOnlyList<KnowledgeInteraction>? knowledgeInteractions = null) =>
+      new()
       {
          RoundNumber = number,
          RoundName = name,
@@ -94,7 +92,6 @@ public abstract class DebateScenario : IDebateStrategy
          KnowledgeInteractions = knowledgeInteractions ?? [],
          CompletedAt = DateTime.UtcNow
       };
-   }
 
    /// <summary>
    ///    Optionally queries the Knowledge Keeper for context relevant to the debate topic.

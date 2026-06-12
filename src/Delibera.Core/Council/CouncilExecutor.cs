@@ -134,26 +134,14 @@ public sealed class CouncilExecutor : ICouncilExecutor
    public async Task<CompressedContext> CompressTextAsync(string text, CancellationToken ct = default)
    {
       if (Compressor is null)
-      {
-         var tokens = TokenCounter.Default.EstimateTokens(text);
-         return new CompressedContext
-         {
-            Text = text,
-            OriginalLength = text.Length,
-            CompressedLength = text.Length,
-            OriginalTokens = tokens,
-            CompressedTokens = tokens,
-            StrategyUsed = "None"
-         };
-      }
+         return CompressedContextFactory.PassThrough(
+            text, TokenCounter.Default.EstimateTokens(text), "None", TimeSpan.Zero);
 
       // Check cache
-      if (CompressionCache is not null &&
-          CompressionCache.TryGet(text, Compressor.StrategyName, out var cached) &&
-          cached is not null)
+      if (CompressionCache?.TryGet(text, Compressor.StrategyName, out var cached) == true)
       {
          Log(ExecutionLog.Trace("Compression", $"Cache hit for {Compressor.StrategyName} ({text.Length} chars)"));
-         return cached;
+         return cached!;
       }
 
       Log(ExecutionLog.Trace("Compression", $"Compressing {text.Length} chars with {Compressor.StrategyName}..."));
@@ -218,7 +206,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
       sb.AppendLine("  ── Prompts ──");
       sb.AppendLine($"    System: {Truncate(_context.SystemPrompt, 80)}");
       sb.AppendLine($"    User:   {Truncate(_context.UserPrompt, 80)}");
-      if (_context.KnowledgeFiles.Count > 0)
+      if (_context.KnowledgeFiles is { Count: > 0 })
          sb.AppendLine($"    Knowledge: {_context.KnowledgeFiles.Count} file(s)");
       if (!string.IsNullOrEmpty(_outputPath))
          sb.AppendLine($"    Output: {_outputPath}");
@@ -226,13 +214,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
       return sb.ToString();
    }
 
-   private void Log(ExecutionLog entry)
-   {
-      _executionLogs.Add(entry);
-   }
+   private void Log(ExecutionLog entry) => _executionLogs.Add(entry);
 
-   private static string Truncate(string text, int max)
-   {
-      return string.IsNullOrEmpty(text) ? "(empty)" : text.Length <= max ? text : text[..max] + "…";
-   }
+   private static string Truncate(string text, int max) =>
+      string.IsNullOrEmpty(text) ? "(empty)" : text.Length <= max ? text : text[..max] + "…";
 }

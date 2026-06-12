@@ -1,6 +1,32 @@
 namespace Delibera.Core.Interfaces;
 
 /// <summary>
+///    A single point to be stored in the vector database.
+/// </summary>
+/// <param name="Id">Unique point identifier.</param>
+/// <param name="Vector">Embedding vector.</param>
+/// <param name="Text">Original text chunk.</param>
+/// <param name="Metadata">Optional key-value metadata (source file, page, etc.).</param>
+public sealed record VectorPoint(
+   string Id,
+   float[] Vector,
+   string Text,
+   Dictionary<string, string>? Metadata = null);
+
+/// <summary>
+///    A scored result returned from a vector similarity search.
+/// </summary>
+/// <param name="Id">Point identifier.</param>
+/// <param name="Text">Original text chunk.</param>
+/// <param name="Score">Similarity score (higher = more similar).</param>
+/// <param name="Metadata">Point metadata.</param>
+public sealed record VectorSearchResult(
+   string Id,
+   string Text,
+   float Score,
+   Dictionary<string, string>? Metadata = null);
+
+/// <summary>
 ///    Low-level vector storage abstraction — stores, retrieves and searches vectors.
 ///    Implement for Qdrant, pgvector, Pinecone, etc.
 /// </summary>
@@ -45,29 +71,3 @@ public interface IVectorStore : IAsyncDisposable
    /// <summary>Returns the total number of points in a collection.</summary>
    Task<long> CountAsync(string collectionName, CancellationToken ct = default);
 }
-
-/// <summary>
-///    A single point to be stored in the vector database.
-/// </summary>
-/// <param name="Id">Unique point identifier.</param>
-/// <param name="Vector">Embedding vector.</param>
-/// <param name="Text">Original text chunk.</param>
-/// <param name="Metadata">Optional key-value metadata (source file, page, etc.).</param>
-public sealed record VectorPoint(
-   string Id,
-   float[] Vector,
-   string Text,
-   Dictionary<string, string>? Metadata = null);
-
-/// <summary>
-///    A scored result returned from a vector similarity search.
-/// </summary>
-/// <param name="Id">Point identifier.</param>
-/// <param name="Text">Original text chunk.</param>
-/// <param name="Score">Similarity score (higher = more similar).</param>
-/// <param name="Metadata">Point metadata.</param>
-public sealed record VectorSearchResult(
-   string Id,
-   string Text,
-   float Score,
-   Dictionary<string, string>? Metadata = null);

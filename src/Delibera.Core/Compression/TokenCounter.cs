@@ -13,7 +13,9 @@ namespace Delibera.Core.Compression;
 /// </remarks>
 public sealed class TokenCounter
 {
-   private static readonly Lazy<TokenCounter> DefaultInstance = new(() => new TokenCounter());
+   private static readonly Lazy<TokenCounter> DefaultInstance = new(
+      () => new TokenCounter(),
+      LazyThreadSafetyMode.ExecutionAndPublication);
 
    /// <summary>Gets the shared default <see cref="TokenCounter" /> instance.</summary>
    public static TokenCounter Default => DefaultInstance.Value;
@@ -57,6 +59,7 @@ public sealed class TokenCounter
    /// </summary>
    public int EstimateTokens(IEnumerable<string> texts)
    {
+      ArgumentNullException.ThrowIfNull(texts);
       var total = 0;
       foreach (var t in texts)
          total += EstimateTokens(t);
@@ -66,10 +69,7 @@ public sealed class TokenCounter
    /// <summary>
    ///    Returns <c>true</c> if the text exceeds the specified token limit.
    /// </summary>
-   public bool ExceedsLimit(string text, int tokenLimit)
-   {
-      return EstimateTokens(text) > tokenLimit;
-   }
+   public bool ExceedsLimit(string text, int tokenLimit) => EstimateTokens(text) > tokenLimit;
 
    /// <summary>
    ///    Truncates text to approximately fit within the specified token limit.
@@ -79,7 +79,7 @@ public sealed class TokenCounter
    /// <returns>Truncated text (may be the original if already within limit).</returns>
    public string TruncateToTokenLimit(string text, int maxTokens)
    {
-      if (string.IsNullOrEmpty(text)) return string.Empty;
+      ArgumentNullException.ThrowIfNull(text);
       if (EstimateTokens(text) <= maxTokens) return text;
 
       // Approximate character position for the token limit

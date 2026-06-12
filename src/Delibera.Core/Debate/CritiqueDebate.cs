@@ -31,12 +31,13 @@ public sealed class CritiqueDebate : DebateScenario
       Action<DebateRound>? onRoundCompleted = null,
       CancellationToken ct = default)
    {
-      var rounds = new List<DebateRound>();
+      ArgumentNullException.ThrowIfNull(members);
+      ArgumentNullException.ThrowIfNull(context);
+      var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper);
       var fullUserPrompt = context.GetFullUserPrompt();
 
-      string? openingStatement = null;
       if (chairman is not null)
-         openingStatement = await Chairman.OpenDebateAsync(chairman, context, members, StrategyName, maxRounds, temperature, ct);
+         builder.SetOpeningStatement(await Chairman.OpenDebateAsync(chairman, context, members, StrategyName, maxRounds, temperature, ct));
 
       // Round 1: Knowledge pre-research
       var r1Ki = new List<KnowledgeInteraction>();
@@ -55,15 +56,15 @@ public sealed class CritiqueDebate : DebateScenario
       // Round 1: Initial Positions
       var r1 = await CollectResponsesAsync(members, context.SystemPrompt, enrichedPrompt, temperature, ct);
       var round1 = CreateRound(1, "Initial Positions", "Each model states their initial position.", r1, knowledgeInteractions: r1Ki);
-      rounds.Add(round1);
+      builder.AddRound(round1);
       onRoundCompleted?.Invoke(round1);
-      if (maxRounds < 2) return Build();
+      if (maxRounds < 2) return BuildAndComplete(builder);
 
       // Round 2: KK update
       var r2Ki = new List<KnowledgeInteraction>();
       if (knowledgeKeeper is not null)
       {
-         var (_, ki) = await QueryKnowledgeForRoundAsync(knowledgeKeeper, context.UserPrompt, 2, rounds, ct);
+         var (_, ki) = await QueryKnowledgeForRoundAsync(knowledgeKeeper, context.UserPrompt, 2, builder.Rounds, ct);
          if (ki is not null) r2Ki.Add(ki);
       }
 
@@ -82,15 +83,15 @@ public sealed class CritiqueDebate : DebateScenario
                       """;
       var r2 = await CollectResponsesAsync(members, r2Sys, r2Prompt, temperature, ct);
       var round2 = CreateRound(2, "Directed Critique", "Models attack weaknesses in each other's positions.", r2, knowledgeInteractions: r2Ki);
-      rounds.Add(round2);
+      builder.AddRound(round2);
       onRoundCompleted?.Invoke(round2);
-      if (maxRounds < 3) return Build();
+      if (maxRounds < 3) return BuildAndComplete(builder);
 
       // Round 3: KK update
       var r3Ki = new List<KnowledgeInteraction>();
       if (knowledgeKeeper is not null)
       {
-         var (_, ki) = await QueryKnowledgeForRoundAsync(knowledgeKeeper, context.UserPrompt, 3, rounds, ct);
+         var (_, ki) = await QueryKnowledgeForRoundAsync(knowledgeKeeper, context.UserPrompt, 3, builder.Rounds, ct);
          if (ki is not null) r3Ki.Add(ki);
       }
 
@@ -109,41 +110,32 @@ public sealed class CritiqueDebate : DebateScenario
                       """;
       var r3 = await CollectResponsesAsync(members, r3Sys, r3Prompt, temperature, ct);
       var round3 = CreateRound(3, "Defence & Counter-Arguments", "Models defend their positions.", r3, knowledgeInteractions: r3Ki);
-      rounds.Add(round3);
+      builder.AddRound(round3);
       onRoundCompleted?.Invoke(round3);
 
       // Round 4: Judge verdict
-      string? verdict = null;
       if (maxRounds >= 4 && chairman is not null)
          try
          {
-            verdict = await Chairman.SynthesizeVerdictAsync(chairman, context, rounds, knowledgeKeeper, temperature, ct);
+            var verdict = await Chairman.SynthesizeVerdictAsync(chairman, context, builder.Rounds, knowledgeKeeper, temperature, ct);
+            builder.SetFinalVerdict(verdict);
+
             var round4 = CreateRound(4, "Judge's Verdict", "The Chairman judges the debate.",
                new Dictionary<string, string> { [chairman.DisplayName] = verdict });
-            rounds.Add(round4);
+            builder.AddRound(round4);
             onRoundCompleted?.Invoke(round4);
          }
          catch (Exception ex)
          {
-            verdict = $"[JUDGE ERROR: {ex.Message}]";
+            builder.SetFinalVerdict($"[JUDGE ERROR: {ex.Message}]");
          }
 
-      return Build(verdict);
+      return BuildAndComplete(builder);
+   }
 
-      DebateResult Build(string? v = null)
-      {
-         return new DebateResult
-         {
-            StrategyName = StrategyName,
-            Context = context,
-            Participants = members.Select(m => m.DisplayName).ToList(),
-            ChairmanName = chairman?.DisplayName,
-            KnowledgeKeeperName = knowledgeKeeper?.DisplayName,
-            OpeningStatement = openingStatement,
-            Rounds = rounds,
-            FinalVerdict = v,
-            CompletedAt = DateTime.UtcNow
-         };
-      }
+   private static DebateResult BuildAndComplete(DebateResultBuilder builder)
+   {
+      builder.MarkCompleted();
+      return builder.Build();
    }
 }

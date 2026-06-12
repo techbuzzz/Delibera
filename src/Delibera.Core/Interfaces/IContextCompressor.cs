@@ -32,41 +32,24 @@ public interface IContextCompressor
 }
 
 /// <summary>
-///    Result of a context compression operation.
+///    Enumeration of available compression strategies.
 /// </summary>
-/// <remarks>
-///    Contains the compressed text along with statistics about the compression.
-/// </remarks>
-public sealed record CompressedContext
+public enum CompressionStrategy
 {
-   /// <summary>The compressed text.</summary>
-   public required string Text { get; init; }
+   /// <summary>No compression — pass-through.</summary>
+   None = 0,
 
-   /// <summary>Original text length in characters.</summary>
-   public required int OriginalLength { get; init; }
+   /// <summary>Semantic compression — ranks sentences by importance and keeps the most relevant.</summary>
+   Semantic,
 
-   /// <summary>Compressed text length in characters.</summary>
-   public required int CompressedLength { get; init; }
+   /// <summary>Deduplication — removes semantically similar / duplicate content.</summary>
+   Deduplication,
 
-   /// <summary>Estimated original token count.</summary>
-   public required int OriginalTokens { get; init; }
+   /// <summary>Summarization — uses an LLM to produce a concise summary.</summary>
+   Summarization,
 
-   /// <summary>Estimated compressed token count.</summary>
-   public required int CompressedTokens { get; init; }
-
-   /// <summary>Compression ratio (0.0–1.0; lower = more compressed).</summary>
-   public double CompressionRatio => OriginalTokens > 0
-      ? (double)CompressedTokens / OriginalTokens
-      : 1.0;
-
-   /// <summary>Percentage of tokens saved.</summary>
-   public double TokensSavedPercent => (1.0 - CompressionRatio) * 100.0;
-
-   /// <summary>Name of the strategy that produced this result.</summary>
-   public required string StrategyUsed { get; init; }
-
-   /// <summary>Time taken to perform the compression.</summary>
-   public TimeSpan Duration { get; init; }
+   /// <summary>Hybrid — combines deduplication + semantic ranking + optional summarization.</summary>
+   Hybrid
 }
 
 /// <summary>
@@ -113,22 +96,39 @@ public sealed record CompressionOptions
 }
 
 /// <summary>
-///    Enumeration of available compression strategies.
+///    Result of a context compression operation.
 /// </summary>
-public enum CompressionStrategy
+/// <remarks>
+///    Contains the compressed text along with statistics about the compression.
+/// </remarks>
+public sealed record CompressedContext
 {
-   /// <summary>No compression — pass-through.</summary>
-   None = 0,
+   /// <summary>The compressed text.</summary>
+   public required string Text { get; init; }
 
-   /// <summary>Semantic compression — ranks sentences by importance and keeps the most relevant.</summary>
-   Semantic,
+   /// <summary>Original text length in characters.</summary>
+   public required int OriginalLength { get; init; }
 
-   /// <summary>Deduplication — removes semantically similar / duplicate content.</summary>
-   Deduplication,
+   /// <summary>Compressed text length in characters.</summary>
+   public required int CompressedLength { get; init; }
 
-   /// <summary>Summarization — uses an LLM to produce a concise summary.</summary>
-   Summarization,
+   /// <summary>Estimated original token count.</summary>
+   public required int OriginalTokens { get; init; }
 
-   /// <summary>Hybrid — combines deduplication + semantic ranking + optional summarization.</summary>
-   Hybrid
+   /// <summary>Estimated compressed token count.</summary>
+   public required int CompressedTokens { get; init; }
+
+   /// <summary>Name of the strategy that produced this result.</summary>
+   public required string StrategyUsed { get; init; }
+
+   /// <summary>Time taken to perform the compression.</summary>
+   public TimeSpan Duration { get; init; }
+
+   /// <summary>Compression ratio (0.0–1.0; lower = more compressed).</summary>
+   public double CompressionRatio => OriginalTokens > 0
+      ? (double)CompressedTokens / OriginalTokens
+      : 1.0;
+
+   /// <summary>Percentage of tokens saved.</summary>
+   public double TokensSavedPercent => (1.0 - CompressionRatio) * 100.0;
 }

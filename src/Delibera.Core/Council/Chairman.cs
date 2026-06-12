@@ -12,44 +12,36 @@ public static class Chairman
    // ──────────────────────────────────────────────
 
    /// <summary>Creates a standard, neutral Chairman.</summary>
-   public static CouncilMember CreateStandard(string modelName, ILLMProvider provider)
-   {
-      return new CouncilMember(modelName, provider, "Chairman",
+   public static CouncilMember CreateStandard(string modelName, ILLMProvider provider) =>
+      new(modelName, provider, "Chairman",
          """
          You are the Chairman of an AI Council debate — neutral, objective and fair.
          You organise the debate process, ensure every participant is heard,
          synthesise diverse viewpoints and produce clear, actionable verdicts.
          Prioritise accuracy, completeness and practical usefulness.
          """);
-   }
 
    /// <summary>Creates a strict, evidence-focused Chairman.</summary>
-   public static CouncilMember CreateStrict(string modelName, ILLMProvider provider)
-   {
-      return new CouncilMember(modelName, provider, "Strict Chairman",
+   public static CouncilMember CreateStrict(string modelName, ILLMProvider provider) =>
+      new(modelName, provider, "Strict Chairman",
          """
          You are a strict, evidence-focused Chairman. You demand factual accuracy,
          reject unsupported claims and penalise logical fallacies.
          If no participant provides a satisfactory answer, say so clearly.
          """);
-   }
 
    /// <summary>Creates a creative Chairman who encourages novel thinking.</summary>
-   public static CouncilMember CreateCreative(string modelName, ILLMProvider provider)
-   {
-      return new CouncilMember(modelName, provider, "Creative Chairman",
+   public static CouncilMember CreateCreative(string modelName, ILLMProvider provider) =>
+      new(modelName, provider, "Creative Chairman",
          """
          You are a creative Chairman who looks beyond conventional answers.
          While maintaining accuracy, you seek innovative connections between ideas,
          encourage thinking outside the box, and surface unexpected insights.
          """);
-   }
 
    /// <summary>Creates a Chairman with a custom persona prompt.</summary>
-   public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt)
-   {
-      return new CouncilMember(modelName, provider, "Chairman", personaPrompt);
-   }
+   public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt) =>
+      new(modelName, provider, "Chairman", personaPrompt);
 
    // ──────────────────────────────────────────────
    // Specialised Chairman actions (each has its own prompt)
@@ -58,7 +50,7 @@ public static class Chairman
    /// <summary>
    ///    Opens the debate: greets participants, states the topic, and outlines rules.
    /// </summary>
-   public static async Task<string> OpenDebateAsync(
+   public static Task<string> OpenDebateAsync(
       CouncilMember chairman,
       PromptContext context,
       IReadOnlyList<CouncilMember> members,
@@ -67,6 +59,7 @@ public static class Chairman
       float temperature = 0.5f,
       CancellationToken ct = default)
    {
+      ArgumentNullException.ThrowIfNull(members);
       var participants = string.Join(", ", members.Select(m => m.DisplayName));
 
       var prompt = $"""
@@ -87,13 +80,13 @@ public static class Chairman
                     Keep it concise — 4-6 sentences.
                     """;
 
-      return await chairman.AskAsync(context.SystemPrompt, prompt, temperature, ct);
+      return chairman.AskAsync(context.SystemPrompt, prompt, temperature, ct);
    }
 
    /// <summary>
    ///    Explains the chosen debate strategy to participants.
    /// </summary>
-   public static async Task<string> ExplainStrategyAsync(
+   public static Task<string> ExplainStrategyAsync(
       CouncilMember chairman,
       string strategyName,
       string strategyDescription,
@@ -114,20 +107,21 @@ public static class Chairman
                     Be clear and concise — 3-5 sentences.
                     """;
 
-      return await chairman.AskAsync("You are the Chairman of an AI Council.", prompt, temperature, ct);
+      return chairman.AskAsync("You are the Chairman of an AI Council.", prompt, temperature, ct);
    }
 
    /// <summary>
    ///    Moderates a discussion by reviewing the latest round's responses
    ///    and providing guidance for the next round.
    /// </summary>
-   public static async Task<string> ModerateDiscussionAsync(
+   public static Task<string> ModerateDiscussionAsync(
       CouncilMember chairman,
       PromptContext context,
       DebateRound latestRound,
       float temperature = 0.5f,
       CancellationToken ct = default)
    {
+      ArgumentNullException.ThrowIfNull(latestRound);
       var responses = string.Join("\n\n", latestRound.Responses.Select(r => $"**{r.Key}:** {r.Value}"));
 
       var prompt = $"""
@@ -147,19 +141,20 @@ public static class Chairman
                     Be concise and constructive — 4-8 sentences.
                     """;
 
-      return await chairman.AskAsync(context.SystemPrompt, prompt, temperature, ct);
+      return chairman.AskAsync(context.SystemPrompt, prompt, temperature, ct);
    }
 
    /// <summary>
    ///    Generates clarifying questions for participants based on the debate so far.
    /// </summary>
-   public static async Task<string> AskClarifyingQuestionsAsync(
+   public static Task<string> AskClarifyingQuestionsAsync(
       CouncilMember chairman,
       PromptContext context,
       IReadOnlyList<DebateRound> rounds,
       float temperature = 0.6f,
       CancellationToken ct = default)
    {
+      ArgumentNullException.ThrowIfNull(rounds);
       var roundsSummary = string.Join("\n\n",
          rounds.Select(r => $"**Round {r.RoundNumber} ({r.RoundName}):**\n" +
                             string.Join("\n", r.Responses.Select(kv => $"- {kv.Key}: {kv.Value[..Math.Min(200, kv.Value.Length)]}..."))));
@@ -181,18 +176,19 @@ public static class Chairman
                     Be concise.
                     """;
 
-      return await chairman.AskAsync(context.SystemPrompt, prompt, temperature, ct);
+      return chairman.AskAsync(context.SystemPrompt, prompt, temperature, ct);
    }
 
    /// <summary>
    ///    Enforces regulations — checks that participants are following debate rules.
    /// </summary>
-   public static async Task<string> EnforceRegulationsAsync(
+   public static Task<string> EnforceRegulationsAsync(
       CouncilMember chairman,
       DebateRound latestRound,
       float temperature = 0.3f,
       CancellationToken ct = default)
    {
+      ArgumentNullException.ThrowIfNull(latestRound);
       var responses = string.Join("\n\n", latestRound.Responses.Select(r => $"**{r.Key}:** {r.Value}"));
 
       var prompt = $"""
@@ -213,7 +209,7 @@ public static class Chairman
                     If all participants followed the rules, simply state "All participants are in compliance."
                     """;
 
-      return await chairman.AskAsync("You are a strict debate regulator.", prompt, temperature, ct);
+      return chairman.AskAsync("You are a strict debate regulator.", prompt, temperature, ct);
    }
 
    /// <summary>
@@ -227,12 +223,13 @@ public static class Chairman
       float temperature = 0.5f,
       CancellationToken ct = default)
    {
+      ArgumentNullException.ThrowIfNull(rounds);
       var allRounds = string.Join("\n\n",
          rounds.Select(r =>
          {
             var header = $"### Round {r.RoundNumber}: {r.RoundName}";
             var body = string.Join("\n", r.Responses.Select(kv => $"**{kv.Key}:**\n{kv.Value}"));
-            var ki = r.KnowledgeInteractions.Count > 0
+            var ki = r.KnowledgeInteractions is { Count: > 0 }
                ? "\n📚 Knowledge queries:\n" + string.Join("\n", r.KnowledgeInteractions.Select(k => $"Q: {k.Query}\nA: {k.Answer}"))
                : "";
             return $"{header}\n{body}{ki}";
@@ -274,7 +271,6 @@ public static class Chairman
    }
 }
 
-// Backward compatibility alias
 /// <summary>
 ///    Backward-compatible alias for <see cref="Chairman" />.
 /// </summary>
@@ -282,26 +278,14 @@ public static class Chairman
 public static class Moderator
 {
    /// <inheritdoc cref="Chairman.CreateStandard" />
-   public static CouncilMember CreateStandard(string modelName, ILLMProvider provider)
-   {
-      return Chairman.CreateStandard(modelName, provider);
-   }
+   public static CouncilMember CreateStandard(string modelName, ILLMProvider provider) => Chairman.CreateStandard(modelName, provider);
 
    /// <inheritdoc cref="Chairman.CreateStrict" />
-   public static CouncilMember CreateStrict(string modelName, ILLMProvider provider)
-   {
-      return Chairman.CreateStrict(modelName, provider);
-   }
+   public static CouncilMember CreateStrict(string modelName, ILLMProvider provider) => Chairman.CreateStrict(modelName, provider);
 
    /// <inheritdoc cref="Chairman.CreateCreative" />
-   public static CouncilMember CreateCreative(string modelName, ILLMProvider provider)
-   {
-      return Chairman.CreateCreative(modelName, provider);
-   }
+   public static CouncilMember CreateCreative(string modelName, ILLMProvider provider) => Chairman.CreateCreative(modelName, provider);
 
    /// <inheritdoc cref="Chairman.CreateCustom" />
-   public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt)
-   {
-      return Chairman.CreateCustom(modelName, provider, personaPrompt);
-   }
+   public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt) => Chairman.CreateCustom(modelName, provider, personaPrompt);
 }

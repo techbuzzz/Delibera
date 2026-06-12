@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace Delibera.Core.Models;
 
 /// <summary>
@@ -78,7 +80,7 @@ public sealed record DebateResult
       sb.AppendLine($"**User Prompt:** {Context.UserPrompt}");
       sb.AppendLine();
 
-      if (Context.KnowledgeFiles.Count > 0)
+      if (Context.KnowledgeFiles is { Count: > 0 })
          sb.AppendLine($"**Knowledge Files:** {string.Join(", ", Context.KnowledgeFiles)}");
 
       if (!string.IsNullOrWhiteSpace(Context.KnowledgeContent))
@@ -115,7 +117,7 @@ public sealed record DebateResult
             sb.AppendLine($"*{round.Description}*").AppendLine();
 
          // Knowledge interactions
-         if (round.KnowledgeInteractions.Count > 0)
+         if (round.KnowledgeInteractions is { Count: > 0 })
          {
             sb.AppendLine("### 📚 Knowledge Keeper Interactions");
             sb.AppendLine();
@@ -168,35 +170,14 @@ public sealed record DebateResult
       sb.AppendLine();
 
       if (TokenStats is not null)
-      {
-         sb.AppendLine("## Token Statistics");
-         sb.AppendLine();
-         sb.AppendLine("| Metric | Value |");
-         sb.AppendLine("|--------|------:|");
-         sb.AppendLine($"| Original Tokens | {TokenStats.TotalOriginalTokens:N0} |");
-         sb.AppendLine($"| Compressed Tokens | {TokenStats.TotalCompressedTokens:N0} |");
-         sb.AppendLine($"| Response Tokens | {TokenStats.TotalResponseTokens:N0} |");
-         sb.AppendLine($"| **Tokens Saved** | **{TokenStats.TokensSaved:N0} ({TokenStats.SavedPercent:F1}%)** |");
-         sb.AppendLine($"| Compression Ratio | {TokenStats.OverallCompressionRatio:P1} |");
-         sb.AppendLine($"| Grand Total | {TokenStats.GrandTotal:N0} |");
-         sb.AppendLine();
+         MarkdownRender.WriteTokenStatistics(sb, TokenStats);
 
-         if (TokenStats.RoundBreakdown.Count > 0)
-         {
-            sb.AppendLine("### Per-Round Breakdown");
-            sb.AppendLine();
-            sb.AppendLine("| Round | Original | Compressed | Responses | Strategy |");
-            sb.AppendLine("|-------|----------|------------|-----------|----------|");
-            foreach (var rb in TokenStats.RoundBreakdown) sb.AppendLine($"| {rb.RoundNumber}. {rb.RoundName} | {rb.OriginalTokens:N0} | {rb.CompressedTokens:N0} | {rb.ResponseTokens:N0} | {rb.CompressionStrategy} |");
-            sb.AppendLine();
-         }
-      }
-
-      if (CompressionLogs.Count > 0)
+      if (CompressionLogs is { Count: > 0 })
       {
          sb.AppendLine("## 🗜️ Compression Log");
          sb.AppendLine();
-         foreach (var log in CompressionLogs) sb.AppendLine($"- **Round {log.RoundNumber}** — {log.Description}: {log.OriginalTokens:N0} → {log.CompressedTokens:N0} tokens ({log.Ratio:P0}) via *{log.StrategyName}* ({log.Duration.TotalMilliseconds:F0}ms)");
+         foreach (var log in CompressionLogs)
+            sb.AppendLine($"- **Round {log.RoundNumber}** — {log.Description}: {log.OriginalTokens:N0} → {log.CompressedTokens:N0} tokens ({log.Ratio:P0}) via *{log.StrategyName}* ({log.Duration.TotalMilliseconds:F0}ms)");
          sb.AppendLine();
       }
 
@@ -221,7 +202,7 @@ public sealed record DebateResult
       sb.AppendLine($"**Total Entries:** {ExecutionLogs.Count}");
       sb.AppendLine();
 
-      if (ExecutionLogs.Count > 0)
+      if (ExecutionLogs is { Count: > 0 })
       {
          sb.AppendLine("## Log Entries");
          sb.AppendLine();
@@ -245,7 +226,8 @@ public sealed record DebateResult
          // Summary by source
          sb.AppendLine("## Summary by Source");
          sb.AppendLine();
-         foreach (var group in ExecutionLogs.GroupBy(l => l.Source).OrderBy(g => g.Key)) sb.AppendLine($"- **{group.Key}**: {group.Count()} entries ({group.Count(l => l.Level == LogLevel.Error)} errors, {group.Count(l => l.Level == LogLevel.Warning)} warnings)");
+         foreach (var group in ExecutionLogs.GroupBy(l => l.Source).OrderBy(g => g.Key))
+            sb.AppendLine($"- **{group.Key}**: {group.Count()} entries ({group.Count(l => l.Level == LogLevel.Error)} errors, {group.Count(l => l.Level == LogLevel.Warning)} warnings)");
          sb.AppendLine();
       }
       else
@@ -268,31 +250,19 @@ public sealed record DebateResult
    ///    Saves the debate result (rounds and verdict) to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the result Markdown file.</param>
-   public async Task SaveToMarkdownAsync(string filePath)
-   {
-      EnsureDirectory(filePath);
-      await File.WriteAllTextAsync(filePath, ToMarkdown());
-   }
+   public Task SaveToMarkdownAsync(string filePath) => WriteAllTextAsync(filePath, ToMarkdown());
 
    /// <summary>
    ///    Saves token statistics and compression logs to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the statistics Markdown file.</param>
-   public async Task SaveStatisticsAsync(string filePath)
-   {
-      EnsureDirectory(filePath);
-      await File.WriteAllTextAsync(filePath, ToStatisticsMarkdown());
-   }
+   public Task SaveStatisticsAsync(string filePath) => WriteAllTextAsync(filePath, ToStatisticsMarkdown());
 
    /// <summary>
    ///    Saves execution logs to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the logs Markdown file.</param>
-   public async Task SaveLogsAsync(string filePath)
-   {
-      EnsureDirectory(filePath);
-      await File.WriteAllTextAsync(filePath, ToLogsMarkdown());
-   }
+   public Task SaveLogsAsync(string filePath) => WriteAllTextAsync(filePath, ToLogsMarkdown());
 
    /// <summary>
    ///    Saves all three files (result.md, statistics.md, logs.md) to the specified directory.
@@ -326,13 +296,12 @@ public sealed record DebateResult
    /// <param name="filePath">Path for the output file.</param>
    public async Task SaveToFileAsync(string filePath)
    {
-      EnsureDirectory(filePath);
       // Backward compatible: saves the full content (result + statistics + logs) in a single file
       var sb = new StringBuilder();
       sb.Append(ToMarkdown());
       sb.AppendLine();
 
-      if (TokenStats is not null || CompressionLogs.Count > 0)
+      if (TokenStats is not null || CompressionLogs is { Count: > 0 })
       {
          sb.AppendLine();
          // Inline statistics (same as v3.0 behavior)
@@ -340,43 +309,58 @@ public sealed record DebateResult
          {
             sb.AppendLine("## 📊 Token Statistics");
             sb.AppendLine();
-            sb.AppendLine("| Metric | Value |");
-            sb.AppendLine("|--------|------:|");
-            sb.AppendLine($"| Original Tokens | {TokenStats.TotalOriginalTokens:N0} |");
-            sb.AppendLine($"| Compressed Tokens | {TokenStats.TotalCompressedTokens:N0} |");
-            sb.AppendLine($"| Response Tokens | {TokenStats.TotalResponseTokens:N0} |");
-            sb.AppendLine($"| **Tokens Saved** | **{TokenStats.TokensSaved:N0} ({TokenStats.SavedPercent:F1}%)** |");
-            sb.AppendLine($"| Compression Ratio | {TokenStats.OverallCompressionRatio:P1} |");
-            sb.AppendLine($"| Grand Total | {TokenStats.GrandTotal:N0} |");
-            sb.AppendLine();
-
-            if (TokenStats.RoundBreakdown.Count > 0)
-            {
-               sb.AppendLine("### Per-Round Breakdown");
-               sb.AppendLine();
-               sb.AppendLine("| Round | Original | Compressed | Responses | Strategy |");
-               sb.AppendLine("|-------|----------|------------|-----------|----------|");
-               foreach (var rb in TokenStats.RoundBreakdown) sb.AppendLine($"| {rb.RoundNumber}. {rb.RoundName} | {rb.OriginalTokens:N0} | {rb.CompressedTokens:N0} | {rb.ResponseTokens:N0} | {rb.CompressionStrategy} |");
-               sb.AppendLine();
-            }
+            MarkdownRender.WriteTokenStatistics(sb, TokenStats);
          }
 
-         if (CompressionLogs.Count > 0)
+         if (CompressionLogs is { Count: > 0 })
          {
             sb.AppendLine("### 🗜️ Compression Log");
             sb.AppendLine();
-            foreach (var log in CompressionLogs) sb.AppendLine($"- **Round {log.RoundNumber}** — {log.Description}: {log.OriginalTokens:N0} → {log.CompressedTokens:N0} tokens ({log.Ratio:P0}) via *{log.StrategyName}* ({log.Duration.TotalMilliseconds:F0}ms)");
+            foreach (var log in CompressionLogs)
+               sb.AppendLine($"- **Round {log.RoundNumber}** — {log.Description}: {log.OriginalTokens:N0} → {log.CompressedTokens:N0} tokens ({log.Ratio:P0}) via *{log.StrategyName}* ({log.Duration.TotalMilliseconds:F0}ms)");
             sb.AppendLine();
          }
       }
 
-      await File.WriteAllTextAsync(filePath, sb.ToString());
+      await WriteAllTextAsync(filePath, sb.ToString());
    }
 
-   private static void EnsureDirectory(string filePath)
+   private static async Task WriteAllTextAsync(string filePath, string content)
    {
       var directory = Path.GetDirectoryName(filePath);
       if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
          Directory.CreateDirectory(directory);
+
+      await File.WriteAllTextAsync(filePath, content);
+   }
+}
+
+/// <summary>
+///    Internal rendering helpers shared by markdown export methods.
+/// </summary>
+internal static class MarkdownRender
+{
+   public static void WriteTokenStatistics(StringBuilder sb, TokenStatistics stats)
+   {
+      sb.AppendLine("| Metric | Value |");
+      sb.AppendLine("|--------|------:|");
+      sb.AppendLine($"| Original Tokens | {stats.TotalOriginalTokens:N0} |");
+      sb.AppendLine($"| Compressed Tokens | {stats.TotalCompressedTokens:N0} |");
+      sb.AppendLine($"| Response Tokens | {stats.TotalResponseTokens:N0} |");
+      sb.AppendLine($"| **Tokens Saved** | **{stats.TokensSaved:N0} ({stats.SavedPercent:F1}%)** |");
+      sb.AppendLine($"| Compression Ratio | {stats.OverallCompressionRatio:P1} |");
+      sb.AppendLine($"| Grand Total | {stats.GrandTotal:N0} |");
+      sb.AppendLine();
+
+      if (stats.RoundBreakdown is { Count: > 0 })
+      {
+         sb.AppendLine("### Per-Round Breakdown");
+         sb.AppendLine();
+         sb.AppendLine("| Round | Original | Compressed | Responses | Strategy |");
+         sb.AppendLine("|-------|----------|------------|-----------|----------|");
+         foreach (var rb in stats.RoundBreakdown)
+            sb.AppendLine($"| {rb.RoundNumber}. {rb.RoundName} | {rb.OriginalTokens:N0} | {rb.CompressedTokens:N0} | {rb.ResponseTokens:N0} | {rb.CompressionStrategy} |");
+         sb.AppendLine();
+      }
    }
 }

@@ -67,6 +67,7 @@ public static class ServiceCollectionExtensions
       this IServiceCollection services,
       Action<CouncilOptions> configureOptions)
    {
+      ArgumentNullException.ThrowIfNull(configureOptions);
       services.AddDelibera();
       services.Configure(configureOptions);
 

@@ -6,6 +6,11 @@ namespace Delibera.Core.Interfaces;
 ///    Fluent interface for assembling and configuring a council debate session.
 ///    Enables dependency injection and testability of council construction.
 /// </summary>
+/// <remarks>
+///    All members return <see cref="ICouncilBuilder" /> to support both the concrete
+///    <c>CouncilBuilder</c> and any custom in-process implementation without
+///    covariance friction.
+/// </remarks>
 public interface ICouncilBuilder
 {
    /// <summary>Adds a participant to the council.</summary>
@@ -42,6 +47,15 @@ public interface ICouncilBuilder
    /// <param name="strategy">Strategy implementation.</param>
    /// <returns>This builder for fluent chaining.</returns>
    ICouncilBuilder WithStrategy(IDebateStrategy strategy);
+
+   /// <summary>Uses the standard 4-round debate strategy.</summary>
+   ICouncilBuilder WithStandardDebate() => WithStrategy(new Debate.StandardDebate());
+
+   /// <summary>Uses the adversarial critique debate strategy.</summary>
+   ICouncilBuilder WithCritiqueDebate() => WithStrategy(new Debate.CritiqueDebate());
+
+   /// <summary>Uses the consensus-building debate strategy.</summary>
+   ICouncilBuilder WithConsensusDebate() => WithStrategy(new Debate.ConsensusDebate());
 
    /// <summary>Attaches a legacy knowledge base for prompt injection.</summary>
    /// <param name="knowledgeBase">Knowledge base instance.</param>

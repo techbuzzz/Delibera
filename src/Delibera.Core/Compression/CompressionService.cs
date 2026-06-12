@@ -15,18 +15,14 @@ public sealed class CompressionService : ICompressionFactory
       CompressionStrategy strategy,
       ILLMProvider? llmProvider = null,
       string? modelName = null,
-      IEmbeddingProvider? embeddingProvider = null)
-   {
-      return CompressionFactory.Create(strategy, llmProvider, modelName, embeddingProvider);
-   }
+      IEmbeddingProvider? embeddingProvider = null) =>
+      CompressionFactory.Create(strategy, llmProvider, modelName, embeddingProvider);
 
    /// <inheritdoc />
    public IContextCompressor Create(
       string strategyName,
       ILLMProvider? llmProvider = null,
       string? modelName = null,
-      IEmbeddingProvider? embeddingProvider = null)
-   {
-      return CompressionFactory.Create(strategyName, llmProvider, modelName, embeddingProvider);
-   }
+      IEmbeddingProvider? embeddingProvider = null) =>
+      CompressionFactory.Create(strategyName, llmProvider, modelName, embeddingProvider);
 }

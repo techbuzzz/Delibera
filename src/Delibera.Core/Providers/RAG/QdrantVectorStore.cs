@@ -29,12 +29,13 @@ public sealed class QdrantVectorStore : IVectorStore
    /// <inheritdoc />
    public async Task EnsureCollectionAsync(string collectionName, int vectorSize, CancellationToken ct = default)
    {
-      var exists = await _client.CollectionExistsAsync(collectionName, ct);
-      if (!exists)
-         await _client.CreateCollectionAsync(
-            collectionName,
-            new VectorParams { Size = (ulong)vectorSize, Distance = Distance.Cosine },
-            cancellationToken: ct);
+      if (await _client.CollectionExistsAsync(collectionName, ct))
+         return;
+
+      await _client.CreateCollectionAsync(
+         collectionName,
+         new VectorParams { Size = (ulong)vectorSize, Distance = Distance.Cosine },
+         cancellationToken: ct);
    }
 
    /// <inheritdoc />
@@ -82,18 +83,14 @@ public sealed class QdrantVectorStore : IVectorStore
          collectionName,
          queryVector,
          limit: (ulong)limit,
-         scoreThreshold: scoreThreshold > 0
-            ? scoreThreshold
-            : null,
+         scoreThreshold: scoreThreshold > 0 ? scoreThreshold : null,
          cancellationToken: ct);
 
       var results = new List<VectorSearchResult>(scored.Count);
 
       foreach (var s in scored)
       {
-         var text = s.Payload.TryGetValue("text", out var tv)
-            ? tv.StringValue
-            : string.Empty;
+         var text = s.Payload.TryGetValue("text", out var tv) ? tv.StringValue : string.Empty;
 
          var meta = new Dictionary<string, string>();
          foreach (var (k, v) in s.Payload)
@@ -104,19 +101,15 @@ public sealed class QdrantVectorStore : IVectorStore
             s.Id.Uuid,
             text,
             s.Score,
-            meta.Count > 0
-               ? meta
-               : null));
+            meta.Count > 0 ? meta : null));
       }
 
       return results.AsReadOnly();
    }
 
    /// <inheritdoc />
-   public async Task DeleteCollectionAsync(string collectionName, CancellationToken ct = default)
-   {
-      await _client.DeleteCollectionAsync(collectionName, cancellationToken: ct);
-   }
+   public Task DeleteCollectionAsync(string collectionName, CancellationToken ct = default) =>
+      _client.DeleteCollectionAsync(collectionName, cancellationToken: ct);
 
    /// <inheritdoc />
    public async Task<long> CountAsync(string collectionName, CancellationToken ct = default)

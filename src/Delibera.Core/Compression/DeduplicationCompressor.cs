@@ -13,20 +13,9 @@ namespace Delibera.Core.Compression;
 ///       otherwise falls back to normalized Levenshtein distance heuristics.
 ///    </para>
 /// </remarks>
-public sealed class DeduplicationCompressor : IContextCompressor
+public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvider = null) : IContextCompressor
 {
-   private readonly IEmbeddingProvider? _embeddingProvider;
-
-   /// <summary>
-   ///    Creates a deduplication compressor.
-   /// </summary>
-   /// <param name="embeddingProvider">
-   ///    Optional embedding provider for semantic similarity. If <c>null</c>, uses text-based heuristics.
-   /// </param>
-   public DeduplicationCompressor(IEmbeddingProvider? embeddingProvider = null)
-   {
-      _embeddingProvider = embeddingProvider;
-   }
+   private readonly IEmbeddingProvider? _embeddingProvider = embeddingProvider;
 
    /// <inheritdoc />
    public string StrategyName => "Deduplication";
@@ -44,34 +33,23 @@ public sealed class DeduplicationCompressor : IContextCompressor
 
       var sentences = SemanticCompressor.SplitSentences(text);
       if (sentences.Count <= 1)
-         return PassThrough(text, originalTokens, sw.Elapsed);
+         return CompressedContextFactory.PassThrough(text, originalTokens, StrategyName, sw.Elapsed);
 
-      List<string> unique;
-
-      if (_embeddingProvider is not null)
-         unique = await DeduplicateWithEmbeddingsAsync(sentences, options.DeduplicationThreshold, ct);
-      else
-         unique = DeduplicateWithHeuristics(sentences, options.DeduplicationThreshold);
+      List<string> unique = _embeddingProvider is not null
+         ? await DeduplicateWithEmbeddingsAsync(sentences, options.DeduplicationThreshold, ct)
+         : DeduplicateWithHeuristics(sentences, options.DeduplicationThreshold);
 
       var compressedText = string.Join(" ", unique);
       var compressedTokens = counter.EstimateTokens(compressedText);
 
       sw.Stop();
-      return new CompressedContext
-      {
-         Text = compressedText,
-         OriginalLength = text.Length,
-         CompressedLength = compressedText.Length,
-         OriginalTokens = originalTokens,
-         CompressedTokens = compressedTokens,
-         StrategyUsed = StrategyName,
-         Duration = sw.Elapsed
-      };
+      return CompressedContextFactory.Compressed(text, compressedText, originalTokens, compressedTokens, StrategyName, sw.Elapsed);
    }
 
    /// <inheritdoc />
    public async Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null, CancellationToken ct = default)
    {
+      ArgumentNullException.ThrowIfNull(texts);
       var merged = string.Join("\n\n", texts);
       return await CompressAsync(merged, options, ct);
    }
@@ -87,7 +65,7 @@ public sealed class DeduplicationCompressor : IContextCompressor
       var vectors = await _embeddingProvider!.EmbedBatchAsync(texts, ct);
 
       var kept = new List<string>();
-      var keptVectors = new List<float[]>();
+      var keptVectors = new List<float[]>(sentences.Count);
 
       for (var i = 0; i < sentences.Count; i++)
       {
@@ -117,16 +95,16 @@ public sealed class DeduplicationCompressor : IContextCompressor
       double threshold)
    {
       var kept = new List<string>();
+      var keptNormalized = new List<string>();
 
       foreach (var s in sentences)
       {
-         var isDuplicate = false;
          var normalized = NormalizeText(s.Text);
+         var isDuplicate = false;
 
-         foreach (var k in kept)
+         foreach (var k in keptNormalized)
          {
-            var kNorm = NormalizeText(k);
-            var similarity = ComputeTextSimilarity(normalized, kNorm);
+            var similarity = ComputeTextSimilarity(normalized, k);
             if (similarity >= threshold)
             {
                isDuplicate = true;
@@ -135,7 +113,10 @@ public sealed class DeduplicationCompressor : IContextCompressor
          }
 
          if (!isDuplicate)
+         {
             kept.Add(s.Text);
+            keptNormalized.Add(normalized);
+         }
       }
 
       return kept;
@@ -159,22 +140,5 @@ public sealed class DeduplicationCompressor : IContextCompressor
          : 0;
    }
 
-   private static string NormalizeText(string text)
-   {
-      return text.Trim().ToLowerInvariant();
-   }
-
-   private static CompressedContext PassThrough(string text, int tokens, TimeSpan duration)
-   {
-      return new CompressedContext
-      {
-         Text = text,
-         OriginalLength = text.Length,
-         CompressedLength = text.Length,
-         OriginalTokens = tokens,
-         CompressedTokens = tokens,
-         StrategyUsed = "Deduplication",
-         Duration = duration
-      };
-   }
+   private static string NormalizeText(string text) => text.Trim().ToLowerInvariant();
 }

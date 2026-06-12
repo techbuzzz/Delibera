@@ -62,7 +62,7 @@ public sealed class HybridCompressor : IContextCompressor
       var targetTokens = options.MaxOutputTokens ?? (int)(originalTokens * options.TargetRatio);
 
       if (originalTokens <= targetTokens || originalTokens <= 50)
-         return PassThrough(text, originalTokens, sw.Elapsed);
+         return CompressedContextFactory.PassThrough(text, originalTokens, StrategyName, sw.Elapsed);
 
       var currentText = text;
 
@@ -73,7 +73,7 @@ public sealed class HybridCompressor : IContextCompressor
 
       var currentTokens = counter.EstimateTokens(currentText);
       if (currentTokens <= targetTokens)
-         return FinalResult(text, currentText, originalTokens, currentTokens, sw.Elapsed);
+         return CompressedContextFactory.Compressed(text, currentText, originalTokens, currentTokens, StrategyName, sw.Elapsed);
 
       // ── Stage 2: Semantic Ranking (if embeddings available) ──
       if (_embeddingProvider is not null)
@@ -85,7 +85,7 @@ public sealed class HybridCompressor : IContextCompressor
 
          currentTokens = counter.EstimateTokens(currentText);
          if (currentTokens <= targetTokens)
-            return FinalResult(text, currentText, originalTokens, currentTokens, sw.Elapsed);
+            return CompressedContextFactory.Compressed(text, currentText, originalTokens, currentTokens, StrategyName, sw.Elapsed);
       }
 
       // ── Stage 3: LLM Summarization (if available and still over target) ──
@@ -99,43 +99,14 @@ public sealed class HybridCompressor : IContextCompressor
       }
 
       sw.Stop();
-      return FinalResult(text, currentText, originalTokens, currentTokens, sw.Elapsed);
+      return CompressedContextFactory.Compressed(text, currentText, originalTokens, currentTokens, StrategyName, sw.Elapsed);
    }
 
    /// <inheritdoc />
    public async Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null, CancellationToken ct = default)
    {
+      ArgumentNullException.ThrowIfNull(texts);
       var merged = string.Join("\n\n", texts);
       return await CompressAsync(merged, options, ct);
-   }
-
-   // ──────────────────────────────────────────────
-
-   private CompressedContext FinalResult(string original, string compressed, int origTokens, int compTokens, TimeSpan duration)
-   {
-      return new CompressedContext
-      {
-         Text = compressed,
-         OriginalLength = original.Length,
-         CompressedLength = compressed.Length,
-         OriginalTokens = origTokens,
-         CompressedTokens = compTokens,
-         StrategyUsed = StrategyName,
-         Duration = duration
-      };
-   }
-
-   private static CompressedContext PassThrough(string text, int tokens, TimeSpan duration)
-   {
-      return new CompressedContext
-      {
-         Text = text,
-         OriginalLength = text.Length,
-         CompressedLength = text.Length,
-         OriginalTokens = tokens,
-         CompressedTokens = tokens,
-         StrategyUsed = "Hybrid",
-         Duration = duration
-      };
    }
 }

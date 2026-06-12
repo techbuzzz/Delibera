@@ -23,6 +23,9 @@ public sealed record CompressionLog
    /// <summary>Token count after compression.</summary>
    public int CompressedTokens { get; init; }
 
+   /// <summary>Duration of the compression operation.</summary>
+   public TimeSpan Duration { get; init; }
+
    /// <summary>Tokens saved by this operation.</summary>
    public int TokensSaved => OriginalTokens - CompressedTokens;
 
@@ -30,7 +33,4 @@ public sealed record CompressionLog
    public double Ratio => OriginalTokens > 0
       ? (double)CompressedTokens / OriginalTokens
       : 1.0;
-
-   /// <summary>Duration of the compression operation.</summary>
-   public TimeSpan Duration { get; init; }
 }

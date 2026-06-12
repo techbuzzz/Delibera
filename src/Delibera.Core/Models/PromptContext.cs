@@ -3,23 +3,24 @@ namespace Delibera.Core.Models;
 /// <summary>
 ///    Immutable context that feeds into a debate session.
 /// </summary>
-public sealed record PromptContext
+/// <param name="SystemPrompt">System prompt (role / context shared by all models).</param>
+/// <param name="UserPrompt">User prompt (the main question or task).</param>
+/// <param name="KnowledgeContent">Pre-loaded knowledge content (merged text from files or RAG).</param>
+/// <param name="KnowledgeFiles">Paths / identifiers of knowledge sources.</param>
+/// <param name="Metadata">Arbitrary key-value metadata.</param>
+public sealed record PromptContext(
+   string SystemPrompt = "",
+   string UserPrompt = "",
+   string? KnowledgeContent = null,
+   IReadOnlyList<string> KnowledgeFiles = null!,
+   IReadOnlyDictionary<string, string> Metadata = null!)
 {
-   /// <summary>System prompt (role / context shared by all models).</summary>
-   public string SystemPrompt { get; init; } = string.Empty;
-
-   /// <summary>User prompt (the main question or task).</summary>
-   public string UserPrompt { get; init; } = string.Empty;
-
-   /// <summary>Pre-loaded knowledge content (merged text from files or RAG).</summary>
-   public string? KnowledgeContent { get; init; }
-
-   /// <summary>Paths / identifiers of knowledge sources.</summary>
-   public IReadOnlyList<string> KnowledgeFiles { get; init; } = [];
-
-   /// <summary>Arbitrary key-value metadata.</summary>
-   public IReadOnlyDictionary<string, string> Metadata { get; init; } =
-      new Dictionary<string, string>();
+   /// <summary>
+   ///    Creates an empty <see cref="PromptContext" /> with default collections.
+   /// </summary>
+   public PromptContext() : this(string.Empty, string.Empty, null, [], new Dictionary<string, string>())
+   {
+   }
 
    /// <summary>
    ///    Builds the full user prompt, injecting knowledge context when available.
@@ -29,12 +30,12 @@ public sealed record PromptContext
       if (string.IsNullOrWhiteSpace(KnowledgeContent))
          return UserPrompt;
 
-      return $"""
+      return $$"""
               ### Context (Knowledge Base):
-              {KnowledgeContent}
+              {{KnowledgeContent}}
 
               ### Question:
-              {UserPrompt}
+              {{UserPrompt}}
               """;
    }
 }

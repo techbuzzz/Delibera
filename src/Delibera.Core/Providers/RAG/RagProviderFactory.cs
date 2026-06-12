@@ -6,11 +6,8 @@ namespace Delibera.Core.Providers.RAG;
 ///    Factory for creating <see cref="IRagProvider" /> instances from configuration.
 ///    Register custom builders to support additional vector databases.
 /// </summary>
-public sealed class RagProviderFactory : IRagProviderFactory, IAsyncDisposable
+public sealed class RagProviderFactory : CachingFactory<Func<IConfigurationSection, IEmbeddingProvider, IRagProvider>, IRagProvider>, IRagProviderFactory, IAsyncDisposable
 {
-   private readonly Dictionary<string, Func<IConfigurationSection, IEmbeddingProvider, IRagProvider>> _builders = new(StringComparer.OrdinalIgnoreCase);
-   private readonly Dictionary<string, IRagProvider> _instances = new(StringComparer.OrdinalIgnoreCase);
-
    /// <summary>
    ///    Creates a new factory with the built-in Qdrant and PgVector builders registered.
    /// </summary>
@@ -19,9 +16,7 @@ public sealed class RagProviderFactory : IRagProviderFactory, IAsyncDisposable
       RegisterBuilder("Qdrant", (config, embeddings) =>
       {
          var host = config["Host"] ?? "localhost";
-         var port = int.TryParse(config["Port"], out var p)
-            ? p
-            : 6334;
+         var port = int.TryParse(config["Port"], out var p) ? p : 6334;
          var https = bool.TryParse(config["Https"], out var h) && h;
          var apiKey = config["ApiKey"];
 
@@ -40,61 +35,18 @@ public sealed class RagProviderFactory : IRagProviderFactory, IAsyncDisposable
       string providerType,
       Func<IConfigurationSection, IEmbeddingProvider, IRagProvider> builder)
    {
-      return RegisterBuilder(providerType, builder);
+      RegisterBuilder(providerType, builder);
+      return this;
    }
 
    /// <summary>
    ///    Creates (or returns cached) a RAG provider instance.
    /// </summary>
-   /// <param name="name">Unique instance name for caching.</param>
-   /// <param name="providerType">Provider type (must be registered).</param>
-   /// <param name="config">Configuration section with provider-specific settings.</param>
-   /// <param name="embeddingProvider">Embedding provider to use for vectorisation.</param>
-   public IRagProvider Create(string name, string providerType, IConfigurationSection config, IEmbeddingProvider embeddingProvider)
-   {
-      if (_instances.TryGetValue(name, out var existing))
-         return existing;
-
-      if (!_builders.TryGetValue(providerType, out var builder))
-         throw new InvalidOperationException(
-            $"Unknown RAG provider type '{providerType}'. Registered: {string.Join(", ", _builders.Keys)}");
-
-      var provider = builder(config, embeddingProvider);
-      _instances[name] = provider;
-      return provider;
-   }
+   public IRagProvider Create(string name, string providerType, IConfigurationSection config, IEmbeddingProvider embeddingProvider) =>
+      GetOrCreate(name, providerType, b => b(config, embeddingProvider));
 
    /// <summary>Returns a cached provider by name.</summary>
-   public IRagProvider? GetProvider(string name)
-   {
-      return _instances.TryGetValue(name, out var p)
-         ? p
-         : null;
-   }
-
-   /// <summary>All registered provider type names.</summary>
-   public IReadOnlyCollection<string> RegisteredTypes => _builders.Keys.ToList().AsReadOnly();
-
-   /// <inheritdoc />
-   public async ValueTask DisposeAsync()
-   {
-      foreach (var p in _instances.Values)
-         await p.DisposeAsync();
-      _instances.Clear();
-   }
-
-   /// <summary>
-   ///    Registers a custom RAG provider builder (e.g., for pgvector, Pinecone, Weaviate).
-   /// </summary>
-   /// <param name="providerType">Provider type key (e.g., "Qdrant", "PgVector").</param>
-   /// <param name="builder">Factory function that receives config + embeddings and returns a provider.</param>
-   public RagProviderFactory RegisterBuilder(
-      string providerType,
-      Func<IConfigurationSection, IEmbeddingProvider, IRagProvider> builder)
-   {
-      _builders[providerType] = builder ?? throw new ArgumentNullException(nameof(builder));
-      return this;
-   }
+   public IRagProvider? GetProvider(string name) => GetInstance(name);
 
    /// <summary>
    ///    Creates a Qdrant RAG provider with direct parameters.
@@ -107,12 +59,10 @@ public sealed class RagProviderFactory : IRagProviderFactory, IAsyncDisposable
       string? apiKey = null)
    {
       var key = $"qdrant:{host}:{port}";
-      if (_instances.TryGetValue(key, out var existing))
-         return existing;
+      if (GetInstance(key) is { } existing) return existing;
 
       var provider = new QdrantRagProvider(embeddingProvider, host, port, https, apiKey);
-      _instances[key] = provider;
-      return provider;
+      return CacheInstance(key, provider);
    }
 
    /// <summary>
@@ -123,11 +73,24 @@ public sealed class RagProviderFactory : IRagProviderFactory, IAsyncDisposable
    public IRagProvider CreatePgVector(IEmbeddingProvider embeddingProvider, string connectionString)
    {
       var key = $"pgvector:{connectionString.GetHashCode():X8}";
-      if (_instances.TryGetValue(key, out var existing))
-         return existing;
+      if (GetInstance(key) is { } existing) return existing;
 
       var provider = new PgVectorRagProvider(embeddingProvider, connectionString);
-      _instances[key] = provider;
-      return provider;
+      return CacheInstance(key, provider);
+   }
+
+   /// <inheritdoc />
+   protected override void DisposeInstances()
+   {
+      foreach (var p in EnumerateInstances())
+         p.DisposeAsync().AsTask().GetAwaiter().GetResult();
+   }
+
+   /// <inheritdoc />
+   public async ValueTask DisposeAsync()
+   {
+      foreach (var p in EnumerateInstances())
+         await p.DisposeAsync();
+      ClearInstances();
    }
 }

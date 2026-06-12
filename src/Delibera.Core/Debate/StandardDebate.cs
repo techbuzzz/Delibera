@@ -35,14 +35,15 @@ public sealed class StandardDebate : DebateScenario
       Action<DebateRound>? onRoundCompleted = null,
       CancellationToken ct = default)
    {
-      var rounds = new List<DebateRound>();
+      ArgumentNullException.ThrowIfNull(members);
+      ArgumentNullException.ThrowIfNull(context);
+      var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper);
       var fullUserPrompt = context.GetFullUserPrompt();
 
       // ── Chairman opening ──
-      string? openingStatement = null;
       if (chairman is not null)
-         openingStatement = await Chairman.OpenDebateAsync(
-            chairman, context, members, StrategyName, maxRounds, temperature, ct);
+         builder.SetOpeningStatement(await Chairman.OpenDebateAsync(
+            chairman, context, members, StrategyName, maxRounds, temperature, ct));
 
       // ── Round 1: Knowledge Keeper pre-research ──
       var r1Ki = new List<KnowledgeInteraction>();
@@ -62,17 +63,17 @@ public sealed class StandardDebate : DebateScenario
       var r1Responses = await CollectResponsesAsync(members, context.SystemPrompt, r1Prompt, temperature, ct);
       var round1 = CreateRound(1, "Initial Responses",
          "All models provide their initial answers.", r1Responses, r1Prompt, r1Ki);
-      rounds.Add(round1);
+      builder.AddRound(round1);
       onRoundCompleted?.Invoke(round1);
 
-      if (maxRounds < 2) return BuildResult();
+      if (maxRounds < 2) return BuildAndComplete(builder);
 
       // ── Round 2: Knowledge Keeper contextual update ──
       var r2Ki = new List<KnowledgeInteraction>();
       if (knowledgeKeeper is not null)
       {
-         var (ctx, ki) = await QueryKnowledgeForRoundAsync(
-            knowledgeKeeper, context.UserPrompt, 2, rounds, ct);
+         var (_, ki) = await QueryKnowledgeForRoundAsync(
+            knowledgeKeeper, context.UserPrompt, 2, builder.Rounds, ct);
          if (ki is not null) r2Ki.Add(ki);
       }
 
@@ -97,17 +98,17 @@ public sealed class StandardDebate : DebateScenario
       var r2Responses = await CollectResponsesAsync(members, r2System, r2Prompt, temperature, ct);
       var round2 = CreateRound(2, "Critique",
          "Models critically analyse each other's responses.", r2Responses, r2Prompt, r2Ki);
-      rounds.Add(round2);
+      builder.AddRound(round2);
       onRoundCompleted?.Invoke(round2);
 
-      if (maxRounds < 3) return BuildResult();
+      if (maxRounds < 3) return BuildAndComplete(builder);
 
       // ── Round 3: Knowledge Keeper contextual update ──
       var r3Ki = new List<KnowledgeInteraction>();
       if (knowledgeKeeper is not null)
       {
-         var (ctx, ki) = await QueryKnowledgeForRoundAsync(
-            knowledgeKeeper, context.UserPrompt, 3, rounds, ct);
+         var (_, ki) = await QueryKnowledgeForRoundAsync(
+            knowledgeKeeper, context.UserPrompt, 3, builder.Rounds, ct);
          if (ki is not null) r3Ki.Add(ki);
       }
 
@@ -135,45 +136,34 @@ public sealed class StandardDebate : DebateScenario
       var r3Responses = await CollectResponsesAsync(members, r3System, r3Prompt, temperature, ct);
       var round3 = CreateRound(3, "Final Improved Responses",
          "Models provide refined answers incorporating critiques.", r3Responses, r3Prompt, r3Ki);
-      rounds.Add(round3);
+      builder.AddRound(round3);
       onRoundCompleted?.Invoke(round3);
 
       // ══════════ Round 4: Chairman Verdict ══════════
-      string? finalVerdict = null;
       if (maxRounds >= 4 && chairman is not null)
          try
          {
-            finalVerdict = await Chairman.SynthesizeVerdictAsync(
-               chairman, context, rounds, knowledgeKeeper, temperature, ct);
+            var finalVerdict = await Chairman.SynthesizeVerdictAsync(
+               chairman, context, builder.Rounds, knowledgeKeeper, temperature, ct);
+            builder.SetFinalVerdict(finalVerdict);
 
             var round4 = CreateRound(4, "Chairman Verdict",
                "The Chairman synthesises the final verdict.",
                new Dictionary<string, string> { [chairman.DisplayName] = finalVerdict });
-            rounds.Add(round4);
+            builder.AddRound(round4);
             onRoundCompleted?.Invoke(round4);
          }
          catch (Exception ex)
          {
-            finalVerdict = $"[CHAIRMAN ERROR: {ex.Message}]";
+            builder.SetFinalVerdict($"[CHAIRMAN ERROR: {ex.Message}]");
          }
 
-      return BuildResult(finalVerdict);
+      return BuildAndComplete(builder);
+   }
 
-      // ── local helper ──
-      DebateResult BuildResult(string? verdict = null)
-      {
-         return new DebateResult
-         {
-            StrategyName = StrategyName,
-            Context = context,
-            Participants = members.Select(m => m.DisplayName).ToList(),
-            ChairmanName = chairman?.DisplayName,
-            KnowledgeKeeperName = knowledgeKeeper?.DisplayName,
-            OpeningStatement = openingStatement,
-            Rounds = rounds,
-            FinalVerdict = verdict,
-            CompletedAt = DateTime.UtcNow
-         };
-      }
+   private static DebateResult BuildAndComplete(DebateResultBuilder builder)
+   {
+      builder.MarkCompleted();
+      return builder.Build();
    }
 }
