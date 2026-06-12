@@ -3,28 +3,24 @@ using System.Diagnostics;
 namespace Delibera.Core.Compression;
 
 /// <summary>
-/// Summarization compression strategy — uses an LLM to produce a concise summary
-/// of the input text, preserving key facts and arguments.
+///    Summarization compression strategy — uses an LLM to produce a concise summary
+///    of the input text, preserving key facts and arguments.
 /// </summary>
 /// <remarks>
-/// <para>This is the most aggressive compression strategy and can achieve very high
-/// compression ratios (e.g., 0.1–0.3). However, it requires an LLM call per
-/// compression operation, adding latency and cost.</para>
-/// <para>Best used for compressing large accumulated context between debate rounds.</para>
+///    <para>
+///       This is the most aggressive compression strategy and can achieve very high
+///       compression ratios (e.g., 0.1–0.3). However, it requires an LLM call per
+///       compression operation, adding latency and cost.
+///    </para>
+///    <para>Best used for compressing large accumulated context between debate rounds.</para>
 /// </remarks>
 public sealed class SummarizationCompressor : IContextCompressor
 {
    private readonly ILLMProvider _llmProvider;
    private readonly string _modelName;
 
-   /// <inheritdoc/>
-   public string StrategyName => "Summarization";
-
-   /// <inheritdoc/>
-   public string Description => "Uses an LLM to produce a concise summary preserving key facts.";
-
    /// <summary>
-   /// Creates a summarization compressor.
+   ///    Creates a summarization compressor.
    /// </summary>
    /// <param name="llmProvider">LLM provider for generating summaries.</param>
    /// <param name="modelName">Model name to use for summarization.</param>
@@ -34,7 +30,13 @@ public sealed class SummarizationCompressor : IContextCompressor
       _modelName = modelName ?? throw new ArgumentNullException(nameof(modelName));
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
+   public string StrategyName => "Summarization";
+
+   /// <inheritdoc />
+   public string Description => "Uses an LLM to produce a concise summary preserving key facts.";
+
+   /// <inheritdoc />
    public async Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null, CancellationToken ct = default)
    {
       var sw = Stopwatch.StartNew();
@@ -48,33 +50,33 @@ public sealed class SummarizationCompressor : IContextCompressor
       var targetTokens = options.MaxOutputTokens ?? (int)(originalTokens * options.TargetRatio);
 
       var systemPrompt = """
-            You are a precision text compressor. Your task is to compress the given text
-            while preserving ALL key facts, arguments, data points, and conclusions.
-            
-            Rules:
-            1. Preserve all factual claims and evidence
-            2. Keep the logical structure of arguments
-            3. Remove redundancy, filler words, and verbose phrasing
-            4. Maintain technical accuracy — do not alter meaning
-            5. If code blocks are present, keep them verbatim
-            6. Output ONLY the compressed text — no explanations or meta-commentary
-            """;
+                         You are a precision text compressor. Your task is to compress the given text
+                         while preserving ALL key facts, arguments, data points, and conclusions.
+
+                         Rules:
+                         1. Preserve all factual claims and evidence
+                         2. Keep the logical structure of arguments
+                         3. Remove redundancy, filler words, and verbose phrasing
+                         4. Maintain technical accuracy — do not alter meaning
+                         5. If code blocks are present, keep them verbatim
+                         6. Output ONLY the compressed text — no explanations or meta-commentary
+                         """;
 
       var userPrompt = $"""
-            Compress the following text to approximately {targetTokens} tokens
-            (roughly {(int)(targetTokens * 4)} characters).
-            Preserve all key information.
+                        Compress the following text to approximately {targetTokens} tokens
+                        (roughly {targetTokens * 4} characters).
+                        Preserve all key information.
 
-            ---
-            {text}
-            ---
+                        ---
+                        {text}
+                        ---
 
-            Compressed version:
-            """;
+                        Compressed version:
+                        """;
 
       var summary = await _llmProvider.ChatAsync(
-          _modelName, systemPrompt, userPrompt,
-          options.SummarizationTemperature, ct);
+         _modelName, systemPrompt, userPrompt,
+         options.SummarizationTemperature, ct);
 
       var compressedTokens = counter.EstimateTokens(summary);
 
@@ -91,7 +93,7 @@ public sealed class SummarizationCompressor : IContextCompressor
       };
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public async Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null, CancellationToken ct = default)
    {
       var sw = Stopwatch.StartNew();
@@ -103,28 +105,28 @@ public sealed class SummarizationCompressor : IContextCompressor
       var targetTokens = options.MaxOutputTokens ?? (int)(originalTokens * options.TargetRatio);
 
       var systemPrompt = """
-            You are a precision text compressor. You are given multiple text sections
-            separated by '---'. Merge and compress them into a single coherent summary.
-            
-            Rules:
-            1. Identify and merge overlapping information across sections
-            2. Preserve ALL unique facts, arguments, and conclusions
-            3. Remove cross-section duplication
-            4. Maintain a logical flow
-            5. Output ONLY the compressed text
-            """;
+                         You are a precision text compressor. You are given multiple text sections
+                         separated by '---'. Merge and compress them into a single coherent summary.
+
+                         Rules:
+                         1. Identify and merge overlapping information across sections
+                         2. Preserve ALL unique facts, arguments, and conclusions
+                         3. Remove cross-section duplication
+                         4. Maintain a logical flow
+                         5. Output ONLY the compressed text
+                         """;
 
       var userPrompt = $"""
-            Merge and compress these {texts.Count} sections to approximately {targetTokens} tokens:
+                        Merge and compress these {texts.Count} sections to approximately {targetTokens} tokens:
 
-            {merged}
+                        {merged}
 
-            Merged compressed version:
-            """;
+                        Merged compressed version:
+                        """;
 
       var summary = await _llmProvider.ChatAsync(
-          _modelName, systemPrompt, userPrompt,
-          options.SummarizationTemperature, ct);
+         _modelName, systemPrompt, userPrompt,
+         options.SummarizationTemperature, ct);
 
       var compressedTokens = counter.EstimateTokens(summary);
 
@@ -141,14 +143,17 @@ public sealed class SummarizationCompressor : IContextCompressor
       };
    }
 
-   private static CompressedContext PassThrough(string text, int tokens, TimeSpan duration) => new()
+   private static CompressedContext PassThrough(string text, int tokens, TimeSpan duration)
    {
-      Text = text,
-      OriginalLength = text.Length,
-      CompressedLength = text.Length,
-      OriginalTokens = tokens,
-      CompressedTokens = tokens,
-      StrategyUsed = "Summarization",
-      Duration = duration
-   };
+      return new CompressedContext
+      {
+         Text = text,
+         OriginalLength = text.Length,
+         CompressedLength = text.Length,
+         OriginalTokens = tokens,
+         CompressedTokens = tokens,
+         StrategyUsed = "Summarization",
+         Duration = duration
+      };
+   }
 }

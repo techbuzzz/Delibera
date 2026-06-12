@@ -1,9 +1,9 @@
 namespace Delibera.Core.Interfaces;
 
 /// <summary>
-/// High-level RAG (Retrieval Augmented Generation) provider.
-/// Combines an <see cref="IEmbeddingProvider"/>, an <see cref="IVectorStore"/>
-/// and optional text-splitting logic.
+///    High-level RAG (Retrieval Augmented Generation) provider.
+///    Combines an <see cref="IEmbeddingProvider" />, an <see cref="IVectorStore" />
+///    and optional text-splitting logic.
 /// </summary>
 public interface IRagProvider : IAsyncDisposable
 {
@@ -17,7 +17,7 @@ public interface IRagProvider : IAsyncDisposable
    IEmbeddingProvider EmbeddingProvider { get; }
 
    /// <summary>
-   /// Indexes a single document, splitting it into chunks and storing embeddings.
+   ///    Indexes a single document, splitting it into chunks and storing embeddings.
    /// </summary>
    /// <param name="collectionName">Target collection.</param>
    /// <param name="documentText">Full document text.</param>
@@ -27,25 +27,25 @@ public interface IRagProvider : IAsyncDisposable
    /// <param name="ct">Cancellation token.</param>
    /// <returns>Number of indexed chunks.</returns>
    Task<int> IndexDocumentAsync(
-       string collectionName,
-       string documentText,
-       Dictionary<string, string>? metadata = null,
-       int chunkSize = 500,
-       int chunkOverlap = 50,
-       CancellationToken ct = default);
+      string collectionName,
+      string documentText,
+      Dictionary<string, string>? metadata = null,
+      int chunkSize = 500,
+      int chunkOverlap = 50,
+      CancellationToken ct = default);
 
    /// <summary>
-   /// Indexes a file from disk (reads, splits, embeds, stores).
+   ///    Indexes a file from disk (reads, splits, embeds, stores).
    /// </summary>
    Task<int> IndexFileAsync(
-       string collectionName,
-       string filePath,
-       int chunkSize = 500,
-       int chunkOverlap = 50,
-       CancellationToken ct = default);
+      string collectionName,
+      string filePath,
+      int chunkSize = 500,
+      int chunkOverlap = 50,
+      CancellationToken ct = default);
 
    /// <summary>
-   /// Performs a semantic search and returns relevant text chunks.
+   ///    Performs a semantic search and returns relevant text chunks.
    /// </summary>
    /// <param name="collectionName">Collection to search.</param>
    /// <param name="query">Natural language query.</param>
@@ -53,19 +53,19 @@ public interface IRagProvider : IAsyncDisposable
    /// <param name="scoreThreshold">Minimum similarity score.</param>
    /// <param name="ct">Cancellation token.</param>
    Task<IReadOnlyList<VectorSearchResult>> SearchAsync(
-       string collectionName,
-       string query,
-       int limit = 5,
-       float scoreThreshold = 0.0f,
-       CancellationToken ct = default);
+      string collectionName,
+      string query,
+      int limit = 5,
+      float scoreThreshold = 0.0f,
+      CancellationToken ct = default);
 
    /// <summary>
-   /// Convenience method: searches for context and concatenates results
-   /// into a single string suitable for injection into an LLM prompt.
+   ///    Convenience method: searches for context and concatenates results
+   ///    into a single string suitable for injection into an LLM prompt.
    /// </summary>
    Task<string> GetContextAsync(
-       string collectionName,
-       string query,
-       int limit = 5,
-       CancellationToken ct = default);
+      string collectionName,
+      string query,
+      int limit = 5,
+      CancellationToken ct = default);
 }

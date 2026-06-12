@@ -3,36 +3,38 @@ using System.Diagnostics;
 namespace Delibera.Core.Compression;
 
 /// <summary>
-/// Deduplication compression strategy — identifies and removes semantically similar
-/// or duplicate sentences/paragraphs from the context.
+///    Deduplication compression strategy — identifies and removes semantically similar
+///    or duplicate sentences/paragraphs from the context.
 /// </summary>
 /// <remarks>
-/// <para>Particularly effective when multiple debate participants repeat the same points.
-/// When an <see cref="IEmbeddingProvider"/> is available, uses cosine similarity;
-/// otherwise falls back to normalized Levenshtein distance heuristics.</para>
+///    <para>
+///       Particularly effective when multiple debate participants repeat the same points.
+///       When an <see cref="IEmbeddingProvider" /> is available, uses cosine similarity;
+///       otherwise falls back to normalized Levenshtein distance heuristics.
+///    </para>
 /// </remarks>
 public sealed class DeduplicationCompressor : IContextCompressor
 {
    private readonly IEmbeddingProvider? _embeddingProvider;
 
-   /// <inheritdoc/>
-   public string StrategyName => "Deduplication";
-
-   /// <inheritdoc/>
-   public string Description => "Removes semantically similar or duplicate content.";
-
    /// <summary>
-   /// Creates a deduplication compressor.
+   ///    Creates a deduplication compressor.
    /// </summary>
    /// <param name="embeddingProvider">
-   /// Optional embedding provider for semantic similarity. If <c>null</c>, uses text-based heuristics.
+   ///    Optional embedding provider for semantic similarity. If <c>null</c>, uses text-based heuristics.
    /// </param>
    public DeduplicationCompressor(IEmbeddingProvider? embeddingProvider = null)
    {
       _embeddingProvider = embeddingProvider;
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
+   public string StrategyName => "Deduplication";
+
+   /// <inheritdoc />
+   public string Description => "Removes semantically similar or duplicate content.";
+
+   /// <inheritdoc />
    public async Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null, CancellationToken ct = default)
    {
       var sw = Stopwatch.StartNew();
@@ -47,13 +49,9 @@ public sealed class DeduplicationCompressor : IContextCompressor
       List<string> unique;
 
       if (_embeddingProvider is not null)
-      {
          unique = await DeduplicateWithEmbeddingsAsync(sentences, options.DeduplicationThreshold, ct);
-      }
       else
-      {
          unique = DeduplicateWithHeuristics(sentences, options.DeduplicationThreshold);
-      }
 
       var compressedText = string.Join(" ", unique);
       var compressedTokens = counter.EstimateTokens(compressedText);
@@ -71,7 +69,7 @@ public sealed class DeduplicationCompressor : IContextCompressor
       };
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public async Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null, CancellationToken ct = default)
    {
       var merged = string.Join("\n\n", texts);
@@ -81,9 +79,9 @@ public sealed class DeduplicationCompressor : IContextCompressor
    // ──────────────────────────────────────────────
 
    private async Task<List<string>> DeduplicateWithEmbeddingsAsync(
-       List<SemanticCompressor.SentenceSpan> sentences,
-       double threshold,
-       CancellationToken ct)
+      List<SemanticCompressor.SentenceSpan> sentences,
+      double threshold,
+      CancellationToken ct)
    {
       var texts = sentences.Select(s => s.Text).ToList();
       var vectors = await _embeddingProvider!.EmbedBatchAsync(texts, ct);
@@ -115,8 +113,8 @@ public sealed class DeduplicationCompressor : IContextCompressor
    }
 
    private static List<string> DeduplicateWithHeuristics(
-       List<SemanticCompressor.SentenceSpan> sentences,
-       double threshold)
+      List<SemanticCompressor.SentenceSpan> sentences,
+      double threshold)
    {
       var kept = new List<string>();
 
@@ -144,7 +142,7 @@ public sealed class DeduplicationCompressor : IContextCompressor
    }
 
    /// <summary>
-   /// Computes a rough text similarity based on shared word overlap (Jaccard-like).
+   ///    Computes a rough text similarity based on shared word overlap (Jaccard-like).
    /// </summary>
    private static double ComputeTextSimilarity(string a, string b)
    {
@@ -156,20 +154,27 @@ public sealed class DeduplicationCompressor : IContextCompressor
       var intersection = wordsA.Intersect(wordsB, StringComparer.OrdinalIgnoreCase).Count();
       var union = wordsA.Union(wordsB, StringComparer.OrdinalIgnoreCase).Count();
 
-      return union > 0 ? (double)intersection / union : 0;
+      return union > 0
+         ? (double)intersection / union
+         : 0;
    }
 
-   private static string NormalizeText(string text) =>
-       text.Trim().ToLowerInvariant();
-
-   private static CompressedContext PassThrough(string text, int tokens, TimeSpan duration) => new()
+   private static string NormalizeText(string text)
    {
-      Text = text,
-      OriginalLength = text.Length,
-      CompressedLength = text.Length,
-      OriginalTokens = tokens,
-      CompressedTokens = tokens,
-      StrategyUsed = "Deduplication",
-      Duration = duration
-   };
+      return text.Trim().ToLowerInvariant();
+   }
+
+   private static CompressedContext PassThrough(string text, int tokens, TimeSpan duration)
+   {
+      return new CompressedContext
+      {
+         Text = text,
+         OriginalLength = text.Length,
+         CompressedLength = text.Length,
+         OriginalTokens = tokens,
+         CompressedTokens = tokens,
+         StrategyUsed = "Deduplication",
+         Duration = duration
+      };
+   }
 }

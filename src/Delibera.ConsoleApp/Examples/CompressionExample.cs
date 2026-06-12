@@ -5,14 +5,14 @@ using Delibera.Core.Models;
 namespace Delibera.ConsoleApp.Examples;
 
 /// <summary>
-/// Demonstrates the 🔥 Killer Feature: Context Compression System.
-/// Shows all 4 compression strategies, caching, token counting,
-/// and full integration into the council debate flow.
+///    Demonstrates the 🔥 Killer Feature: Context Compression System.
+///    Shows all 4 compression strategies, caching, token counting,
+///    and full integration into the council debate flow.
 /// </summary>
 public static class CompressionExample
 {
    /// <summary>
-   /// Runs the context compression example.
+   ///    Runs the context compression example.
    /// </summary>
    public static async Task RunAsync()
    {
@@ -26,11 +26,11 @@ public static class CompressionExample
 
       var sampleTexts = new[]
       {
-            "Hello, world!",
-            "The quick brown fox jumps over the lazy dog.",
-            "In the field of artificial intelligence, large language models (LLMs) have revolutionized natural language processing by demonstrating remarkable capabilities in text generation, summarization, translation, and reasoning tasks.",
-            new string('x', 1000) // 1000 chars of 'x'
-        };
+         "Hello, world!",
+         "The quick brown fox jumps over the lazy dog.",
+         "In the field of artificial intelligence, large language models (LLMs) have revolutionized natural language processing by demonstrating remarkable capabilities in text generation, summarization, translation, and reasoning tasks.",
+         new string('x', 1000) // 1000 chars of 'x'
+      };
 
       foreach (var text in sampleTexts)
       {
@@ -42,16 +42,16 @@ public static class CompressionExample
       Console.WriteLine("\n\n🧹 Deduplication Compressor (heuristic mode):\n");
 
       var duplicatedText = """
-            Microservices architecture provides independent deployment of services.
-            Each service can be deployed independently without affecting others.
-            Services are independently deployable and scalable.
-            The architecture supports polyglot programming with different languages per service.
-            Different programming languages can be used for each microservice.
-            Fault isolation ensures that failures in one service don't cascade to others.
-            When one service fails, it doesn't bring down the entire system.
-            Monitoring and debugging distributed systems is complex.
-            Debugging across service boundaries adds significant complexity.
-            """;
+                           Microservices architecture provides independent deployment of services.
+                           Each service can be deployed independently without affecting others.
+                           Services are independently deployable and scalable.
+                           The architecture supports polyglot programming with different languages per service.
+                           Different programming languages can be used for each microservice.
+                           Fault isolation ensures that failures in one service don't cascade to others.
+                           When one service fails, it doesn't bring down the entire system.
+                           Monitoring and debugging distributed systems is complex.
+                           Debugging across service boundaries adds significant complexity.
+                           """;
 
       var dedupCompressor = new DeduplicationCompressor();
       var dedupResult = await dedupCompressor.CompressAsync(duplicatedText);
@@ -61,7 +61,7 @@ public static class CompressionExample
       // ── 3. Compression Cache ──
       Console.WriteLine("\n💾 Compression Cache Demo:\n");
 
-      var cache = new CompressionCache(maxEntries: 100);
+      var cache = new CompressionCache(100);
 
       // First call — cache miss
       cache.TryGet(duplicatedText, "Deduplication", out _);
@@ -139,11 +139,11 @@ public static class CompressionExample
          TotalCompressedTokens = 7800,
          TotalResponseTokens = 6200,
          RoundBreakdown =
-          [
-              new RoundTokenUsage(1, "Initial Responses", 3200, 3200, 2100, "None"),
-                new RoundTokenUsage(2, "Critique", 5100, 2800, 2400, "Hybrid"),
-                new RoundTokenUsage(3, "Improved Responses", 4200, 1800, 1700, "Hybrid")
-          ]
+         [
+            new RoundTokenUsage(1, "Initial Responses", 3200, 3200, 2100, "None"),
+            new RoundTokenUsage(2, "Critique", 5100, 2800, 2400, "Hybrid"),
+            new RoundTokenUsage(3, "Improved Responses", 4200, 1800, 1700, "Hybrid")
+         ]
       };
 
       Console.WriteLine(stats.ToSummary());
@@ -160,7 +160,9 @@ public static class CompressionExample
       Console.WriteLine($"    Saved:       {result.TokensSavedPercent:F1}%");
       Console.WriteLine($"    Duration:    {result.Duration.TotalMilliseconds:F1}ms");
       Console.WriteLine($"    Strategy:    {result.StrategyUsed}");
-      var preview = result.Text.Length > 200 ? result.Text[..200] + "…" : result.Text;
+      var preview = result.Text.Length > 200
+         ? result.Text[..200] + "…"
+         : result.Text;
       Console.WriteLine($"    Preview:     {preview.Replace("\n", " ").Replace("\r", "")}");
    }
 }

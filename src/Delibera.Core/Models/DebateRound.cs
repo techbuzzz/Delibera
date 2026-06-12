@@ -1,7 +1,7 @@
 namespace Delibera.Core.Models;
 
 /// <summary>
-/// A single round of debate — contains every participant's response.
+///    A single round of debate — contains every participant's response.
 /// </summary>
 public sealed record DebateRound
 {
@@ -34,7 +34,7 @@ public sealed record DebateRound
 }
 
 /// <summary>
-/// Records a single interaction with the Knowledge Keeper during a debate round.
+///    Records a single interaction with the Knowledge Keeper during a debate round.
 /// </summary>
 /// <param name="Query">The query sent to the Knowledge Keeper.</param>
 /// <param name="Answer">The answer returned by the Knowledge Keeper.</param>
@@ -42,25 +42,25 @@ public sealed record DebateRound
 public sealed record KnowledgeInteraction(string Query, string Answer, int SourceChunks);
 
 /// <summary>
-/// Structured context provided by the Knowledge Keeper for a specific debate round.
+///    Structured context provided by the Knowledge Keeper for a specific debate round.
 /// </summary>
 /// <param name="RoundNumber">Round number this context was provided for.</param>
 /// <param name="Answer">The Knowledge Keeper's formatted answer with structured sections.</param>
 /// <param name="Sources">Ranked list of source chunks used.</param>
 /// <param name="Interaction">The underlying interaction record.</param>
 public sealed record KnowledgeRoundContext(
-    int RoundNumber,
-    string Answer,
-    IReadOnlyList<KnowledgeSource> Sources,
-    KnowledgeInteraction Interaction);
+   int RoundNumber,
+   string Answer,
+   IReadOnlyList<KnowledgeSource> Sources,
+   KnowledgeInteraction Interaction);
 
 /// <summary>
-/// A single source chunk from the Knowledge Keeper's knowledge base.
+///    A single source chunk from the Knowledge Keeper's knowledge base.
 /// </summary>
 /// <param name="Text">Source text content.</param>
 /// <param name="Score">Relevance score (higher = more relevant).</param>
 /// <param name="Metadata">Source metadata (file name, page, etc.).</param>
 public sealed record KnowledgeSource(
-    string Text,
-    float Score,
-    IReadOnlyDictionary<string, string> Metadata);
+   string Text,
+   float Score,
+   IReadOnlyDictionary<string, string> Metadata);

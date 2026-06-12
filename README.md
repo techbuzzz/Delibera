@@ -11,7 +11,7 @@
 [![NuGet](https://img.shields.io/nuget/v/Delibera.Core.svg)](https://www.nuget.org/packages/Delibera.Core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-1F2937.svg)](https://dotnet.microsoft.com)
-[![C# 12](https://img.shields.io/badge/C%23-12.0-239120.svg)](https://learn.microsoft.com/dotnet/csharp/)
+[![C# 14](https://img.shields.io/badge/C%23-14.0-239120.svg)](https://learn.microsoft.com/dotnet/csharp/)
 
 </div>
 

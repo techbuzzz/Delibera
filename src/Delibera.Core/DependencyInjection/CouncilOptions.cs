@@ -1,8 +1,8 @@
 namespace Delibera.Core.DependencyInjection;
 
 /// <summary>
-/// Root configuration options for the Delibera framework.
-/// Bind to a configuration section (e.g., "Delibera") via <c>IOptions&lt;CouncilOptions&gt;</c>.
+///    Root configuration options for the Delibera framework.
+///    Bind to a configuration section (e.g., "Delibera") via <c>IOptions&lt;CouncilOptions&gt;</c>.
 /// </summary>
 public sealed class CouncilOptions
 {
@@ -35,7 +35,7 @@ public sealed class CouncilOptions
 }
 
 /// <summary>
-/// Configuration options for LLM providers.
+///    Configuration options for LLM providers.
 /// </summary>
 public sealed class ProviderOptions
 {
@@ -53,11 +53,11 @@ public sealed class ProviderOptions
 }
 
 /// <summary>
-/// Configuration options for context compression.
+///    Configuration options for context compression.
 /// </summary>
 /// <remarks>
-/// This is a DI-specific configuration class, distinct from <see cref="Interfaces.CompressionOptions"/>
-/// which controls per-operation compression behaviour.
+///    This is a DI-specific configuration class, distinct from <see cref="Interfaces.CompressionOptions" />
+///    which controls per-operation compression behaviour.
 /// </remarks>
 public sealed class CompressionConfig
 {
@@ -78,7 +78,7 @@ public sealed class CompressionConfig
 }
 
 /// <summary>
-/// Configuration options for RAG (Retrieval-Augmented Generation).
+///    Configuration options for RAG (Retrieval-Augmented Generation).
 /// </summary>
 public sealed class RagOptions
 {
@@ -102,7 +102,7 @@ public sealed class RagOptions
 }
 
 /// <summary>
-/// Configuration options for debate output files.
+///    Configuration options for debate output files.
 /// </summary>
 public sealed class OutputOptions
 {

@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Text;
 using Delibera.ConsoleApp.Examples;
 using Delibera.Core.Compression;
 using Delibera.Core.Council;
@@ -9,20 +11,19 @@ using Delibera.Core.Providers;
 using Delibera.Core.Providers.LLM;
 using Delibera.Core.Providers.RAG;
 using Microsoft.Extensions.Configuration;
-using System.Reflection;
 
 namespace Delibera.ConsoleApp;
 
 /// <summary>
-/// Delibera v3.1 — demonstration of the full framework:
-/// providers, RAG (Qdrant + pgvector), Knowledge Keeper, Chairman,
-/// debate strategies, 🔥 Context Compression, and 🆕 Dependency Injection.
+///    Delibera v3.1 — demonstration of the full framework:
+///    providers, RAG (Qdrant + pgvector), Knowledge Keeper, Chairman,
+///    debate strategies, 🔥 Context Compression, and 🆕 Dependency Injection.
 /// </summary>
 public static class Program
 {
    public static async Task Main(string[] args)
    {
-      Console.OutputEncoding = System.Text.Encoding.UTF8;
+      Console.OutputEncoding = Encoding.UTF8;
       PrintBanner();
 
       // ═══════════════════════════════════════════════
@@ -75,10 +76,10 @@ public static class Program
       Console.WriteLine("📋 Loading configuration...");
 
       var configuration = new ConfigurationBuilder()
-          .SetBasePath(Directory.GetCurrentDirectory())
-          .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-          .AddUserSecrets(Assembly.GetEntryAssembly())
-          .Build();
+         .SetBasePath(Directory.GetCurrentDirectory())
+         .AddJsonFile("appsettings.json", false, true)
+         .AddUserSecrets(Assembly.GetEntryAssembly())
+         .Build();
 
       var cfg = configuration.GetSection("DeliberaApp");
 
@@ -104,7 +105,6 @@ public static class Program
       // Check availability
       Console.WriteLine("\n🏥 Checking provider availability...");
       foreach (var (name, prov) in providers)
-      {
          try
          {
             var ok = await prov.IsAvailableAsync();
@@ -120,7 +120,6 @@ public static class Program
             Console.WriteLine($"  {name}: ⚠️  {ex.Message}");
             Console.WriteLine("    (Expected if Ollama Cloud API key is not configured)");
          }
-      }
 
       // ═══════════════════════════════════════════════
       // 3. Set up RAG / Knowledge Keeper (Qdrant or pgvector)
@@ -151,9 +150,9 @@ public static class Program
                {
                   var ragFactory = new RagProviderFactory();
                   activeRagProvider = ragFactory.CreateQdrant(
-                      embeddingProvider,
-                      qdrantCfg["Host"] ?? "localhost",
-                      qdrantCfg.GetValue<int?>("Port") ?? 6334);
+                     embeddingProvider,
+                     qdrantCfg["Host"] ?? "localhost",
+                     qdrantCfg.GetValue<int?>("Port") ?? 6334);
                   Console.WriteLine("  ✅ Qdrant RAG ready");
                }
                catch (Exception ex)
@@ -168,8 +167,7 @@ public static class Program
                Console.WriteLine("\n📚 Setting up RAG with pgvector...");
                try
                {
-                  var connStr = pgCfg["ConnectionString"]
-                      ?? "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres";
+                  var connStr = pgCfg["ConnectionString"] ?? "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres";
                   var ragFactory = new RagProviderFactory();
                   activeRagProvider = ragFactory.CreatePgVector(embeddingProvider, connStr);
                   Console.WriteLine("  ✅ pgvector RAG ready");
@@ -189,7 +187,6 @@ public static class Program
                // Index knowledge files
                var knowledgeFiles = cfg.GetSection("Knowledge:Files").Get<string[]>() ?? [];
                foreach (var file in knowledgeFiles)
-               {
                   try
                   {
                      var chunks = await knowledgeKeeper.IndexFileAsync(file);
@@ -199,7 +196,6 @@ public static class Program
                   {
                      Console.WriteLine($"  ⚠️  Could not index {file}: {ex.Message}");
                   }
-               }
 
                Console.WriteLine($"  ✅ Knowledge Keeper ready ({activeRagProvider.ProviderName})");
             }
@@ -216,10 +212,15 @@ public static class Program
          var kb = new MarkdownKnowledgeBase("Council Knowledge");
 
          foreach (var file in cfg.GetSection("Knowledge:Files").Get<string[]>() ?? [])
-         {
-            try { await kb.LoadAsync(file); Console.WriteLine($"  📄 Loaded: {file}"); }
-            catch (FileNotFoundException) { Console.WriteLine($"  ⚠️  Not found: {file}"); }
-         }
+            try
+            {
+               await kb.LoadAsync(file);
+               Console.WriteLine($"  📄 Loaded: {file}");
+            }
+            catch (FileNotFoundException)
+            {
+               Console.WriteLine($"  ⚠️  Not found: {file}");
+            }
 
          if (kb.DocumentCount > 0)
          {
@@ -254,7 +255,7 @@ public static class Program
                compLlm = compOllama;
                compModel = cfg.GetSection("Models").GetChildren().FirstOrDefault()?["Name"] ?? "llama2";
                compEmbeddings = new OllamaEmbeddingProvider(compOllama,
-                   kkCfg["EmbeddingModel"] ?? compModel);
+                  kkCfg["EmbeddingModel"] ?? compModel);
             }
 
             compressor = CompressionFactory.Create(strategyName, compLlm, compModel, compEmbeddings);
@@ -308,11 +309,11 @@ public static class Program
       };
 
       var builder = new CouncilBuilder()
-          .WithStrategy(strategy)
-          .WithSystemPrompt(systemPrompt)
-          .WithUserPrompt(userPrompt)
-          .WithMaxRounds(maxRounds)
-          .WithTemperature(temperature);
+         .WithStrategy(strategy)
+         .WithSystemPrompt(systemPrompt)
+         .WithUserPrompt(userPrompt)
+         .WithMaxRounds(maxRounds)
+         .WithTemperature(temperature);
 
       // Add members
       foreach (var mc in cfg.GetSection("Models").GetChildren())
@@ -328,7 +329,9 @@ public static class Program
             Console.WriteLine($"  👤 {modelName} ({provName}) [{role}]");
          }
          else
+         {
             Console.WriteLine($"  ⚠️  Provider '{provName}' not found for '{modelName}'");
+         }
       }
 
       // Chairman
@@ -393,7 +396,9 @@ public static class Program
 
          foreach (var (member, response) in round.Responses)
          {
-            var preview = response.Length > 300 ? response[..300] + "…" : response;
+            var preview = response.Length > 300
+               ? response[..300] + "…"
+               : response;
             Console.WriteLine($"\n  📝 {member}:");
             Console.WriteLine($"     {preview.Replace("\n", "\n     ")}");
          }
@@ -418,10 +423,7 @@ public static class Program
             Console.WriteLine($"  Knowledge Keeper:   {result.KnowledgeKeeperName}");
 
          // Token statistics
-         if (result.TokenStats is not null)
-         {
-            Console.WriteLine($"\n{result.TokenStats.ToSummary()}");
-         }
+         if (result.TokenStats is not null) Console.WriteLine($"\n{result.TokenStats.ToSummary()}");
 
          // Compression log summary
          if (result.CompressionLogs.Count > 0)
@@ -437,13 +439,13 @@ public static class Program
 
          if (!string.IsNullOrWhiteSpace(result.OpeningStatement))
          {
-            Console.WriteLine($"\n══ OPENING STATEMENT ══\n");
+            Console.WriteLine("\n══ OPENING STATEMENT ══\n");
             Console.WriteLine(result.OpeningStatement);
          }
 
          if (!string.IsNullOrWhiteSpace(result.FinalVerdict))
          {
-            Console.WriteLine($"\n══ FINAL VERDICT ══\n");
+            Console.WriteLine("\n══ FINAL VERDICT ══\n");
             Console.WriteLine(result.FinalVerdict);
          }
 
@@ -468,7 +470,7 @@ public static class Program
          if (result.ExecutionLogs.Count > 0)
          {
             Console.WriteLine($"\n  📋 Execution Logs ({result.ExecutionLogs.Count} entries):");
-            foreach (var log in result.ExecutionLogs.Where(l => l.Level >= Delibera.Core.Models.LogLevel.Info))
+            foreach (var log in result.ExecutionLogs.Where(l => l.Level >= LogLevel.Info))
                Console.WriteLine($"    {log}");
          }
       }
@@ -491,19 +493,19 @@ public static class Program
       Console.ForegroundColor = ConsoleColor.Green;
       Console.WriteLine("""
 
-           ██████╗ ███████╗██╗     ██╗██████╗ ███████╗██████╗  █████╗
-           ██╔══██╗██╔════╝██║     ██║██╔══██╗██╔════╝██╔══██╗██╔══██╗
-           ██║  ██║█████╗  ██║     ██║██████╔╝█████╗  ██████╔╝███████║
-           ██║  ██║██╔══╝  ██║     ██║██╔══██╗██╔══╝  ██╔══██╗██╔══██║
-           ██████╔╝███████╗███████╗██║██████╔╝███████╗██║  ██║██║  ██║
-           ╚═════╝ ╚══════╝╚══════╝╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
+                           ██████╗ ███████╗██╗     ██╗██████╗ ███████╗██████╗  █████╗
+                           ██╔══██╗██╔════╝██║     ██║██╔══██╗██╔════╝██╔══██╗██╔══██╗
+                           ██║  ██║█████╗  ██║     ██║██████╔╝█████╗  ██████╔╝███████║
+                           ██║  ██║██╔══╝  ██║     ██║██╔══██╗██╔══╝  ██╔══██╗██╔══██║
+                           ██████╔╝███████╗███████╗██║██████╔╝███████╗██║  ██║██║  ██║
+                           ╚═════╝ ╚══════╝╚══════╝╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
 
-              ⚖️   Thoughtful AI Decisions   ·   v3.1
+                              ⚖️   Thoughtful AI Decisions   ·   v3.1
 
-           RAG • pgvector • Knowledge Keeper • Chairman
-           Context Compression • DI • Execution Logging
+                           RAG • pgvector • Knowledge Keeper • Chairman
+                           Context Compression • DI • Execution Logging
 
-        """);
+                        """);
       Console.ResetColor();
    }
 }

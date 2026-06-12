@@ -1,23 +1,14 @@
 namespace Delibera.Core.Providers.RAG;
 
 /// <summary>
-/// RAG provider backed by Qdrant vector database.
-/// Combines an <see cref="IEmbeddingProvider"/> with a <see cref="QdrantVectorStore"/>
-/// to index documents and perform semantic search.
+///    RAG provider backed by Qdrant vector database.
+///    Combines an <see cref="IEmbeddingProvider" /> with a <see cref="QdrantVectorStore" />
+///    to index documents and perform semantic search.
 /// </summary>
 public sealed class QdrantRagProvider : IRagProvider
 {
-   /// <inheritdoc/>
-   public string ProviderName => "QdrantRAG";
-
-   /// <inheritdoc/>
-   public IVectorStore VectorStore { get; }
-
-   /// <inheritdoc/>
-   public IEmbeddingProvider EmbeddingProvider { get; }
-
    /// <summary>
-   /// Creates a Qdrant RAG provider.
+   ///    Creates a Qdrant RAG provider.
    /// </summary>
    /// <param name="vectorStore">Qdrant vector store instance.</param>
    /// <param name="embeddingProvider">Embedding provider for vectorisation.</param>
@@ -28,26 +19,35 @@ public sealed class QdrantRagProvider : IRagProvider
    }
 
    /// <summary>
-   /// Convenience constructor that creates a <see cref="QdrantVectorStore"/> internally.
+   ///    Convenience constructor that creates a <see cref="QdrantVectorStore" /> internally.
    /// </summary>
    public QdrantRagProvider(
-       IEmbeddingProvider embeddingProvider,
-       string qdrantHost = "localhost",
-       int qdrantPort = 6334,
-       bool https = false,
-       string? apiKey = null)
-       : this(new QdrantVectorStore(qdrantHost, qdrantPort, https, apiKey), embeddingProvider)
+      IEmbeddingProvider embeddingProvider,
+      string qdrantHost = "localhost",
+      int qdrantPort = 6334,
+      bool https = false,
+      string? apiKey = null)
+      : this(new QdrantVectorStore(qdrantHost, qdrantPort, https, apiKey), embeddingProvider)
    {
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
+   public string ProviderName => "QdrantRAG";
+
+   /// <inheritdoc />
+   public IVectorStore VectorStore { get; }
+
+   /// <inheritdoc />
+   public IEmbeddingProvider EmbeddingProvider { get; }
+
+   /// <inheritdoc />
    public async Task<int> IndexDocumentAsync(
-       string collectionName,
-       string documentText,
-       Dictionary<string, string>? metadata = null,
-       int chunkSize = 500,
-       int chunkOverlap = 50,
-       CancellationToken ct = default)
+      string collectionName,
+      string documentText,
+      Dictionary<string, string>? metadata = null,
+      int chunkSize = 500,
+      int chunkOverlap = 50,
+      CancellationToken ct = default)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(collectionName);
       ArgumentException.ThrowIfNullOrWhiteSpace(documentText);
@@ -65,27 +65,29 @@ public sealed class QdrantRagProvider : IRagProvider
       var points = new List<VectorPoint>(chunks.Count);
       for (var i = 0; i < chunks.Count; i++)
       {
-         var pointMeta = metadata is not null ? new Dictionary<string, string>(metadata) : new();
+         var pointMeta = metadata is not null
+            ? new Dictionary<string, string>(metadata)
+            : new Dictionary<string, string>();
          pointMeta["chunk_index"] = i.ToString();
 
          points.Add(new VectorPoint(
-             Id: Guid.NewGuid().ToString(),
-             Vector: vectors[i],
-             Text: chunks[i],
-             Metadata: pointMeta));
+            Guid.NewGuid().ToString(),
+            vectors[i],
+            chunks[i],
+            pointMeta));
       }
 
       await VectorStore.UpsertAsync(collectionName, points, ct);
       return chunks.Count;
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public async Task<int> IndexFileAsync(
-       string collectionName,
-       string filePath,
-       int chunkSize = 500,
-       int chunkOverlap = 50,
-       CancellationToken ct = default)
+      string collectionName,
+      string filePath,
+      int chunkSize = 500,
+      int chunkOverlap = 50,
+      CancellationToken ct = default)
    {
       var fullPath = Path.GetFullPath(filePath);
       if (!File.Exists(fullPath))
@@ -101,24 +103,24 @@ public sealed class QdrantRagProvider : IRagProvider
       return await IndexDocumentAsync(collectionName, text, meta, chunkSize, chunkOverlap, ct);
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public async Task<IReadOnlyList<VectorSearchResult>> SearchAsync(
-       string collectionName,
-       string query,
-       int limit = 5,
-       float scoreThreshold = 0.0f,
-       CancellationToken ct = default)
+      string collectionName,
+      string query,
+      int limit = 5,
+      float scoreThreshold = 0.0f,
+      CancellationToken ct = default)
    {
       var queryVector = await EmbeddingProvider.EmbedAsync(query, ct);
       return await VectorStore.SearchAsync(collectionName, queryVector, limit, scoreThreshold, ct);
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public async Task<string> GetContextAsync(
-       string collectionName,
-       string query,
-       int limit = 5,
-       CancellationToken ct = default)
+      string collectionName,
+      string query,
+      int limit = 5,
+      CancellationToken ct = default)
    {
       var results = await SearchAsync(collectionName, query, limit, ct: ct);
       if (results.Count == 0)
@@ -135,7 +137,7 @@ public sealed class QdrantRagProvider : IRagProvider
       return sb.ToString().TrimEnd();
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public async ValueTask DisposeAsync()
    {
       await VectorStore.DisposeAsync();
@@ -146,8 +148,8 @@ public sealed class QdrantRagProvider : IRagProvider
    // ──────────────────────────────────────────────
 
    /// <summary>
-   /// Splits text into overlapping chunks of approximately <paramref name="chunkSize"/> characters,
-   /// breaking on paragraph or sentence boundaries where possible.
+   ///    Splits text into overlapping chunks of approximately <paramref name="chunkSize" /> characters,
+   ///    breaking on paragraph or sentence boundaries where possible.
    /// </summary>
    internal static List<string> SplitIntoChunks(string text, int chunkSize, int chunkOverlap)
    {

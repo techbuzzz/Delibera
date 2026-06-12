@@ -3,30 +3,24 @@ using System.Diagnostics;
 namespace Delibera.Core.Compression;
 
 /// <summary>
-/// Semantic compression strategy — embeds sentences, ranks them by relevance
-/// to the overall topic, and keeps the most important ones up to the target ratio.
+///    Semantic compression strategy — embeds sentences, ranks them by relevance
+///    to the overall topic, and keeps the most important ones up to the target ratio.
 /// </summary>
 /// <remarks>
-/// <para>Algorithm:</para>
-/// <list type="number">
-///   <item>Split text into sentences.</item>
-///   <item>Compute embeddings for each sentence and for the full text (topic vector).</item>
-///   <item>Score each sentence by cosine similarity to the topic vector.</item>
-///   <item>Keep top-N sentences (preserving original order) to meet the target ratio.</item>
-/// </list>
+///    <para>Algorithm:</para>
+///    <list type="number">
+///       <item>Split text into sentences.</item>
+///       <item>Compute embeddings for each sentence and for the full text (topic vector).</item>
+///       <item>Score each sentence by cosine similarity to the topic vector.</item>
+///       <item>Keep top-N sentences (preserving original order) to meet the target ratio.</item>
+///    </list>
 /// </remarks>
 public sealed class SemanticCompressor : IContextCompressor
 {
    private readonly IEmbeddingProvider _embeddingProvider;
 
-   /// <inheritdoc/>
-   public string StrategyName => "Semantic";
-
-   /// <inheritdoc/>
-   public string Description => "Ranks sentences by semantic relevance and keeps the most important ones.";
-
    /// <summary>
-   /// Creates a semantic compressor.
+   ///    Creates a semantic compressor.
    /// </summary>
    /// <param name="embeddingProvider">Embedding provider for computing sentence vectors.</param>
    public SemanticCompressor(IEmbeddingProvider embeddingProvider)
@@ -34,7 +28,13 @@ public sealed class SemanticCompressor : IContextCompressor
       _embeddingProvider = embeddingProvider ?? throw new ArgumentNullException(nameof(embeddingProvider));
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
+   public string StrategyName => "Semantic";
+
+   /// <inheritdoc />
+   public string Description => "Ranks sentences by semantic relevance and keeps the most important ones.";
+
+   /// <inheritdoc />
    public async Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null, CancellationToken ct = default)
    {
       var sw = Stopwatch.StartNew();
@@ -50,7 +50,9 @@ public sealed class SemanticCompressor : IContextCompressor
          return PassThrough(text, originalTokens, sw.Elapsed);
 
       // Compute topic embedding (centroid of entire text)
-      var topicVector = await _embeddingProvider.EmbedAsync(text.Length > 2000 ? text[..2000] : text, ct);
+      var topicVector = await _embeddingProvider.EmbedAsync(text.Length > 2000
+         ? text[..2000]
+         : text, ct);
 
       // Compute sentence embeddings
       var sentenceTexts = sentences.Select(s => s.Text).ToList();
@@ -84,7 +86,7 @@ public sealed class SemanticCompressor : IContextCompressor
       };
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public async Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null, CancellationToken ct = default)
    {
       var merged = string.Join("\n\n", texts);
@@ -96,10 +98,10 @@ public sealed class SemanticCompressor : IContextCompressor
    // ──────────────────────────────────────────────
 
    private static List<(int Index, double Score, string Text)> SelectTopSentences(
-       List<(int Index, double Score, string Text)> scored,
-       int targetTokens,
-       TokenCounter counter,
-       CompressionOptions options)
+      List<(int Index, double Score, string Text)> scored,
+      int targetTokens,
+      TokenCounter counter,
+      CompressionOptions options)
    {
       var sorted = scored.OrderByDescending(s => s.Score).ToList();
       var selected = new List<(int Index, double Score, string Text)>();
@@ -175,31 +177,40 @@ public sealed class SemanticCompressor : IContextCompressor
          magA += a[i] * a[i];
          magB += b[i] * b[i];
       }
+
       var denom = Math.Sqrt(magA) * Math.Sqrt(magB);
-      return denom > 0 ? dot / denom : 0;
+      return denom > 0
+         ? dot / denom
+         : 0;
    }
 
-   private static CompressedContext PassThrough(string text, int tokens, TimeSpan duration) => new()
+   private static CompressedContext PassThrough(string text, int tokens, TimeSpan duration)
    {
-      Text = text,
-      OriginalLength = text.Length,
-      CompressedLength = text.Length,
-      OriginalTokens = tokens,
-      CompressedTokens = tokens,
-      StrategyUsed = "Semantic",
-      Duration = duration
-   };
+      return new CompressedContext
+      {
+         Text = text,
+         OriginalLength = text.Length,
+         CompressedLength = text.Length,
+         OriginalTokens = tokens,
+         CompressedTokens = tokens,
+         StrategyUsed = "Semantic",
+         Duration = duration
+      };
+   }
 
-   private static CompressedContext EmptyResult(string text, CompressionOptions options, TimeSpan duration) => new()
+   private static CompressedContext EmptyResult(string text, CompressionOptions options, TimeSpan duration)
    {
-      Text = text,
-      OriginalLength = text.Length,
-      CompressedLength = text.Length,
-      OriginalTokens = 0,
-      CompressedTokens = 0,
-      StrategyUsed = "Semantic",
-      Duration = duration
-   };
+      return new CompressedContext
+      {
+         Text = text,
+         OriginalLength = text.Length,
+         CompressedLength = text.Length,
+         OriginalTokens = 0,
+         CompressedTokens = 0,
+         StrategyUsed = "Semantic",
+         Duration = duration
+      };
+   }
 
    /// <summary>A sentence with its original position in the text.</summary>
    internal record struct SentenceSpan(int StartPos, string Text);

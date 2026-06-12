@@ -1,8 +1,8 @@
 namespace Delibera.Core.Interfaces;
 
 /// <summary>
-/// Abstraction for loading and searching contextual knowledge.
-/// Implement to connect various knowledge sources (Markdown files, RAG, databases).
+///    Abstraction for loading and searching contextual knowledge.
+///    Implement to connect various knowledge sources (Markdown files, RAG, databases).
 /// </summary>
 public interface IKnowledgeBase
 {

@@ -1,35 +1,37 @@
 namespace Delibera.Core.Compression;
 
 /// <summary>
-/// Estimates token counts for text using a heuristic word/character-based approximation.
-/// Provides a fast, dependency-free alternative to model-specific tokenisers.
+///    Estimates token counts for text using a heuristic word/character-based approximation.
+///    Provides a fast, dependency-free alternative to model-specific tokenisers.
 /// </summary>
 /// <remarks>
-/// <para>The default heuristic uses the "4 characters ≈ 1 token" rule common for GPT-style models.
-/// For Llama-family models, the ratio is closer to 3.5 characters per token.</para>
-/// <para>For precise counts, provide a custom <see cref="TokenizerFunc"/>.</para>
+///    <para>
+///       The default heuristic uses the "4 characters ≈ 1 token" rule common for GPT-style models.
+///       For Llama-family models, the ratio is closer to 3.5 characters per token.
+///    </para>
+///    <para>For precise counts, provide a custom <see cref="TokenizerFunc" />.</para>
 /// </remarks>
 public sealed class TokenCounter
 {
    private static readonly Lazy<TokenCounter> DefaultInstance = new(() => new TokenCounter());
 
-   /// <summary>Gets the shared default <see cref="TokenCounter"/> instance.</summary>
+   /// <summary>Gets the shared default <see cref="TokenCounter" /> instance.</summary>
    public static TokenCounter Default => DefaultInstance.Value;
 
    /// <summary>
-   /// Custom tokenizer function. If set, overrides the heuristic estimator.
-   /// Takes a string and returns its token count.
+   ///    Custom tokenizer function. If set, overrides the heuristic estimator.
+   ///    Takes a string and returns its token count.
    /// </summary>
    public Func<string, int>? TokenizerFunc { get; init; }
 
    /// <summary>
-   /// Characters-per-token ratio for the heuristic estimator.
-   /// Default is 4.0 (GPT-style). Set to 3.5 for Llama-family models.
+   ///    Characters-per-token ratio for the heuristic estimator.
+   ///    Default is 4.0 (GPT-style). Set to 3.5 for Llama-family models.
    /// </summary>
    public double CharsPerToken { get; init; } = 4.0;
 
    /// <summary>
-   /// Estimates the token count for the given text.
+   ///    Estimates the token count for the given text.
    /// </summary>
    /// <param name="text">Input text.</param>
    /// <returns>Estimated token count.</returns>
@@ -51,7 +53,7 @@ public sealed class TokenCounter
    }
 
    /// <summary>
-   /// Estimates token count for multiple texts and returns the total.
+   ///    Estimates token count for multiple texts and returns the total.
    /// </summary>
    public int EstimateTokens(IEnumerable<string> texts)
    {
@@ -62,13 +64,15 @@ public sealed class TokenCounter
    }
 
    /// <summary>
-   /// Returns <c>true</c> if the text exceeds the specified token limit.
+   ///    Returns <c>true</c> if the text exceeds the specified token limit.
    /// </summary>
-   public bool ExceedsLimit(string text, int tokenLimit) =>
-       EstimateTokens(text) > tokenLimit;
+   public bool ExceedsLimit(string text, int tokenLimit)
+   {
+      return EstimateTokens(text) > tokenLimit;
+   }
 
    /// <summary>
-   /// Truncates text to approximately fit within the specified token limit.
+   ///    Truncates text to approximately fit within the specified token limit.
    /// </summary>
    /// <param name="text">Input text.</param>
    /// <param name="maxTokens">Maximum token count.</param>
@@ -96,7 +100,6 @@ public sealed class TokenCounter
       var count = 0;
       var inWord = false;
       foreach (var c in text)
-      {
          if (char.IsWhiteSpace(c))
          {
             inWord = false;
@@ -106,7 +109,7 @@ public sealed class TokenCounter
             inWord = true;
             count++;
          }
-      }
+
       return count;
    }
 }

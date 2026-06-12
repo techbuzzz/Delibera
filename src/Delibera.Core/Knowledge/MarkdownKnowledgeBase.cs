@@ -1,15 +1,18 @@
 namespace Delibera.Core.Knowledge;
 
 /// <summary>
-/// File-based knowledge base that loads Markdown files and provides
-/// keyword search across their content.
+///    File-based knowledge base that loads Markdown files and provides
+///    keyword search across their content.
 /// </summary>
 public sealed class MarkdownKnowledgeBase : IKnowledgeBase
 {
    private readonly Dictionary<string, string> _documents = [];
 
-   /// <inheritdoc/>
-   public string Name { get; }
+   /// <summary>Creates a Markdown knowledge base with an optional name.</summary>
+   public MarkdownKnowledgeBase(string name = "Markdown Knowledge Base")
+   {
+      Name = name;
+   }
 
    /// <summary>Number of loaded documents.</summary>
    public int DocumentCount => _documents.Count;
@@ -17,10 +20,10 @@ public sealed class MarkdownKnowledgeBase : IKnowledgeBase
    /// <summary>Total characters across all documents.</summary>
    public int TotalCharacters => _documents.Values.Sum(d => d.Length);
 
-   /// <summary>Creates a Markdown knowledge base with an optional name.</summary>
-   public MarkdownKnowledgeBase(string name = "Markdown Knowledge Base") => Name = name;
+   /// <inheritdoc />
+   public string Name { get; }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public async Task LoadAsync(string source)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(source);
@@ -31,23 +34,13 @@ public sealed class MarkdownKnowledgeBase : IKnowledgeBase
       _documents[Path.GetFileName(fullPath)] = await File.ReadAllTextAsync(fullPath);
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public async Task LoadManyAsync(IEnumerable<string> sources)
    {
       foreach (var s in sources) await LoadAsync(s);
    }
 
-   /// <summary>Loads all matching files from a directory.</summary>
-   public async Task LoadDirectoryAsync(string directoryPath, string pattern = "*.md")
-   {
-      var full = Path.GetFullPath(directoryPath);
-      if (!Directory.Exists(full))
-         throw new DirectoryNotFoundException($"Directory not found: {full}");
-
-      await LoadManyAsync(Directory.GetFiles(full, pattern, SearchOption.AllDirectories));
-   }
-
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public string GetAllContent()
    {
       if (_documents.Count == 0) return string.Empty;
@@ -58,10 +51,11 @@ public sealed class MarkdownKnowledgeBase : IKnowledgeBase
          sb.AppendLine(content);
          sb.AppendLine();
       }
+
       return sb.ToString();
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public IReadOnlyList<string> Search(string query, int maxResults = 5)
    {
       if (string.IsNullOrWhiteSpace(query)) return [];
@@ -84,6 +78,19 @@ public sealed class MarkdownKnowledgeBase : IKnowledgeBase
       return scored.OrderByDescending(r => r.score).Take(maxResults).Select(r => r.chunk).ToList().AsReadOnly();
    }
 
-   /// <inheritdoc/>
-   public IReadOnlyList<string> GetLoadedSources() => _documents.Keys.ToList().AsReadOnly();
+   /// <inheritdoc />
+   public IReadOnlyList<string> GetLoadedSources()
+   {
+      return _documents.Keys.ToList().AsReadOnly();
+   }
+
+   /// <summary>Loads all matching files from a directory.</summary>
+   public async Task LoadDirectoryAsync(string directoryPath, string pattern = "*.md")
+   {
+      var full = Path.GetFullPath(directoryPath);
+      if (!Directory.Exists(full))
+         throw new DirectoryNotFoundException($"Directory not found: {full}");
+
+      await LoadManyAsync(Directory.GetFiles(full, pattern, SearchOption.AllDirectories));
+   }
 }

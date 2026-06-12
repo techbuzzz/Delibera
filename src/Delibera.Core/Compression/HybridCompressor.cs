@@ -3,48 +3,56 @@ using System.Diagnostics;
 namespace Delibera.Core.Compression;
 
 /// <summary>
-/// Hybrid compression strategy — combines deduplication, semantic ranking,
-/// and optional LLM summarization for maximum compression with high fidelity.
+///    Hybrid compression strategy — combines deduplication, semantic ranking,
+///    and optional LLM summarization for maximum compression with high fidelity.
 /// </summary>
 /// <remarks>
-/// <para>Pipeline:</para>
-/// <list type="number">
-///   <item><b>Stage 1 — Deduplication:</b> Remove duplicate and near-duplicate sentences.</item>
-///   <item><b>Stage 2 — Semantic Ranking:</b> If embeddings available, rank remaining sentences by importance and trim to target.</item>
-///   <item><b>Stage 3 — Summarization (optional):</b> If LLM available and result still exceeds target, summarize the remainder.</item>
-/// </list>
-/// <para>This strategy provides the best balance of compression quality and efficiency.
-/// If some dependencies are missing, the pipeline gracefully degrades to use available stages only.</para>
+///    <para>Pipeline:</para>
+///    <list type="number">
+///       <item><b>Stage 1 — Deduplication:</b> Remove duplicate and near-duplicate sentences.</item>
+///       <item>
+///          <b>Stage 2 — Semantic Ranking:</b> If embeddings available, rank remaining sentences by importance and trim
+///          to target.
+///       </item>
+///       <item>
+///          <b>Stage 3 — Summarization (optional):</b> If LLM available and result still exceeds target, summarize the
+///          remainder.
+///       </item>
+///    </list>
+///    <para>
+///       This strategy provides the best balance of compression quality and efficiency.
+///       If some dependencies are missing, the pipeline gracefully degrades to use available stages only.
+///    </para>
 /// </remarks>
 public sealed class HybridCompressor : IContextCompressor
 {
+   private readonly IEmbeddingProvider? _embeddingProvider;
    private readonly ILLMProvider? _llmProvider;
    private readonly string? _modelName;
-   private readonly IEmbeddingProvider? _embeddingProvider;
-
-   /// <inheritdoc/>
-   public string StrategyName => "Hybrid";
-
-   /// <inheritdoc/>
-   public string Description => "Multi-stage: Deduplication → Semantic Ranking → Optional Summarization.";
 
    /// <summary>
-   /// Creates a hybrid compressor.
+   ///    Creates a hybrid compressor.
    /// </summary>
    /// <param name="llmProvider">LLM provider for summarization stage (optional).</param>
    /// <param name="modelName">Model name for summarization (optional).</param>
    /// <param name="embeddingProvider">Embedding provider for semantic stages (optional).</param>
    public HybridCompressor(
-       ILLMProvider? llmProvider = null,
-       string? modelName = null,
-       IEmbeddingProvider? embeddingProvider = null)
+      ILLMProvider? llmProvider = null,
+      string? modelName = null,
+      IEmbeddingProvider? embeddingProvider = null)
    {
       _llmProvider = llmProvider;
       _modelName = modelName;
       _embeddingProvider = embeddingProvider;
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
+   public string StrategyName => "Hybrid";
+
+   /// <inheritdoc />
+   public string Description => "Multi-stage: Deduplication → Semantic Ranking → Optional Summarization.";
+
+   /// <inheritdoc />
    public async Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null, CancellationToken ct = default)
    {
       var sw = Stopwatch.StartNew();
@@ -94,7 +102,7 @@ public sealed class HybridCompressor : IContextCompressor
       return FinalResult(text, currentText, originalTokens, currentTokens, sw.Elapsed);
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public async Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null, CancellationToken ct = default)
    {
       var merged = string.Join("\n\n", texts);
@@ -103,25 +111,31 @@ public sealed class HybridCompressor : IContextCompressor
 
    // ──────────────────────────────────────────────
 
-   private CompressedContext FinalResult(string original, string compressed, int origTokens, int compTokens, TimeSpan duration) => new()
+   private CompressedContext FinalResult(string original, string compressed, int origTokens, int compTokens, TimeSpan duration)
    {
-      Text = compressed,
-      OriginalLength = original.Length,
-      CompressedLength = compressed.Length,
-      OriginalTokens = origTokens,
-      CompressedTokens = compTokens,
-      StrategyUsed = StrategyName,
-      Duration = duration
-   };
+      return new CompressedContext
+      {
+         Text = compressed,
+         OriginalLength = original.Length,
+         CompressedLength = compressed.Length,
+         OriginalTokens = origTokens,
+         CompressedTokens = compTokens,
+         StrategyUsed = StrategyName,
+         Duration = duration
+      };
+   }
 
-   private static CompressedContext PassThrough(string text, int tokens, TimeSpan duration) => new()
+   private static CompressedContext PassThrough(string text, int tokens, TimeSpan duration)
    {
-      Text = text,
-      OriginalLength = text.Length,
-      CompressedLength = text.Length,
-      OriginalTokens = tokens,
-      CompressedTokens = tokens,
-      StrategyUsed = "Hybrid",
-      Duration = duration
-   };
+      return new CompressedContext
+      {
+         Text = text,
+         OriginalLength = text.Length,
+         CompressedLength = text.Length,
+         OriginalTokens = tokens,
+         CompressedTokens = tokens,
+         StrategyUsed = "Hybrid",
+         Duration = duration
+      };
+   }
 }

@@ -1,8 +1,8 @@
 namespace Delibera.Core.Interfaces;
 
 /// <summary>
-/// Strategy for compressing context before sending to LLMs.
-/// Reduces token usage while preserving semantic meaning.
+///    Strategy for compressing context before sending to LLMs.
+///    Reduces token usage while preserving semantic meaning.
 /// </summary>
 public interface IContextCompressor
 {
@@ -13,7 +13,7 @@ public interface IContextCompressor
    string Description { get; }
 
    /// <summary>
-   /// Compresses the input text according to the configured strategy.
+   ///    Compresses the input text according to the configured strategy.
    /// </summary>
    /// <param name="text">Original text to compress.</param>
    /// <param name="options">Compression options controlling behaviour.</param>
@@ -22,7 +22,7 @@ public interface IContextCompressor
    Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null, CancellationToken ct = default);
 
    /// <summary>
-   /// Compresses multiple texts and merges the results.
+   ///    Compresses multiple texts and merges the results.
    /// </summary>
    /// <param name="texts">Texts to compress (e.g., round responses).</param>
    /// <param name="options">Compression options.</param>
@@ -32,10 +32,10 @@ public interface IContextCompressor
 }
 
 /// <summary>
-/// Result of a context compression operation.
+///    Result of a context compression operation.
 /// </summary>
 /// <remarks>
-/// Contains the compressed text along with statistics about the compression.
+///    Contains the compressed text along with statistics about the compression.
 /// </remarks>
 public sealed record CompressedContext
 {
@@ -56,8 +56,8 @@ public sealed record CompressedContext
 
    /// <summary>Compression ratio (0.0–1.0; lower = more compressed).</summary>
    public double CompressionRatio => OriginalTokens > 0
-       ? (double)CompressedTokens / OriginalTokens
-       : 1.0;
+      ? (double)CompressedTokens / OriginalTokens
+      : 1.0;
 
    /// <summary>Percentage of tokens saved.</summary>
    public double TokensSavedPercent => (1.0 - CompressionRatio) * 100.0;
@@ -70,50 +70,50 @@ public sealed record CompressedContext
 }
 
 /// <summary>
-/// Options controlling context compression behaviour.
+///    Options controlling context compression behaviour.
 /// </summary>
 public sealed record CompressionOptions
 {
    /// <summary>
-   /// Target compression ratio (0.1–1.0). For example, 0.5 = try to reduce to 50% of original.
-   /// Not all strategies can hit the target exactly; this is a best-effort hint.
+   ///    Target compression ratio (0.1–1.0). For example, 0.5 = try to reduce to 50% of original.
+   ///    Not all strategies can hit the target exactly; this is a best-effort hint.
    /// </summary>
    public double TargetRatio { get; init; } = 0.5;
 
    /// <summary>
-   /// Maximum output token count. If set, overrides <see cref="TargetRatio"/>.
+   ///    Maximum output token count. If set, overrides <see cref="TargetRatio" />.
    /// </summary>
    public int? MaxOutputTokens { get; init; }
 
    /// <summary>
-   /// Whether to preserve code blocks and structured data verbatim.
+   ///    Whether to preserve code blocks and structured data verbatim.
    /// </summary>
    public bool PreserveCodeBlocks { get; init; } = true;
 
    /// <summary>
-   /// Whether to preserve bullet-point lists and tables.
+   ///    Whether to preserve bullet-point lists and tables.
    /// </summary>
    public bool PreserveStructuredContent { get; init; } = true;
 
    /// <summary>
-   /// Minimum similarity threshold for deduplication (0.0–1.0).
-   /// Sentences with similarity above this threshold are considered duplicates.
+   ///    Minimum similarity threshold for deduplication (0.0–1.0).
+   ///    Sentences with similarity above this threshold are considered duplicates.
    /// </summary>
    public double DeduplicationThreshold { get; init; } = 0.85;
 
    /// <summary>
-   /// Temperature for summarisation LLM calls.
+   ///    Temperature for summarisation LLM calls.
    /// </summary>
    public float SummarizationTemperature { get; init; } = 0.3f;
 
    /// <summary>
-   /// Creates default compression options.
+   ///    Creates default compression options.
    /// </summary>
    public static CompressionOptions Default { get; } = new();
 }
 
 /// <summary>
-/// Enumeration of available compression strategies.
+///    Enumeration of available compression strategies.
 /// </summary>
 public enum CompressionStrategy
 {

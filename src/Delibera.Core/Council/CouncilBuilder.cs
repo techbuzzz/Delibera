@@ -4,23 +4,111 @@ using Delibera.Core.Debate;
 namespace Delibera.Core.Council;
 
 /// <summary>
-/// Fluent builder for assembling and configuring a council debate session.
+///    Fluent builder for assembling and configuring a council debate session.
 /// </summary>
 public sealed class CouncilBuilder : ICouncilBuilder
 {
    private readonly List<CouncilMember> _members = [];
    private CouncilMember? _chairman;
-   private KnowledgeKeeper? _knowledgeKeeper;
-   private IDebateStrategy _strategy = new StandardDebate();
-   private IKnowledgeBase? _knowledgeBase;
-   private string _systemPrompt = "You are a helpful AI assistant participating in a council debate.";
-   private string _userPrompt = string.Empty;
-   private int _maxRounds = 4;
-   private float _temperature = 0.7f;
-   private string? _outputPath;
-   private IContextCompressor? _compressor;
-   private CompressionOptions? _compressionOptions;
    private CompressionCache? _compressionCache;
+   private CompressionOptions? _compressionOptions;
+   private IContextCompressor? _compressor;
+   private IKnowledgeBase? _knowledgeBase;
+   private KnowledgeKeeper? _knowledgeKeeper;
+   private int _maxRounds = 4;
+   private string? _outputPath;
+   private IDebateStrategy _strategy = new StandardDebate();
+   private string _systemPrompt = "You are a helpful AI assistant participating in a council debate.";
+   private float _temperature = 0.7f;
+   private string _userPrompt = string.Empty;
+
+   // ── ICouncilBuilder explicit implementations ──
+
+   ICouncilBuilder ICouncilBuilder.AddMember(CouncilMember member)
+   {
+      return AddMember(member);
+   }
+
+   ICouncilBuilder ICouncilBuilder.AddMember(string modelName, ILLMProvider provider, string? role, string? persona)
+   {
+      return AddMember(modelName, provider, role, persona);
+   }
+
+   ICouncilBuilder ICouncilBuilder.SetChairman(CouncilMember chairman)
+   {
+      return SetChairman(chairman);
+   }
+
+   ICouncilBuilder ICouncilBuilder.SetChairman(string modelName, ILLMProvider provider, string? persona)
+   {
+      return SetChairman(modelName, provider, persona);
+   }
+
+   ICouncilBuilder ICouncilBuilder.WithKnowledgeKeeper(KnowledgeKeeper knowledgeKeeper)
+   {
+      return WithKnowledgeKeeper(knowledgeKeeper);
+   }
+
+   ICouncilBuilder ICouncilBuilder.WithStrategy(IDebateStrategy strategy)
+   {
+      return WithStrategy(strategy);
+   }
+
+   ICouncilBuilder ICouncilBuilder.WithKnowledge(IKnowledgeBase knowledgeBase)
+   {
+      return WithKnowledge(knowledgeBase);
+   }
+
+   ICouncilBuilder ICouncilBuilder.WithCompression(IContextCompressor compressor, CompressionOptions? options)
+   {
+      return WithCompression(compressor, options);
+   }
+
+   ICouncilBuilder ICouncilBuilder.WithCompression(CompressionStrategy strategy, ILLMProvider? llmProvider, string? modelName, IEmbeddingProvider? embeddingProvider, CompressionOptions? options)
+   {
+      return WithCompression(strategy, llmProvider, modelName, embeddingProvider, options);
+   }
+
+   ICouncilBuilder ICouncilBuilder.WithCompressionOptions(CompressionOptions options)
+   {
+      return WithCompressionOptions(options);
+   }
+
+   ICouncilBuilder ICouncilBuilder.WithCompressionCache(int maxEntries)
+   {
+      return WithCompressionCache(maxEntries);
+   }
+
+   ICouncilBuilder ICouncilBuilder.WithSystemPrompt(string systemPrompt)
+   {
+      return WithSystemPrompt(systemPrompt);
+   }
+
+   ICouncilBuilder ICouncilBuilder.WithUserPrompt(string userPrompt)
+   {
+      return WithUserPrompt(userPrompt);
+   }
+
+   ICouncilBuilder ICouncilBuilder.WithMaxRounds(int maxRounds)
+   {
+      return WithMaxRounds(maxRounds);
+   }
+
+   ICouncilBuilder ICouncilBuilder.WithTemperature(float temperature)
+   {
+      return WithTemperature(temperature);
+   }
+
+   ICouncilBuilder ICouncilBuilder.SaveResultTo(string outputPath)
+   {
+      return SaveResultTo(outputPath);
+   }
+
+   /// <inheritdoc />
+   ICouncilExecutor ICouncilBuilder.Build()
+   {
+      return BuildInternal();
+   }
 
    // ── Members ──
 
@@ -55,14 +143,19 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
-   /// <summary>Backward-compatible alias for <see cref="SetChairman(CouncilMember)"/>.</summary>
+   /// <summary>Backward-compatible alias for <see cref="SetChairman(CouncilMember)" />.</summary>
    [Obsolete("Use SetChairman instead.")]
-   public CouncilBuilder SetModerator(CouncilMember moderator) => SetChairman(moderator);
+   public CouncilBuilder SetModerator(CouncilMember moderator)
+   {
+      return SetChairman(moderator);
+   }
 
-   /// <summary>Backward-compatible alias for <see cref="SetChairman(string, ILLMProvider, string?)"/>.</summary>
+   /// <summary>Backward-compatible alias for <see cref="SetChairman(string, ILLMProvider, string?)" />.</summary>
    [Obsolete("Use SetChairman instead.")]
-   public CouncilBuilder SetModerator(string modelName, ILLMProvider provider, string? persona = null) =>
-       SetChairman(modelName, provider, persona);
+   public CouncilBuilder SetModerator(string modelName, ILLMProvider provider, string? persona = null)
+   {
+      return SetChairman(modelName, provider, persona);
+   }
 
    // ── Knowledge Keeper ──
 
@@ -75,10 +168,10 @@ public sealed class CouncilBuilder : ICouncilBuilder
 
    /// <summary>Creates and attaches a Knowledge Keeper from a RAG provider, model and collection.</summary>
    public CouncilBuilder WithKnowledgeKeeper(
-       IRagProvider ragProvider,
-       string modelName,
-       ILLMProvider llmProvider,
-       string collectionName = "council_knowledge")
+      IRagProvider ragProvider,
+      string modelName,
+      ILLMProvider llmProvider,
+      string collectionName = "council_knowledge")
    {
       var member = new CouncilMember(modelName, llmProvider, "Knowledge Keeper");
       _knowledgeKeeper = new KnowledgeKeeper(ragProvider, member, collectionName);
@@ -95,13 +188,22 @@ public sealed class CouncilBuilder : ICouncilBuilder
    }
 
    /// <summary>Uses the standard 4-round debate strategy.</summary>
-   public CouncilBuilder WithStandardDebate() => WithStrategy(new StandardDebate());
+   public CouncilBuilder WithStandardDebate()
+   {
+      return WithStrategy(new StandardDebate());
+   }
 
    /// <summary>Uses the adversarial critique debate strategy.</summary>
-   public CouncilBuilder WithCritiqueDebate() => WithStrategy(new CritiqueDebate());
+   public CouncilBuilder WithCritiqueDebate()
+   {
+      return WithStrategy(new CritiqueDebate());
+   }
 
    /// <summary>Uses the consensus-building debate strategy.</summary>
-   public CouncilBuilder WithConsensusDebate() => WithStrategy(new ConsensusDebate());
+   public CouncilBuilder WithConsensusDebate()
+   {
+      return WithStrategy(new ConsensusDebate());
+   }
 
    // ── Knowledge base (legacy MD-based) ──
 
@@ -131,11 +233,11 @@ public sealed class CouncilBuilder : ICouncilBuilder
    /// <param name="embeddingProvider">Embedding provider (required for Semantic/Hybrid strategies).</param>
    /// <param name="options">Optional compression options.</param>
    public CouncilBuilder WithCompression(
-       CompressionStrategy strategy,
-       ILLMProvider? llmProvider = null,
-       string? modelName = null,
-       IEmbeddingProvider? embeddingProvider = null,
-       CompressionOptions? options = null)
+      CompressionStrategy strategy,
+      ILLMProvider? llmProvider = null,
+      string? modelName = null,
+      IEmbeddingProvider? embeddingProvider = null,
+      CompressionOptions? options = null)
    {
       _compressor = CompressionFactory.Create(strategy, llmProvider, modelName, embeddingProvider);
       _compressionOptions = options;
@@ -160,52 +262,50 @@ public sealed class CouncilBuilder : ICouncilBuilder
    // ── Prompts / parameters ──
 
    /// <summary>Sets the system prompt shared by all models.</summary>
-   public CouncilBuilder WithSystemPrompt(string systemPrompt) { _systemPrompt = systemPrompt; return this; }
+   public CouncilBuilder WithSystemPrompt(string systemPrompt)
+   {
+      _systemPrompt = systemPrompt;
+      return this;
+   }
 
    /// <summary>Sets the user prompt (the question or task).</summary>
-   public CouncilBuilder WithUserPrompt(string userPrompt) { _userPrompt = userPrompt; return this; }
+   public CouncilBuilder WithUserPrompt(string userPrompt)
+   {
+      _userPrompt = userPrompt;
+      return this;
+   }
 
    /// <summary>Sets the maximum number of debate rounds (1–10).</summary>
-   public CouncilBuilder WithMaxRounds(int maxRounds) { _maxRounds = Math.Clamp(maxRounds, 1, 10); return this; }
+   public CouncilBuilder WithMaxRounds(int maxRounds)
+   {
+      _maxRounds = Math.Clamp(maxRounds, 1, 10);
+      return this;
+   }
 
    /// <summary>Sets the generation temperature (0.0–2.0).</summary>
-   public CouncilBuilder WithTemperature(float temperature) { _temperature = Math.Clamp(temperature, 0f, 2f); return this; }
+   public CouncilBuilder WithTemperature(float temperature)
+   {
+      _temperature = Math.Clamp(temperature, 0f, 2f);
+      return this;
+   }
 
    /// <summary>Sets the output path for saving the debate result as Markdown.</summary>
-   public CouncilBuilder SaveResultTo(string outputPath) { _outputPath = outputPath; return this; }
-
-   // ── ICouncilBuilder explicit implementations ──
-
-   ICouncilBuilder ICouncilBuilder.AddMember(CouncilMember member) => AddMember(member);
-   ICouncilBuilder ICouncilBuilder.AddMember(string modelName, ILLMProvider provider, string? role, string? persona) => AddMember(modelName, provider, role, persona);
-   ICouncilBuilder ICouncilBuilder.SetChairman(CouncilMember chairman) => SetChairman(chairman);
-   ICouncilBuilder ICouncilBuilder.SetChairman(string modelName, ILLMProvider provider, string? persona) => SetChairman(modelName, provider, persona);
-   ICouncilBuilder ICouncilBuilder.WithKnowledgeKeeper(KnowledgeKeeper knowledgeKeeper) => WithKnowledgeKeeper(knowledgeKeeper);
-   ICouncilBuilder ICouncilBuilder.WithStrategy(IDebateStrategy strategy) => WithStrategy(strategy);
-   ICouncilBuilder ICouncilBuilder.WithKnowledge(IKnowledgeBase knowledgeBase) => WithKnowledge(knowledgeBase);
-   ICouncilBuilder ICouncilBuilder.WithCompression(IContextCompressor compressor, CompressionOptions? options) => WithCompression(compressor, options);
-   ICouncilBuilder ICouncilBuilder.WithCompression(CompressionStrategy strategy, ILLMProvider? llmProvider, string? modelName, IEmbeddingProvider? embeddingProvider, CompressionOptions? options) => WithCompression(strategy, llmProvider, modelName, embeddingProvider, options);
-   ICouncilBuilder ICouncilBuilder.WithCompressionOptions(CompressionOptions options) => WithCompressionOptions(options);
-   ICouncilBuilder ICouncilBuilder.WithCompressionCache(int maxEntries) => WithCompressionCache(maxEntries);
-   ICouncilBuilder ICouncilBuilder.WithSystemPrompt(string systemPrompt) => WithSystemPrompt(systemPrompt);
-   ICouncilBuilder ICouncilBuilder.WithUserPrompt(string userPrompt) => WithUserPrompt(userPrompt);
-   ICouncilBuilder ICouncilBuilder.WithMaxRounds(int maxRounds) => WithMaxRounds(maxRounds);
-   ICouncilBuilder ICouncilBuilder.WithTemperature(float temperature) => WithTemperature(temperature);
-   ICouncilBuilder ICouncilBuilder.SaveResultTo(string outputPath) => SaveResultTo(outputPath);
+   public CouncilBuilder SaveResultTo(string outputPath)
+   {
+      _outputPath = outputPath;
+      return this;
+   }
 
    // ── Build ──
 
    /// <summary>
-   /// Validates configuration and builds a <see cref="CouncilExecutor"/>.
+   ///    Validates configuration and builds a <see cref="CouncilExecutor" />.
    /// </summary>
    /// <exception cref="InvalidOperationException">When required configuration is missing.</exception>
    public CouncilExecutor Build()
    {
       return BuildInternal();
    }
-
-   /// <inheritdoc/>
-   ICouncilExecutor ICouncilBuilder.Build() => BuildInternal();
 
    private CouncilExecutor BuildInternal()
    {
@@ -223,16 +323,16 @@ public sealed class CouncilBuilder : ICouncilBuilder
       };
 
       return new CouncilExecutor(
-          members: _members.AsReadOnly(),
-          chairman: _chairman,
-          knowledgeKeeper: _knowledgeKeeper,
-          strategy: _strategy,
-          context: context,
-          maxRounds: _maxRounds,
-          temperature: _temperature,
-          outputPath: _outputPath,
-          compressor: _compressor,
-          compressionOptions: _compressionOptions,
-          compressionCache: _compressionCache);
+         _members.AsReadOnly(),
+         _chairman,
+         _knowledgeKeeper,
+         _strategy,
+         context,
+         _maxRounds,
+         _temperature,
+         _outputPath,
+         _compressor,
+         _compressionOptions,
+         _compressionCache);
    }
 }

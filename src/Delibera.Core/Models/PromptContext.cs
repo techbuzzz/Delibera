@@ -1,7 +1,7 @@
 namespace Delibera.Core.Models;
 
 /// <summary>
-/// Immutable context that feeds into a debate session.
+///    Immutable context that feeds into a debate session.
 /// </summary>
 public sealed record PromptContext
 {
@@ -19,10 +19,10 @@ public sealed record PromptContext
 
    /// <summary>Arbitrary key-value metadata.</summary>
    public IReadOnlyDictionary<string, string> Metadata { get; init; } =
-       new Dictionary<string, string>();
+      new Dictionary<string, string>();
 
    /// <summary>
-   /// Builds the full user prompt, injecting knowledge context when available.
+   ///    Builds the full user prompt, injecting knowledge context when available.
    /// </summary>
    public string GetFullUserPrompt()
    {
@@ -30,11 +30,11 @@ public sealed record PromptContext
          return UserPrompt;
 
       return $"""
-                ### Context (Knowledge Base):
-                {KnowledgeContent}
+              ### Context (Knowledge Base):
+              {KnowledgeContent}
 
-                ### Question:
-                {UserPrompt}
-                """;
+              ### Question:
+              {UserPrompt}
+              """;
    }
 }

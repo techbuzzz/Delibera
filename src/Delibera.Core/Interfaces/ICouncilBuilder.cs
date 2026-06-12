@@ -3,8 +3,8 @@ using Delibera.Core.Council;
 namespace Delibera.Core.Interfaces;
 
 /// <summary>
-/// Fluent interface for assembling and configuring a council debate session.
-/// Enables dependency injection and testability of council construction.
+///    Fluent interface for assembling and configuring a council debate session.
+///    Enables dependency injection and testability of council construction.
 /// </summary>
 public interface ICouncilBuilder
 {
@@ -62,11 +62,11 @@ public interface ICouncilBuilder
    /// <param name="options">Compression options.</param>
    /// <returns>This builder for fluent chaining.</returns>
    ICouncilBuilder WithCompression(
-       CompressionStrategy strategy,
-       ILLMProvider? llmProvider = null,
-       string? modelName = null,
-       IEmbeddingProvider? embeddingProvider = null,
-       CompressionOptions? options = null);
+      CompressionStrategy strategy,
+      ILLMProvider? llmProvider = null,
+      string? modelName = null,
+      IEmbeddingProvider? embeddingProvider = null,
+      CompressionOptions? options = null);
 
    /// <summary>Sets custom compression options.</summary>
    /// <param name="options">Compression options.</param>
@@ -104,7 +104,7 @@ public interface ICouncilBuilder
    ICouncilBuilder SaveResultTo(string outputPath);
 
    /// <summary>
-   /// Validates configuration and builds an <see cref="ICouncilExecutor"/>.
+   ///    Validates configuration and builds an <see cref="ICouncilExecutor" />.
    /// </summary>
    /// <returns>Configured council executor ready for debate execution.</returns>
    /// <exception cref="InvalidOperationException">When required configuration is missing.</exception>

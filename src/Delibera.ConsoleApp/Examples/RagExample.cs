@@ -7,8 +7,8 @@ using Delibera.Core.Providers.RAG;
 namespace Delibera.ConsoleApp.Examples;
 
 /// <summary>
-/// RAG example — demonstrates Qdrant integration, document indexing,
-/// Knowledge Keeper and a debate enriched with vector-search context.
+///    RAG example — demonstrates Qdrant integration, document indexing,
+///    Knowledge Keeper and a debate enriched with vector-search context.
 /// </summary>
 public static class RagExample
 {
@@ -23,7 +23,7 @@ public static class RagExample
 
       // ── 3. RAG provider (Qdrant) ──
       await using var ragFactory = new RagProviderFactory();
-      var rag = ragFactory.CreateQdrant(embeddings, "localhost", 6334);
+      var rag = ragFactory.CreateQdrant(embeddings);
 
       // ── 4. Knowledge Keeper ──
       var kkModel = new CouncilMember("llama2", ollama, "Knowledge Keeper");
@@ -33,45 +33,45 @@ public static class RagExample
       Console.WriteLine("📚 Indexing documents...");
 
       var docText = """
-            # Microservices Best Practices
-            
-            ## Service Design
-            - Each microservice should own its data
-            - Services communicate via APIs (REST, gRPC, or message queues)
-            - Keep services small and focused (single responsibility)
-            
-            ## Deployment
-            - Use containers (Docker) for consistent environments
-            - Kubernetes for orchestration at scale
-            - CI/CD pipelines per service
-            
-            ## Monitoring
-            - Distributed tracing (Jaeger, Zipkin)
-            - Centralised logging (ELK stack)
-            - Health checks and circuit breakers
-            
-            ## When NOT to use microservices
-            - Small teams (< 5 developers)
-            - Early-stage startups exploring product-market fit
-            - Simple CRUD applications
-            - When the domain is not well understood
-            """;
+                    # Microservices Best Practices
 
-      var chunks = await keeper.IndexDocumentAsync(docText, new() { ["topic"] = "microservices" });
+                    ## Service Design
+                    - Each microservice should own its data
+                    - Services communicate via APIs (REST, gRPC, or message queues)
+                    - Keep services small and focused (single responsibility)
+
+                    ## Deployment
+                    - Use containers (Docker) for consistent environments
+                    - Kubernetes for orchestration at scale
+                    - CI/CD pipelines per service
+
+                    ## Monitoring
+                    - Distributed tracing (Jaeger, Zipkin)
+                    - Centralised logging (ELK stack)
+                    - Health checks and circuit breakers
+
+                    ## When NOT to use microservices
+                    - Small teams (< 5 developers)
+                    - Early-stage startups exploring product-market fit
+                    - Simple CRUD applications
+                    - When the domain is not well understood
+                    """;
+
+      var chunks = await keeper.IndexDocumentAsync(docText, new Dictionary<string, string> { ["topic"] = "microservices" });
       Console.WriteLine($"  ✅ Indexed {chunks} chunks");
 
       // ── 6. Build council with Knowledge Keeper ──
       var executor = new CouncilBuilder()
-          .AddMember("llama2", ollama, "Backend Expert")
-          .AddMember("qwen2.5", ollama, "DevOps Expert")
-          .SetChairman(Chairman.CreateStandard("qwen2.5", ollama))
-          .WithKnowledgeKeeper(keeper)
-          .WithStandardDebate()
-          .WithSystemPrompt("You are a senior software architect.")
-          .WithUserPrompt("Our startup has 4 developers. Should we adopt microservices now or start with a monolith?")
-          .WithMaxRounds(4)
-          .SaveResultTo("./results/rag_debate.md")
-          .Build();
+         .AddMember("llama2", ollama, "Backend Expert")
+         .AddMember("qwen2.5", ollama, "DevOps Expert")
+         .SetChairman(Chairman.CreateStandard("qwen2.5", ollama))
+         .WithKnowledgeKeeper(keeper)
+         .WithStandardDebate()
+         .WithSystemPrompt("You are a senior software architect.")
+         .WithUserPrompt("Our startup has 4 developers. Should we adopt microservices now or start with a monolith?")
+         .WithMaxRounds(4)
+         .SaveResultTo("./results/rag_debate.md")
+         .Build();
 
       Console.WriteLine(executor.GetInfo());
 
@@ -86,7 +86,7 @@ public static class RagExample
       var result = await executor.ExecuteAsync();
 
       Console.WriteLine($"\n🏆 Debate completed in {result.TotalDuration.TotalSeconds:F1}s");
-      Console.WriteLine($"📁 Saved to: ./results/rag_debate.md");
+      Console.WriteLine("📁 Saved to: ./results/rag_debate.md");
 
       if (!string.IsNullOrWhiteSpace(result.FinalVerdict))
       {

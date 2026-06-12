@@ -1,8 +1,8 @@
 namespace Delibera.Core.Models;
 
 /// <summary>
-/// Aggregated token usage statistics for an entire debate session.
-/// Tracks original vs. compressed tokens across all rounds and Knowledge Keeper interactions.
+///    Aggregated token usage statistics for an entire debate session.
+///    Tracks original vs. compressed tokens across all rounds and Knowledge Keeper interactions.
 /// </summary>
 public sealed record TokenStatistics
 {
@@ -20,8 +20,8 @@ public sealed record TokenStatistics
 
    /// <summary>Overall compression ratio (0.0–1.0; lower = more compression).</summary>
    public double OverallCompressionRatio => TotalOriginalTokens > 0
-       ? (double)TotalCompressedTokens / TotalOriginalTokens
-       : 1.0;
+      ? (double)TotalCompressedTokens / TotalOriginalTokens
+      : 1.0;
 
    /// <summary>Percentage of tokens saved across the entire debate.</summary>
    public double SavedPercent => (1.0 - OverallCompressionRatio) * 100.0;
@@ -33,7 +33,7 @@ public sealed record TokenStatistics
    public IReadOnlyList<RoundTokenUsage> RoundBreakdown { get; init; } = [];
 
    /// <summary>
-   /// Formats the statistics as a human-readable summary.
+   ///    Formats the statistics as a human-readable summary.
    /// </summary>
    public string ToSummary()
    {
@@ -50,7 +50,7 @@ public sealed record TokenStatistics
 }
 
 /// <summary>
-/// Token usage breakdown for a single debate round.
+///    Token usage breakdown for a single debate round.
 /// </summary>
 /// <param name="RoundNumber">Round number (1-based).</param>
 /// <param name="RoundName">Round display name.</param>
@@ -59,9 +59,9 @@ public sealed record TokenStatistics
 /// <param name="ResponseTokens">Total response tokens from all members in this round.</param>
 /// <param name="CompressionStrategy">Name of the compression strategy applied (or "None").</param>
 public sealed record RoundTokenUsage(
-    int RoundNumber,
-    string RoundName,
-    int OriginalTokens,
-    int CompressedTokens,
-    int ResponseTokens,
-    string CompressionStrategy);
+   int RoundNumber,
+   string RoundName,
+   int OriginalTokens,
+   int CompressedTokens,
+   int ResponseTokens,
+   string CompressionStrategy);

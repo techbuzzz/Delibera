@@ -1,7 +1,7 @@
 namespace Delibera.Core.Models;
 
 /// <summary>
-/// Complete debate result — rounds, verdict, execution logs, and metadata.
+///    Complete debate result — rounds, verdict, execution logs, and metadata.
 /// </summary>
 public sealed record DebateResult
 {
@@ -58,7 +58,7 @@ public sealed record DebateResult
    // ──────────────────────────────────────────────
 
    /// <summary>
-   /// Exports the full debate result to Markdown (result content only, without statistics or logs).
+   ///    Exports the full debate result to Markdown (result content only, without statistics or logs).
    /// </summary>
    public string ToMarkdown()
    {
@@ -152,7 +152,7 @@ public sealed record DebateResult
    }
 
    /// <summary>
-   /// Exports token statistics and compression logs to Markdown.
+   ///    Exports token statistics and compression logs to Markdown.
    /// </summary>
    public string ToStatisticsMarkdown()
    {
@@ -187,10 +187,7 @@ public sealed record DebateResult
             sb.AppendLine();
             sb.AppendLine("| Round | Original | Compressed | Responses | Strategy |");
             sb.AppendLine("|-------|----------|------------|-----------|----------|");
-            foreach (var rb in TokenStats.RoundBreakdown)
-            {
-               sb.AppendLine($"| {rb.RoundNumber}. {rb.RoundName} | {rb.OriginalTokens:N0} | {rb.CompressedTokens:N0} | {rb.ResponseTokens:N0} | {rb.CompressionStrategy} |");
-            }
+            foreach (var rb in TokenStats.RoundBreakdown) sb.AppendLine($"| {rb.RoundNumber}. {rb.RoundName} | {rb.OriginalTokens:N0} | {rb.CompressedTokens:N0} | {rb.ResponseTokens:N0} | {rb.CompressionStrategy} |");
             sb.AppendLine();
          }
       }
@@ -199,10 +196,7 @@ public sealed record DebateResult
       {
          sb.AppendLine("## 🗜️ Compression Log");
          sb.AppendLine();
-         foreach (var log in CompressionLogs)
-         {
-            sb.AppendLine($"- **Round {log.RoundNumber}** — {log.Description}: {log.OriginalTokens:N0} → {log.CompressedTokens:N0} tokens ({log.Ratio:P0}) via *{log.StrategyName}* ({log.Duration.TotalMilliseconds:F0}ms)");
-         }
+         foreach (var log in CompressionLogs) sb.AppendLine($"- **Round {log.RoundNumber}** — {log.Description}: {log.OriginalTokens:N0} → {log.CompressedTokens:N0} tokens ({log.Ratio:P0}) via *{log.StrategyName}* ({log.Duration.TotalMilliseconds:F0}ms)");
          sb.AppendLine();
       }
 
@@ -213,7 +207,7 @@ public sealed record DebateResult
    }
 
    /// <summary>
-   /// Exports execution logs to Markdown.
+   ///    Exports execution logs to Markdown.
    /// </summary>
    public string ToLogsMarkdown()
    {
@@ -245,15 +239,13 @@ public sealed record DebateResult
             };
             sb.AppendLine($"| {log.Timestamp:HH:mm:ss.fff} | {icon} {log.Level} | {log.Source} | {log.Message} |");
          }
+
          sb.AppendLine();
 
          // Summary by source
          sb.AppendLine("## Summary by Source");
          sb.AppendLine();
-         foreach (var group in ExecutionLogs.GroupBy(l => l.Source).OrderBy(g => g.Key))
-         {
-            sb.AppendLine($"- **{group.Key}**: {group.Count()} entries ({group.Count(l => l.Level == LogLevel.Error)} errors, {group.Count(l => l.Level == LogLevel.Warning)} warnings)");
-         }
+         foreach (var group in ExecutionLogs.GroupBy(l => l.Source).OrderBy(g => g.Key)) sb.AppendLine($"- **{group.Key}**: {group.Count()} entries ({group.Count(l => l.Level == LogLevel.Error)} errors, {group.Count(l => l.Level == LogLevel.Warning)} warnings)");
          sb.AppendLine();
       }
       else
@@ -273,7 +265,7 @@ public sealed record DebateResult
    // ──────────────────────────────────────────────
 
    /// <summary>
-   /// Saves the debate result (rounds and verdict) to a Markdown file.
+   ///    Saves the debate result (rounds and verdict) to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the result Markdown file.</param>
    public async Task SaveToMarkdownAsync(string filePath)
@@ -283,7 +275,7 @@ public sealed record DebateResult
    }
 
    /// <summary>
-   /// Saves token statistics and compression logs to a Markdown file.
+   ///    Saves token statistics and compression logs to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the statistics Markdown file.</param>
    public async Task SaveStatisticsAsync(string filePath)
@@ -293,7 +285,7 @@ public sealed record DebateResult
    }
 
    /// <summary>
-   /// Saves execution logs to a Markdown file.
+   ///    Saves execution logs to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the logs Markdown file.</param>
    public async Task SaveLogsAsync(string filePath)
@@ -303,14 +295,14 @@ public sealed record DebateResult
    }
 
    /// <summary>
-   /// Saves all three files (result.md, statistics.md, logs.md) to the specified directory.
+   ///    Saves all three files (result.md, statistics.md, logs.md) to the specified directory.
    /// </summary>
    /// <param name="outputDirectory">Directory where files will be created.</param>
    /// <param name="filePrefix">Optional prefix for file names (default: "debate").</param>
    /// <returns>Paths of the three created files.</returns>
    public async Task<(string ResultPath, string StatisticsPath, string LogsPath)> SaveAllAsync(
-       string outputDirectory,
-       string? filePrefix = null)
+      string outputDirectory,
+      string? filePrefix = null)
    {
       if (!Directory.Exists(outputDirectory))
          Directory.CreateDirectory(outputDirectory);
@@ -321,15 +313,15 @@ public sealed record DebateResult
       var logsPath = Path.Combine(outputDirectory, $"{prefix}_logs.md");
 
       await Task.WhenAll(
-          SaveToMarkdownAsync(resultPath),
-          SaveStatisticsAsync(statsPath),
-          SaveLogsAsync(logsPath));
+         SaveToMarkdownAsync(resultPath),
+         SaveStatisticsAsync(statsPath),
+         SaveLogsAsync(logsPath));
 
       return (resultPath, statsPath, logsPath);
    }
 
    /// <summary>
-   /// Saves the debate result to a Markdown file (backward-compatible).
+   ///    Saves the debate result to a Markdown file (backward-compatible).
    /// </summary>
    /// <param name="filePath">Path for the output file.</param>
    public async Task SaveToFileAsync(string filePath)
@@ -364,10 +356,7 @@ public sealed record DebateResult
                sb.AppendLine();
                sb.AppendLine("| Round | Original | Compressed | Responses | Strategy |");
                sb.AppendLine("|-------|----------|------------|-----------|----------|");
-               foreach (var rb in TokenStats.RoundBreakdown)
-               {
-                  sb.AppendLine($"| {rb.RoundNumber}. {rb.RoundName} | {rb.OriginalTokens:N0} | {rb.CompressedTokens:N0} | {rb.ResponseTokens:N0} | {rb.CompressionStrategy} |");
-               }
+               foreach (var rb in TokenStats.RoundBreakdown) sb.AppendLine($"| {rb.RoundNumber}. {rb.RoundName} | {rb.OriginalTokens:N0} | {rb.CompressedTokens:N0} | {rb.ResponseTokens:N0} | {rb.CompressionStrategy} |");
                sb.AppendLine();
             }
          }
@@ -376,10 +365,7 @@ public sealed record DebateResult
          {
             sb.AppendLine("### 🗜️ Compression Log");
             sb.AppendLine();
-            foreach (var log in CompressionLogs)
-            {
-               sb.AppendLine($"- **Round {log.RoundNumber}** — {log.Description}: {log.OriginalTokens:N0} → {log.CompressedTokens:N0} tokens ({log.Ratio:P0}) via *{log.StrategyName}* ({log.Duration.TotalMilliseconds:F0}ms)");
-            }
+            foreach (var log in CompressionLogs) sb.AppendLine($"- **Round {log.RoundNumber}** — {log.Description}: {log.OriginalTokens:N0} → {log.CompressedTokens:N0} tokens ({log.Ratio:P0}) via *{log.StrategyName}* ({log.Duration.TotalMilliseconds:F0}ms)");
             sb.AppendLine();
          }
       }

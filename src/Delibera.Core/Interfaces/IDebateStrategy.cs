@@ -1,8 +1,10 @@
+using Delibera.Core.Council;
+
 namespace Delibera.Core.Interfaces;
 
 /// <summary>
-/// Defines the debate flow — round order, interaction rules and verdict formation.
-/// Implement to create new debate scenarios.
+///    Defines the debate flow — round order, interaction rules and verdict formation.
+///    Implement to create new debate scenarios.
 /// </summary>
 public interface IDebateStrategy
 {
@@ -13,7 +15,7 @@ public interface IDebateStrategy
    string Description { get; }
 
    /// <summary>
-   /// Executes the full debate cycle according to this strategy.
+   ///    Executes the full debate cycle according to this strategy.
    /// </summary>
    /// <param name="members">Council participants.</param>
    /// <param name="context">Prompt context (system / user prompt, knowledge).</param>
@@ -25,12 +27,12 @@ public interface IDebateStrategy
    /// <param name="ct">Cancellation token.</param>
    /// <returns>Complete debate result.</returns>
    Task<DebateResult> ExecuteAsync(
-       IReadOnlyList<CouncilMember> members,
-       PromptContext context,
-       CouncilMember? chairman,
-       Council.KnowledgeKeeper? knowledgeKeeper,
-       int maxRounds = 4,
-       float temperature = 0.7f,
-       Action<DebateRound>? onRoundCompleted = null,
-       CancellationToken ct = default);
+      IReadOnlyList<CouncilMember> members,
+      PromptContext context,
+      CouncilMember? chairman,
+      KnowledgeKeeper? knowledgeKeeper,
+      int maxRounds = 4,
+      float temperature = 0.7f,
+      Action<DebateRound>? onRoundCompleted = null,
+      CancellationToken ct = default);
 }

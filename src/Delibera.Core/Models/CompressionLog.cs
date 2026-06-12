@@ -1,7 +1,7 @@
 namespace Delibera.Core.Models;
 
 /// <summary>
-/// Log entry recording a single context compression operation during a debate.
+///    Log entry recording a single context compression operation during a debate.
 /// </summary>
 public sealed record CompressionLog
 {
@@ -27,7 +27,9 @@ public sealed record CompressionLog
    public int TokensSaved => OriginalTokens - CompressedTokens;
 
    /// <summary>Compression ratio for this operation.</summary>
-   public double Ratio => OriginalTokens > 0 ? (double)CompressedTokens / OriginalTokens : 1.0;
+   public double Ratio => OriginalTokens > 0
+      ? (double)CompressedTokens / OriginalTokens
+      : 1.0;
 
    /// <summary>Duration of the compression operation.</summary>
    public TimeSpan Duration { get; init; }

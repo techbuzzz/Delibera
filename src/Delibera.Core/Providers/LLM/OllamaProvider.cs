@@ -1,25 +1,19 @@
 using OllamaSharp;
+using OllamaSharp.Models;
 using OllamaSharp.Models.Chat;
 
 namespace Delibera.Core.Providers.LLM;
 
 /// <summary>
-/// Ollama LLM provider backed by OllamaSharp.
-/// Works with both Ollama Cloud (API key) and a local Ollama server.
+///    Ollama LLM provider backed by OllamaSharp.
+///    Works with both Ollama Cloud (API key) and a local Ollama server.
 /// </summary>
 public sealed class OllamaProvider : ILLMProvider
 {
-   private readonly OllamaApiClient _client;
    private bool _disposed;
 
-   /// <inheritdoc/>
-   public string ProviderName => "Ollama";
-
-   /// <summary>Provides access to the underlying OllamaSharp client (used by <see cref="OllamaEmbeddingProvider"/>).</summary>
-   internal OllamaApiClient Client => _client;
-
    /// <summary>
-   /// Creates an Ollama provider.
+   ///    Creates an Ollama provider.
    /// </summary>
    /// <param name="endpoint">Ollama endpoint URL (e.g., "https://api.ollama.com" or "http://localhost:11434").</param>
    /// <param name="apiKey">API key for Ollama Cloud (empty for local server).</param>
@@ -33,27 +27,40 @@ public sealed class OllamaProvider : ILLMProvider
       {
          var httpClient = new HttpClient { BaseAddress = uri, Timeout = TimeSpan.FromMinutes(5) };
          httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-         _client = new OllamaApiClient(httpClient);
+         Client = new OllamaApiClient(httpClient);
       }
       else
       {
-         _client = new OllamaApiClient(uri);
+         Client = new OllamaApiClient(uri);
       }
    }
 
-   /// <inheritdoc/>
+   /// <summary>Provides access to the underlying OllamaSharp client (used by <see cref="OllamaEmbeddingProvider" />).</summary>
+   internal OllamaApiClient Client { get; }
+
+   /// <inheritdoc />
+   public string ProviderName => "Ollama";
+
+   /// <inheritdoc />
    public async Task<bool> IsAvailableAsync(CancellationToken ct = default)
    {
-      try { await _client.ListLocalModelsAsync(ct); return true; }
-      catch { return false; }
+      try
+      {
+         await Client.ListLocalModelsAsync(ct);
+         return true;
+      }
+      catch
+      {
+         return false;
+      }
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public async Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct = default)
    {
       try
       {
-         var models = await _client.ListLocalModelsAsync(ct);
+         var models = await Client.ListLocalModelsAsync(ct);
          return models.Select(m => m.Name).ToList().AsReadOnly();
       }
       catch (Exception ex)
@@ -62,13 +69,13 @@ public sealed class OllamaProvider : ILLMProvider
       }
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public async Task<string> ChatAsync(
-       string model,
-       string systemPrompt,
-       string userPrompt,
-       float temperature = 0.7f,
-       CancellationToken ct = default)
+      string model,
+      string systemPrompt,
+      string userPrompt,
+      float temperature = 0.7f,
+      CancellationToken ct = default)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(model);
       ArgumentException.ThrowIfNullOrWhiteSpace(userPrompt);
@@ -82,18 +89,16 @@ public sealed class OllamaProvider : ILLMProvider
       {
          Model = model,
          Messages = messages,
-         Options = new OllamaSharp.Models.RequestOptions { Temperature = temperature },
+         Options = new RequestOptions { Temperature = temperature },
          Stream = false
       };
 
       try
       {
          var sb = new StringBuilder();
-         await foreach (var chunk in _client.ChatAsync(request, ct))
-         {
+         await foreach (var chunk in Client.ChatAsync(request, ct))
             if (chunk?.Message?.Content is not null)
                sb.Append(chunk.Message.Content);
-         }
 
          var response = sb.ToString().Trim();
          if (string.IsNullOrWhiteSpace(response))
@@ -104,14 +109,17 @@ public sealed class OllamaProvider : ILLMProvider
       {
          throw new InvalidOperationException($"HTTP error talking to Ollama (model: {model}): {ex.Message}", ex);
       }
-      catch (TaskCanceledException) when (ct.IsCancellationRequested) { throw; }
+      catch (TaskCanceledException) when (ct.IsCancellationRequested)
+      {
+         throw;
+      }
       catch (TaskCanceledException ex)
       {
          throw new TimeoutException($"Request to Ollama model '{model}' timed out.", ex);
       }
    }
 
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public void Dispose()
    {
       if (_disposed) return;

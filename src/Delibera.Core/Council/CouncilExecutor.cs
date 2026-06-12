@@ -3,117 +3,111 @@ using Delibera.Core.Compression;
 namespace Delibera.Core.Council;
 
 /// <summary>
-/// Executes a configured council debate session.
-/// Created via <see cref="CouncilBuilder.Build"/>.
+///    Executes a configured council debate session.
+///    Created via <see cref="CouncilBuilder.Build" />.
 /// </summary>
 public sealed class CouncilExecutor : ICouncilExecutor
 {
-   private readonly IReadOnlyList<CouncilMember> _members;
-   private readonly CouncilMember? _chairman;
-   private readonly KnowledgeKeeper? _knowledgeKeeper;
-   private readonly IDebateStrategy _strategy;
-   private readonly PromptContext _context;
-   private readonly int _maxRounds;
-   private readonly float _temperature;
-   private readonly string? _outputPath;
-   private readonly IContextCompressor? _compressor;
    private readonly CompressionOptions? _compressionOptions;
-   private readonly CompressionCache? _compressionCache;
+   private readonly PromptContext _context;
    private readonly List<ExecutionLog> _executionLogs = [];
+   private readonly int _maxRounds;
+   private readonly string? _outputPath;
+   private readonly float _temperature;
 
    internal CouncilExecutor(
-       IReadOnlyList<CouncilMember> members,
-       CouncilMember? chairman,
-       KnowledgeKeeper? knowledgeKeeper,
-       IDebateStrategy strategy,
-       PromptContext context,
-       int maxRounds,
-       float temperature,
-       string? outputPath,
-       IContextCompressor? compressor = null,
-       CompressionOptions? compressionOptions = null,
-       CompressionCache? compressionCache = null)
+      IReadOnlyList<CouncilMember> members,
+      CouncilMember? chairman,
+      KnowledgeKeeper? knowledgeKeeper,
+      IDebateStrategy strategy,
+      PromptContext context,
+      int maxRounds,
+      float temperature,
+      string? outputPath,
+      IContextCompressor? compressor = null,
+      CompressionOptions? compressionOptions = null,
+      CompressionCache? compressionCache = null)
    {
-      _members = members;
-      _chairman = chairman;
-      _knowledgeKeeper = knowledgeKeeper;
-      _strategy = strategy;
+      Members = members;
+      Chairman = chairman;
+      KnowledgeKeeper = knowledgeKeeper;
+      Strategy = strategy;
       _context = context;
       _maxRounds = maxRounds;
       _temperature = temperature;
       _outputPath = outputPath;
-      _compressor = compressor;
+      Compressor = compressor;
       _compressionOptions = compressionOptions;
-      _compressionCache = compressionCache;
+      CompressionCache = compressionCache;
    }
 
+   /// <summary>Compression cache (may be <c>null</c>).</summary>
+   public CompressionCache? CompressionCache { get; }
+
    /// <summary>Council participants.</summary>
-   public IReadOnlyList<CouncilMember> Members => _members;
+   public IReadOnlyList<CouncilMember> Members { get; }
 
    /// <summary>Chairman (may be <c>null</c>).</summary>
-   public CouncilMember? Chairman => _chairman;
+   public CouncilMember? Chairman { get; }
 
    /// <summary>Knowledge Keeper (may be <c>null</c>).</summary>
-   public KnowledgeKeeper? KnowledgeKeeper => _knowledgeKeeper;
+   public KnowledgeKeeper? KnowledgeKeeper { get; }
 
    /// <summary>Debate strategy.</summary>
-   public IDebateStrategy Strategy => _strategy;
+   public IDebateStrategy Strategy { get; }
 
    /// <summary>Context compressor (may be <c>null</c> if compression is disabled).</summary>
-   public IContextCompressor? Compressor => _compressor;
+   public IContextCompressor? Compressor { get; }
 
-   /// <summary>Compression cache (may be <c>null</c>).</summary>
-   public CompressionCache? CompressionCache => _compressionCache;
-
-   /// <inheritdoc/>
+   /// <inheritdoc />
    public IReadOnlyList<ExecutionLog> ExecutionLogs => _executionLogs.AsReadOnly();
 
    /// <summary>Invoked after each round completes.</summary>
    public event Action<DebateRound>? OnRoundCompleted;
 
    /// <summary>
-   /// Runs the debate and returns the full result.
+   ///    Runs the debate and returns the full result.
    /// </summary>
    public async Task<DebateResult> ExecuteAsync(CancellationToken ct = default)
    {
       _executionLogs.Clear();
 
-      Log(ExecutionLog.Info("Council", $"Starting debate — strategy: {_strategy.StrategyName}, members: {_members.Count}, maxRounds: {_maxRounds}"));
+      Log(ExecutionLog.Info("Council", $"Starting debate — strategy: {Strategy.StrategyName}, members: {Members.Count}, maxRounds: {_maxRounds}"));
 
-      if (_chairman is not null)
-         Log(ExecutionLog.Info("Chairman", $"Chairman assigned: {_chairman.DisplayName}"));
+      if (Chairman is not null)
+         Log(ExecutionLog.Info("Chairman", $"Chairman assigned: {Chairman.DisplayName}"));
 
-      if (_knowledgeKeeper is not null)
-         Log(ExecutionLog.Info("KnowledgeKeeper", $"Knowledge Keeper ready: {_knowledgeKeeper.DisplayName} (collection: {_knowledgeKeeper.CollectionName})"));
+      if (KnowledgeKeeper is not null)
+         Log(ExecutionLog.Info("KnowledgeKeeper", $"Knowledge Keeper ready: {KnowledgeKeeper.DisplayName} (collection: {KnowledgeKeeper.CollectionName})"));
 
-      if (_compressor is not null)
-         Log(ExecutionLog.Info("Compression", $"Compression enabled: {_compressor.StrategyName}"));
+      if (Compressor is not null)
+         Log(ExecutionLog.Info("Compression", $"Compression enabled: {Compressor.StrategyName}"));
 
-      foreach (var m in _members)
+      foreach (var m in Members)
          Log(ExecutionLog.Trace("Council", $"Participant registered: {m.DisplayName} [{m.Role}]"));
 
-      var result = await _strategy.ExecuteAsync(
-          _members,
-          _context,
-          _chairman,
-          _knowledgeKeeper,
-          _maxRounds,
-          _temperature,
-          round =>
-          {
-             Log(ExecutionLog.Info("Council", $"Round {round.RoundNumber} completed: {round.RoundName} ({round.Duration.TotalSeconds:F1}s, {round.Responses.Count} responses)"));
+      var result = await Strategy.ExecuteAsync(
+         Members,
+         _context,
+         Chairman,
+         KnowledgeKeeper,
+         _maxRounds,
+         _temperature,
+         round =>
+         {
+            Log(ExecutionLog.Info("Council", $"Round {round.RoundNumber} completed: {round.RoundName} ({round.Duration.TotalSeconds:F1}s, {round.Responses.Count} responses)"));
 
-             // Log knowledge interactions
-             foreach (var ki in round.KnowledgeInteractions)
-                Log(ExecutionLog.Info("KnowledgeKeeper", $"Query: \"{Truncate(ki.Query, 100)}\" → {ki.SourceChunks} chunks"));
+            // Log knowledge interactions
+            foreach (var ki in round.KnowledgeInteractions)
+               Log(ExecutionLog.Info("KnowledgeKeeper", $"Query: \"{Truncate(ki.Query, 100)}\" → {ki.SourceChunks} chunks"));
 
-             // Log participant responses
-             foreach (var (member, response) in round.Responses)
-                Log(ExecutionLog.Trace("Participant", $"{member} responded ({response.Length} chars)"));
+            // Log participant responses
+            foreach (var (member, response) in round.Responses)
+               Log(ExecutionLog.Trace("Participant", $"{member} responded ({response.Length} chars)"));
 
-             OnRoundCompleted?.Invoke(round);
-          },
-          ct);
+            OnRoundCompleted?.Invoke(round);
+         },
+         ct);
 
       Log(ExecutionLog.Info("Council", $"Debate completed — {result.Rounds.Count} rounds, duration: {result.TotalDuration.TotalSeconds:F1}s"));
 
@@ -131,15 +125,15 @@ public sealed class CouncilExecutor : ICouncilExecutor
    }
 
    /// <summary>
-   /// Compresses text using the configured compressor, with optional caching.
-   /// Returns the original text unchanged if no compressor is configured.
+   ///    Compresses text using the configured compressor, with optional caching.
+   ///    Returns the original text unchanged if no compressor is configured.
    /// </summary>
    /// <param name="text">Text to compress.</param>
    /// <param name="ct">Cancellation token.</param>
    /// <returns>Compressed context (or pass-through if no compressor).</returns>
    public async Task<CompressedContext> CompressTextAsync(string text, CancellationToken ct = default)
    {
-      if (_compressor is null)
+      if (Compressor is null)
       {
          var tokens = TokenCounter.Default.EstimateTokens(text);
          return new CompressedContext
@@ -154,26 +148,26 @@ public sealed class CouncilExecutor : ICouncilExecutor
       }
 
       // Check cache
-      if (_compressionCache is not null &&
-          _compressionCache.TryGet(text, _compressor.StrategyName, out var cached) &&
+      if (CompressionCache is not null &&
+          CompressionCache.TryGet(text, Compressor.StrategyName, out var cached) &&
           cached is not null)
       {
-         Log(ExecutionLog.Trace("Compression", $"Cache hit for {_compressor.StrategyName} ({text.Length} chars)"));
+         Log(ExecutionLog.Trace("Compression", $"Cache hit for {Compressor.StrategyName} ({text.Length} chars)"));
          return cached;
       }
 
-      Log(ExecutionLog.Trace("Compression", $"Compressing {text.Length} chars with {_compressor.StrategyName}..."));
-      var result = await _compressor.CompressAsync(text, _compressionOptions, ct);
+      Log(ExecutionLog.Trace("Compression", $"Compressing {text.Length} chars with {Compressor.StrategyName}..."));
+      var result = await Compressor.CompressAsync(text, _compressionOptions, ct);
       Log(ExecutionLog.Info("Compression", $"Compressed: {result.OriginalTokens:N0} → {result.CompressedTokens:N0} tokens ({result.TokensSavedPercent:F1}% saved) via {result.StrategyUsed}"));
 
       // Store in cache
-      _compressionCache?.Set(text, _compressor.StrategyName, result);
+      CompressionCache?.Set(text, Compressor.StrategyName, result);
 
       return result;
    }
 
    /// <summary>
-   /// Returns a formatted summary of the council configuration.
+   ///    Returns a formatted summary of the council configuration.
    /// </summary>
    public string GetInfo()
    {
@@ -182,41 +176,42 @@ public sealed class CouncilExecutor : ICouncilExecutor
       sb.AppendLine("║       LLM COUNCIL v3.1 CONFIGURATION     ║");
       sb.AppendLine("╚══════════════════════════════════════════╝");
       sb.AppendLine();
-      sb.AppendLine($"  Strategy:    {_strategy.StrategyName}");
+      sb.AppendLine($"  Strategy:    {Strategy.StrategyName}");
       sb.AppendLine($"  Max Rounds:  {_maxRounds}");
       sb.AppendLine($"  Temperature: {_temperature:F2}");
       sb.AppendLine();
       sb.AppendLine("  ── Members ──");
-      foreach (var m in _members)
+      foreach (var m in Members)
          sb.AppendLine($"    • {m.DisplayName} [{m.Role}]");
 
-      if (_chairman is not null)
+      if (Chairman is not null)
       {
          sb.AppendLine();
          sb.AppendLine("  ── Chairman ──");
-         sb.AppendLine($"    ★ {_chairman.DisplayName}");
+         sb.AppendLine($"    ★ {Chairman.DisplayName}");
       }
 
-      if (_knowledgeKeeper is not null)
+      if (KnowledgeKeeper is not null)
       {
          sb.AppendLine();
          sb.AppendLine("  ── Knowledge Keeper ──");
-         sb.AppendLine($"    📚 {_knowledgeKeeper.DisplayName} (collection: {_knowledgeKeeper.CollectionName})");
+         sb.AppendLine($"    📚 {KnowledgeKeeper.DisplayName} (collection: {KnowledgeKeeper.CollectionName})");
       }
 
-      if (_compressor is not null)
+      if (Compressor is not null)
       {
          sb.AppendLine();
          sb.AppendLine("  ── Context Compression ──");
-         sb.AppendLine($"    🗜️  Strategy: {_compressor.StrategyName}");
+         sb.AppendLine($"    🗜️  Strategy: {Compressor.StrategyName}");
          if (_compressionOptions is not null)
          {
             sb.AppendLine($"    Target ratio: {_compressionOptions.TargetRatio:P0}");
             if (_compressionOptions.MaxOutputTokens.HasValue)
                sb.AppendLine($"    Max output tokens: {_compressionOptions.MaxOutputTokens}");
          }
-         if (_compressionCache is not null)
-            sb.AppendLine($"    Cache: enabled (max {_compressionCache.Count} entries)");
+
+         if (CompressionCache is not null)
+            sb.AppendLine($"    Cache: enabled (max {CompressionCache.Count} entries)");
       }
 
       sb.AppendLine();
@@ -231,8 +226,13 @@ public sealed class CouncilExecutor : ICouncilExecutor
       return sb.ToString();
    }
 
-   private void Log(ExecutionLog entry) => _executionLogs.Add(entry);
+   private void Log(ExecutionLog entry)
+   {
+      _executionLogs.Add(entry);
+   }
 
-   private static string Truncate(string text, int max) =>
-       string.IsNullOrEmpty(text) ? "(empty)" : text.Length <= max ? text : text[..max] + "…";
+   private static string Truncate(string text, int max)
+   {
+      return string.IsNullOrEmpty(text) ? "(empty)" : text.Length <= max ? text : text[..max] + "…";
+   }
 }

@@ -3,13 +3,18 @@ using Microsoft.Extensions.Configuration;
 namespace Delibera.Core.Interfaces;
 
 /// <summary>
-/// Abstraction for creating and managing <see cref="ILLMProvider"/> instances.
-/// Enables dependency injection and testability of provider creation.
+///    Abstraction for creating and managing <see cref="ILLMProvider" /> instances.
+///    Enables dependency injection and testability of provider creation.
 /// </summary>
 public interface ILLMProviderFactory : IDisposable
 {
    /// <summary>
-   /// Registers a builder function for a provider type (e.g., "Ollama", "OpenAI").
+   ///    Returns the set of registered provider type names.
+   /// </summary>
+   IReadOnlyCollection<string> RegisteredTypes { get; }
+
+   /// <summary>
+   ///    Registers a builder function for a provider type (e.g., "Ollama", "OpenAI").
    /// </summary>
    /// <param name="providerType">Provider type key (case-insensitive).</param>
    /// <param name="builder">Factory function that takes a configuration section and returns a provider.</param>
@@ -17,7 +22,7 @@ public interface ILLMProviderFactory : IDisposable
    ILLMProviderFactory RegisterBuilder(string providerType, Func<IConfigurationSection, ILLMProvider> builder);
 
    /// <summary>
-   /// Creates or returns a cached <see cref="ILLMProvider"/> from configuration.
+   ///    Creates or returns a cached <see cref="ILLMProvider" /> from configuration.
    /// </summary>
    /// <param name="name">Unique instance name used for caching.</param>
    /// <param name="providerType">Registered provider type key.</param>
@@ -26,18 +31,13 @@ public interface ILLMProviderFactory : IDisposable
    ILLMProvider Create(string name, string providerType, IConfigurationSection config);
 
    /// <summary>
-   /// Returns a previously created provider by name, or <c>null</c> if not found.
+   ///    Returns a previously created provider by name, or <c>null</c> if not found.
    /// </summary>
    /// <param name="name">Instance name.</param>
    ILLMProvider? GetProvider(string name);
 
    /// <summary>
-   /// Returns all currently cached provider instances.
+   ///    Returns all currently cached provider instances.
    /// </summary>
    IReadOnlyDictionary<string, ILLMProvider> GetAllProviders();
-
-   /// <summary>
-   /// Returns the set of registered provider type names.
-   /// </summary>
-   IReadOnlyCollection<string> RegisteredTypes { get; }
 }
