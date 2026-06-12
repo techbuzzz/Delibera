@@ -6,11 +6,12 @@
       <Nullable>enable</Nullable>
       <LangVersion>14.0</LangVersion>
       <GenerateDocumentationFile>true</GenerateDocumentationFile>
+      <Deterministic>true</Deterministic>
+      <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
       <NoWarn>$(NoWarn);CS9057</NoWarn>
 
       <!-- NuGet Package Metadata -->
       <PackageId>Delibera.Core</PackageId>
-      <TargetFramework>.net10.0</TargetFramework>
       <Version>10.1.0</Version>
       <Title>Delibera</Title>
       <Description>Delibera — Thoughtful AI Decisions. A framework for collective decision making through structured AI deliberation. Supports multi-model councils with RAG (Qdrant, PgVector), debate strategies, Knowledge Keeper, Chairman roles, dependency injection, and context compression.</Description>
@@ -19,17 +20,21 @@
       <Product>Delibera</Product>
       <Copyright>Copyright © 2026 Techbuzzz</Copyright>
       <PackageTags>llm;ai;debate;council;deliberation;rag;qdrant;pgvector;ollama;openai;vector-search;embeddings;dependency-injection</PackageTags>
-      <PackageIcon>./icon.png</PackageIcon>
-      <PackageReadmeFile>./README.md</PackageReadmeFile>
+      <PackageReadmeFile>README.md</PackageReadmeFile>
       <PackageLicenseExpression>MIT</PackageLicenseExpression>
       <RepositoryUrl>https://github.com/techbuzzz/Delibera</RepositoryUrl>
       <RepositoryType>git</RepositoryType>
       <PackageProjectUrl>https://github.com/techbuzzz/Delibera</PackageProjectUrl>
       <PackageReleaseNotes>v10.1.0 — Major version update with improved dependency injection, context compression, and RAG support.</PackageReleaseNotes>
+      <IncludeSymbols>true</IncludeSymbols>
+      <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+      <PublishRepositoryUrl>true</PublishRepositoryUrl>
+      <EmbedUntrackedSources>true</EmbedUntrackedSources>
    </PropertyGroup>
 
    <ItemGroup>
       <None Include="README.md" Pack="true" PackagePath="\" />
+      <None Include="icon.png" Pack="true" PackagePath="\" />
    </ItemGroup>
 
    <ItemGroup>
@@ -43,6 +48,7 @@
       <PackageReference Include="OllamaSharp" Version="5.4.25" />
       <PackageReference Include="Pgvector" Version="0.3.2" />
       <PackageReference Include="Qdrant.Client" Version="1.18.1" />
+      <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.102" PrivateAssets="all" />
    </ItemGroup>
 
 </Project>
