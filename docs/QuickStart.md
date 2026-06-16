@@ -6,6 +6,8 @@
 
 ### ⚖️ Thoughtful AI Decisions
 
+🇷🇺 [Русская версия (QuickStart-RU.md)](QuickStart-RU.md)
+
 </div>
 
 This guide walks you through your first AI deliberation with **Delibera** in a few minutes.
@@ -15,11 +17,15 @@ By the end you'll have a multi-model debate running locally and a Markdown trans
 
 ## 1. Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (≥ 10.0.301) — the project targets
+  `net10.0` and builds with `LangVersion=preview` to enable **C# 15** features. See
+  [NET10-Upgrade.md](NET10-Upgrade.md) for the full migration notes.
 - A running [Ollama](https://ollama.com) instance — either:
   - **Local:** [install Ollama](https://ollama.com/download) and run `ollama serve`, or
   - **Cloud:** sign up for [Ollama Cloud](https://ollama.com/cloud) and grab an API key
     (no install, no GPU required).
+- **Optional — for the Operator role:** [Node.js + npx](https://nodejs.org) to launch MCP servers
+  (e.g. `@playwright/mcp`, `@marp-team/marp-cli`). See [section 7](#7-using-the-operator-mcp-tools).
 
 ### Models to install
 
@@ -239,7 +245,165 @@ var result = await new CouncilBuilder()
 
 ---
 
-## 7. Saving Separate Output Files
+## 7. Using the Operator (MCP Tools)
+
+The **Operator** is a micro-agent that connects the council to external tools through
+[**MCP (Model Context Protocol)**](https://modelcontextprotocol.io) servers — web browsing,
+file system access, Marp presentation generation, and more. Participants delegate a task at any
+moment by writing a `[[OPERATOR: ...]]` marker, and the Operator runs the right tools and feeds the
+result back into the next round.
+
+### 7.1. Install the prerequisites
+
+The example servers below are launched via `npx`, so you need **Node.js + npx**:
+
+```bash
+# Verify Node.js / npx are available
+node --version
+npx --version
+
+# For the browser server, install the Playwright engines once:
+npx playwright install
+```
+
+You also need **Ollama** running with a cheap model for the Operator (e.g. `llama3.2`) — the
+Operator uses its own model, separate from the council members.
+
+### 7.2. Configure MCP servers
+
+Each MCP server is described by an `McpServerConfig`. Use `Stdio(...)` for local processes or
+`Http(...)` for remote servers:
+
+```csharp
+using Delibera.Core.Models;
+
+var servers = new[]
+{
+    // 🌐 Browser — navigation, page reading, clicks, screenshots
+    McpServerConfig.Stdio(
+        name: "browser",
+        command: "npx",
+        arguments: new[] { "-y", "@playwright/mcp@latest", "--headless" }),
+
+    // 🎯 Marp — generate HTML/PDF/PPTX presentations from Markdown
+    McpServerConfig.Stdio(
+        name: "marp",
+        command: "npx",
+        arguments: new[] { "-y", "@marp-team/marp-cli", "--server", "./out" }),
+
+    // …or a remote HTTP/SSE MCP server with auth headers:
+    // McpServerConfig.Http(
+    //     name: "remote",
+    //     endpoint: "https://my-mcp-host.example.com/mcp",
+    //     additionalHeaders: new Dictionary<string, string> { ["Authorization"] = "Bearer <token>" }),
+};
+```
+
+| Server       | Transport | Launch command                                  | What it provides                                     |
+| ------------ | --------- | ----------------------------------------------- | ---------------------------------------------------- |
+| 🌐 `browser` | stdio     | `npx -y @playwright/mcp@latest --headless`      | Site navigation, page reading, clicks, screenshots   |
+| 🎯 `marp`    | stdio     | `npx -y @marp-team/marp-cli --server <dir>`     | Generating presentations (HTML/PDF/PPTX) from Markdown |
+
+### 7.3. Direct usage (without a council)
+
+```csharp
+using Delibera.Core.Council;
+using Delibera.Core.Interfaces;
+using Delibera.Core.Models;
+using Delibera.Core.Providers.LLM;
+using Delibera.Core.Providers.Mcp;
+
+var ollama = new OllamaProvider("http://localhost:11434");
+
+await using var @operator = new Operator(
+    new CouncilMember("llama3.2", ollama, "Operator"),
+    new IMcpClient[] { new McpClientAdapter(servers[0]), new McpClientAdapter(servers[1]) });
+
+await @operator.InitializeAsync();   // connects to servers and discovers tools
+
+// 1) Browse a website and summarize it
+var browse = await @operator.ExecuteTaskAsync(
+    "Open https://modelcontextprotocol.io and briefly summarize what MCP is.");
+Console.WriteLine(browse.FinalAnswer);
+
+// 2) Generate a 3-slide presentation and save it as deck.html
+var deck = await @operator.ExecuteTaskAsync(
+    "Generate a 3-slide Marp presentation about .NET 10 and save it as deck.html.");
+Console.WriteLine(deck.FinalAnswer);
+```
+
+> `await using` releases the MCP clients through the Operator's `ValueTask DisposeAsync`.
+
+### 7.4. Operator inside a debate
+
+Add the Operator to a council with the convenience `WithOperator(...)` overload. Participants then
+delegate work via the `[[OPERATOR: ...]]` marker, and their results are injected into later rounds:
+
+```csharp
+var result = await new CouncilBuilder()
+    .AddMember("llama3.2:3b", ollama, "Researcher")
+    .AddMember("qwen2.5:7b",  ollama, "Reviewer")
+    .SetChairman(Chairman.CreateStandard("qwen2.5:7b", ollama))
+    // Operator uses its own cheaper model; reuseCompression shares the council's compressor
+    .WithOperator("llama3.2", ollama, servers, reuseCompression: true)
+    .WithStandardDebate()
+    .WithSystemPrompt(
+        "You may delegate research or presentation tasks to the Operator by writing " +
+        "[[OPERATOR: <task>]] in your message.")
+    .WithUserPrompt("Research the latest .NET 10 features and prepare a short summary deck.")
+    .WithMaxRounds(4)
+    .SaveResultTo("./deliberation.md")
+    .Build()
+    .ExecuteAsync();
+
+Console.WriteLine(result.FinalVerdict);
+```
+
+A participant message might look like:
+
+```
+I think we should highlight the runtime improvements.
+[[OPERATOR: open https://learn.microsoft.com/dotnet/core/whats-new/dotnet-10 and list the top 5 features]]
+```
+
+All Operator interactions are recorded per round and rendered in the final Markdown report under a
+**🛠️ Operator Interactions** block.
+
+### 7.5. Configure via `appsettings.json`
+
+```json
+{
+  "Delibera": {
+    "Operator": {
+      "Enabled": true,
+      "ModelName": "llama3.2",
+      "ReuseCompression": true,
+      "McpServers": [
+        {
+          "Name": "browser",
+          "Transport": "Stdio",
+          "Command": "npx",
+          "Arguments": [ "-y", "@playwright/mcp@latest", "--headless" ]
+        },
+        {
+          "Name": "marp",
+          "Transport": "Stdio",
+          "Command": "npx",
+          "Arguments": [ "-y", "@marp-team/marp-cli", "--server", "./out" ]
+        }
+      ]
+    }
+  }
+}
+```
+
+> ▶️ Run the full demo: `dotnet run --project src/Delibera.ConsoleApp -- --operator-mcp`.
+> See [`OperatorMcpToolsExample.cs`](../src/Delibera.ConsoleApp/Examples/OperatorMcpToolsExample.cs)
+> and [NET10-Upgrade.md](NET10-Upgrade.md) for details.
+
+---
+
+## 8. Saving Separate Output Files
 
 ```csharp
 var (resultPath, statsPath, logsPath) = await result.SaveAllAsync("./output");
@@ -253,7 +417,7 @@ back into another LLM.
 
 ---
 
-## 8. Explore the ConsoleApp
+## 9. Explore the ConsoleApp
 
 The repository ships with a runnable demo under
 [`src/Delibera.ConsoleApp/`](../src/Delibera.ConsoleApp/) that exercises every feature:
@@ -267,6 +431,8 @@ The repository ships with a runnable demo under
 | Multi-provider       | `dotnet run -- --multiprovider`  | Cloud + local models in one council            |
 | RAG (Qdrant)         | `dotnet run -- --rag`            | Document indexing + Knowledge Keeper           |
 | RAG (pgvector)       | `dotnet run -- --pgvector`       | PostgreSQL-backed vector search                |
+| Operator (basics)    | `dotnet run -- --operator`       | Operator role with MCP tools                   |
+| Operator + MCP       | `dotnet run -- --operator-mcp`   | 🆕 Browser + Marp MCP servers in a council     |
 
 ---
 

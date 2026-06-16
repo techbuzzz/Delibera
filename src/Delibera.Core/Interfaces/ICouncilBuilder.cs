@@ -43,6 +43,30 @@ public interface ICouncilBuilder
    /// <returns>This builder for fluent chaining.</returns>
    ICouncilBuilder WithKnowledgeKeeper(KnowledgeKeeper knowledgeKeeper);
 
+   /// <summary>Attaches a pre-configured Operator (MCP tool micro-agent).</summary>
+   /// <param name="operator">Configured Operator instance.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithOperator(Operator @operator);
+
+   /// <summary>
+   ///    Creates and attaches an Operator from a (cheaper) model and one or more MCP server
+   ///    configurations. The Operator connects to the servers, discovers their tools, and lets
+   ///    participants delegate natural-language tasks to it during the debate.
+   /// </summary>
+   /// <param name="modelName">Model name used by the Operator (typically a cheaper model).</param>
+   /// <param name="provider">LLM provider for the Operator model.</param>
+   /// <param name="servers">MCP server configurations the Operator connects to.</param>
+   /// <param name="reuseCompression">
+   ///    When <c>true</c> (default), the Operator reuses the council's configured compressor
+   ///    (if any) to compress large tool results before returning them.
+   /// </param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithOperator(
+      string modelName,
+      ILLMProvider provider,
+      IEnumerable<McpServerConfig> servers,
+      bool reuseCompression = true);
+
    /// <summary>Sets the debate strategy.</summary>
    /// <param name="strategy">Strategy implementation.</param>
    /// <returns>This builder for fluent chaining.</returns>

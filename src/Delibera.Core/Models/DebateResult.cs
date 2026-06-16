@@ -25,6 +25,9 @@ public sealed record DebateResult
    /// <summary>Knowledge Keeper name (if assigned).</summary>
    public string? KnowledgeKeeperName { get; init; }
 
+   /// <summary>Operator name (if assigned).</summary>
+   public string? OperatorName { get; init; }
+
    /// <summary>All debate rounds.</summary>
    public IReadOnlyList<DebateRound> Rounds { get; init; } = [];
 
@@ -97,6 +100,8 @@ public sealed record DebateResult
          sb.AppendLine($"**Chairman:** {ChairmanName}");
       if (!string.IsNullOrEmpty(KnowledgeKeeperName))
          sb.AppendLine($"**Knowledge Keeper:** {KnowledgeKeeperName}");
+      if (!string.IsNullOrEmpty(OperatorName))
+         sb.AppendLine($"**Operator:** {OperatorName}");
       sb.AppendLine();
 
       // Opening statement
@@ -125,6 +130,23 @@ public sealed record DebateResult
             {
                sb.AppendLine($"> **Q:** {ki.Query}");
                sb.AppendLine($"> **A:** {ki.Answer} *({ki.SourceChunks} chunks)*");
+               sb.AppendLine();
+            }
+         }
+
+         // Operator interactions
+         if (round.OperatorInteractions is { Count: > 0 })
+         {
+            sb.AppendLine("### 🛠️ Operator Interactions");
+            sb.AppendLine();
+            foreach (var oi in round.OperatorInteractions)
+            {
+               var tools = oi.ToolCalls.Count > 0
+                  ? string.Join(", ", oi.ToolCalls.Select(c => $"`{c.ServerName}.{c.ToolName}`"))
+                  : "none";
+               sb.AppendLine($"> **{oi.RequesterName}** requested: {oi.Task}");
+               sb.AppendLine($"> **Tools used:** {tools}");
+               sb.AppendLine($"> **Answer:** {oi.Answer}{(oi.Compressed ? " *(compressed)*" : "")}");
                sb.AppendLine();
             }
          }

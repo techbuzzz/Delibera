@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Numerics;
 
 namespace Delibera.Core.Compression;
 
@@ -151,11 +152,38 @@ public sealed class SemanticCompressor(IEmbeddingProvider embeddingProvider) : I
       return sentences;
    }
 
-   internal static double CosineSimilarity(float[] a, float[] b)
+   internal static double CosineSimilarity(ReadOnlySpan<float> a, ReadOnlySpan<float> b)
    {
-      if (a.Length != b.Length) return 0;
-      double dot = 0, magA = 0, magB = 0;
-      for (var i = 0; i < a.Length; i++)
+      if (a.Length != b.Length || a.IsEmpty) return 0;
+
+      float dot = 0, magA = 0, magB = 0;
+      var i = 0;
+
+      // SIMD fast-path: process Vector<float>.Count lanes at a time.
+      // On modern x64/ARM64 this is 8–16 floats per iteration.
+      if (Vector.IsHardwareAccelerated && a.Length >= Vector<float>.Count)
+      {
+         var dotAcc = Vector<float>.Zero;
+         var magAAcc = Vector<float>.Zero;
+         var magBAcc = Vector<float>.Zero;
+         var width = Vector<float>.Count;
+
+         for (; i <= a.Length - width; i += width)
+         {
+            var va = new Vector<float>(a.Slice(i, width));
+            var vb = new Vector<float>(b.Slice(i, width));
+            dotAcc += va * vb;
+            magAAcc += va * va;
+            magBAcc += vb * vb;
+         }
+
+         dot = Vector.Dot(dotAcc, Vector<float>.One);
+         magA = Vector.Dot(magAAcc, Vector<float>.One);
+         magB = Vector.Dot(magBAcc, Vector<float>.One);
+      }
+
+      // Scalar tail (and full loop when SIMD is unavailable).
+      for (; i < a.Length; i++)
       {
          dot += a[i] * b[i];
          magA += a[i] * a[i];

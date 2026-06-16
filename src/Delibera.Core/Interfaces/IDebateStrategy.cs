@@ -21,6 +21,7 @@ public interface IDebateStrategy
    /// <param name="context">Prompt context (system / user prompt, knowledge).</param>
    /// <param name="chairman">Chairman for moderation and verdict synthesis (may be <c>null</c>).</param>
    /// <param name="knowledgeKeeper">Knowledge Keeper for RAG queries (may be <c>null</c>).</param>
+   /// <param name="operator">Operator micro-agent for tool/MCP delegation (may be <c>null</c>).</param>
    /// <param name="maxRounds">Maximum number of rounds.</param>
    /// <param name="temperature">Generation temperature.</param>
    /// <param name="onRoundCompleted">Callback invoked after each round.</param>
@@ -31,6 +32,7 @@ public interface IDebateStrategy
       PromptContext context,
       CouncilMember? chairman,
       KnowledgeKeeper? knowledgeKeeper,
+      Operator? @operator,
       int maxRounds = 4,
       float temperature = 0.7f,
       Action<DebateRound>? onRoundCompleted = null,

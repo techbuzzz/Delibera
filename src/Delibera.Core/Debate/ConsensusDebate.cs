@@ -26,6 +26,7 @@ public sealed class ConsensusDebate : DebateScenario
       PromptContext context,
       CouncilMember? chairman,
       KnowledgeKeeper? knowledgeKeeper,
+      Operator? @operator,
       int maxRounds = 4,
       float temperature = 0.7f,
       Action<DebateRound>? onRoundCompleted = null,
@@ -33,8 +34,12 @@ public sealed class ConsensusDebate : DebateScenario
    {
       ArgumentNullException.ThrowIfNull(members);
       ArgumentNullException.ThrowIfNull(context);
-      var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper);
+      var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper, @operator);
       var fullUserPrompt = context.GetFullUserPrompt();
+
+      // Operator briefing appended to participant system prompts.
+      var operatorBriefing = BuildOperatorBriefing(@operator);
+      var baseSystemPrompt = context.SystemPrompt + operatorBriefing;
 
       if (chairman is not null)
          builder.SetOpeningStatement(await Chairman.OpenDebateAsync(chairman, context, members, StrategyName, maxRounds, temperature, ct));
@@ -54,8 +59,9 @@ public sealed class ConsensusDebate : DebateScenario
          : $"{fullUserPrompt}\n\n📚 Knowledge:\n{knowledgeCtx}";
 
       // Round 1: Initial Perspectives
-      var r1 = await CollectResponsesAsync(members, context.SystemPrompt, enrichedPrompt, temperature, ct);
-      var round1 = CreateRound(1, "Initial Perspectives", "Each model shares their perspective.", r1, knowledgeInteractions: r1Ki);
+      var r1 = await CollectResponsesAsync(members, baseSystemPrompt, enrichedPrompt, temperature, ct);
+      var r1Op = await ProcessOperatorRequestsAsync(@operator, r1, ct);
+      var round1 = CreateRound(1, "Initial Perspectives", "Each model shares their perspective.", r1, knowledgeInteractions: r1Ki, operatorInteractions: r1Op);
       builder.AddRound(round1);
       onRoundCompleted?.Invoke(round1);
       if (maxRounds < 2) return BuildAndComplete(builder);
@@ -70,8 +76,9 @@ public sealed class ConsensusDebate : DebateScenario
 
       // Round 2: Finding Common Ground
       var r1Text = FormatRoundResponses(round1);
+      var r1OpText = FormatOperatorInteractions(r1Op);
       var r2Sys = $"""
-                   {context.SystemPrompt}
+                   {baseSystemPrompt}
                    Work collaboratively. Find COMMON GROUND. Identify agreements, disagreements,
                    and propose bridges. Be open to changing your position.
                    """;
@@ -79,10 +86,12 @@ public sealed class ConsensusDebate : DebateScenario
                       Original question: {fullUserPrompt}
                       All perspectives:
                       {r1Text}
+                      {(string.IsNullOrWhiteSpace(r1OpText) ? "" : $"\n{r1OpText}")}
                       Identify: 1) Points of Agreement 2) Points of Disagreement 3) Bridge Proposals 4) Your Updated Position
                       """;
       var r2 = await CollectResponsesAsync(members, r2Sys, r2Prompt, temperature, ct);
-      var round2 = CreateRound(2, "Finding Common Ground", "Models identify agreements and disagreements.", r2, knowledgeInteractions: r2Ki);
+      var r2Op = await ProcessOperatorRequestsAsync(@operator, r2, ct);
+      var round2 = CreateRound(2, "Finding Common Ground", "Models identify agreements and disagreements.", r2, knowledgeInteractions: r2Ki, operatorInteractions: r2Op);
       builder.AddRound(round2);
       onRoundCompleted?.Invoke(round2);
       if (maxRounds < 3) return BuildAndComplete(builder);
@@ -97,8 +106,9 @@ public sealed class ConsensusDebate : DebateScenario
 
       // Round 3: Consensus Building
       var r2Text = FormatRoundResponses(round2);
+      var r2OpText = FormatOperatorInteractions(r2Op);
       var r3Sys = $"""
-                   {context.SystemPrompt}
+                   {baseSystemPrompt}
                    This is the CONSENSUS round. Formulate a single, unified answer.
                    If full consensus is impossible, state what can be agreed upon.
                    """;
@@ -106,10 +116,12 @@ public sealed class ConsensusDebate : DebateScenario
                       Original question: {fullUserPrompt}
                       Perspectives: {r1Text}
                       Common ground: {r2Text}
+                      {(string.IsNullOrWhiteSpace(r1OpText) && string.IsNullOrWhiteSpace(r2OpText) ? "" : $"\n{r1OpText}\n{r2OpText}")}
                       Formulate: 1) Agreed points 2) Proposed unified answer 3) Remaining disagreements 4) Confidence (Low/Medium/High)
                       """;
       var r3 = await CollectResponsesAsync(members, r3Sys, r3Prompt, temperature, ct);
-      var round3 = CreateRound(3, "Consensus Building", "Models attempt a unified answer.", r3, knowledgeInteractions: r3Ki);
+      var r3Op = await ProcessOperatorRequestsAsync(@operator, r3, ct);
+      var round3 = CreateRound(3, "Consensus Building", "Models attempt a unified answer.", r3, knowledgeInteractions: r3Ki, operatorInteractions: r3Op);
       builder.AddRound(round3);
       onRoundCompleted?.Invoke(round3);
 
