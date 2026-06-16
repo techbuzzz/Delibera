@@ -1,4 +1,5 @@
 using Delibera.Core.Providers.LLM;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 
 namespace Delibera.Core.Providers;
@@ -123,6 +124,35 @@ public sealed class ProviderFactory : CachingFactory<Func<IConfigurationSection,
 
       var provider = new OllamaProvider(endpoint, apiKey);
       CacheInstance(key, provider);
+      return provider;
+   }
+
+   /// <summary>
+   ///    Creates (or returns a cached) <see cref="ChatClientLLMProvider" /> from any Microsoft.Extensions.AI
+   ///    <see cref="IChatClient" />.
+   /// </summary>
+   /// <remarks>
+   ///    This is the entry point for plugging arbitrary Microsoft.Extensions.AI backends — OpenAI, Azure
+   ///    OpenAI, Anthropic, local OpenAI-compatible servers — into a Delibera council through the standard
+   ///    .NET AI abstractions.
+   /// </remarks>
+   /// <param name="name">Unique instance name used for caching.</param>
+   /// <param name="chatClient">The chat client to wrap.</param>
+   /// <param name="providerName">Optional friendly provider name (defaults to client metadata).</param>
+   /// <param name="ownsClient">Whether disposing the factory also disposes the client.</param>
+   public ChatClientLLMProvider CreateFromChatClient(
+      string name,
+      IChatClient chatClient,
+      string? providerName = null,
+      bool ownsClient = true)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(name);
+      ArgumentNullException.ThrowIfNull(chatClient);
+
+      if (GetInstance(name) is ChatClientLLMProvider existing) return existing;
+
+      var provider = new ChatClientLLMProvider(chatClient, providerName, ownsClient);
+      CacheInstance(name, provider);
       return provider;
    }
 

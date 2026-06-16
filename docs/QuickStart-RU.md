@@ -434,6 +434,7 @@ var (resultPath, statsPath, logsPath) = await result.SaveAllAsync("./output");
 | RAG (pgvector)       | `dotnet run -- --pgvector`       | Векторный поиск на базе PostgreSQL             |
 | Operator (основы)    | `dotnet run -- --operator`       | Роль Operator с MCP-инструментами              |
 | Operator + MCP       | `dotnet run -- --operator-mcp`   | 🆕 MCP-серверы browser + Marp в совете         |
+| Microsoft.Extensions.AI | `dotnet run -- --msai`        | 🆕 `IChatClient`/`IEmbeddingGenerator` + middleware |
 
 ---
 

@@ -48,6 +48,7 @@
 | **📋 Журналирование выполнения**  | Модель `ExecutionLog` с `LogLevel` — события Chairman, KK, сжатия и участников        |
 | **📁 Раздельный вывод файлов**    | Экспорт `result.md`, `statistics.md` и `logs.md` по отдельности                     |
 | **🔌 Interface-First**            | Чистые абстракции для провайдеров, фабрик, билдеров и исполнителей                   |
+| **🤝 Microsoft.Extensions.AI**     | Поддержка `IChatClient` / `IEmbeddingGenerator` — подключайте OpenAI, Azure OpenAI, Ollama и любые совместимые бэкенды, с middleware (function calling, логирование) |
 | **🧱 Современный C# 15 (preview)** | Построено на .NET 10 с `LangVersion=preview`, file-scoped namespaces, records, span/SIMD горячие пути |
 
 ---
@@ -642,7 +643,89 @@ docker exec -it <container> psql -U postgres -d council_vectors -c "CREATE EXTEN
 | `Npgsql`                 | ADO.NET-провайдер PostgreSQL     |
 | `Pgvector`               | Поддержка типов pgvector для Npgsql |
 | `ModelContextProtocol`   | MCP-клиент для роли Operator     |
+| `Microsoft.Extensions.AI`| Унифицированные AI-абстракции `IChatClient` / `IEmbeddingGenerator` и middleware |
 | `Microsoft.Extensions.*` | Конфигурация, DI и Options       |
+
+---
+
+## 🤝 Microsoft.Extensions.AI
+
+Delibera интегрирована с [**Microsoft.Extensions.AI**](https://learn.microsoft.com/dotnet/ai/microsoft-extensions-ai)
+(v10.7.0) — стандартным слоем абстракций .NET для генеративного AI. Это позволяет запускать совет
+с **любым** бэкендом, реализующим `IChatClient` (OpenAI, Azure OpenAI, Ollama, Anthropic,
+LM Studio / LocalAI / vLLM, …) и собирать **конвейер middleware** (вызов функций/инструментов,
+логирование, кэширование, телеметрия) — без написания отдельного провайдера под каждого поставщика.
+
+### Что вы получаете
+
+| Тип | Роль |
+| ---- | ---- |
+| `ChatClientLLMProvider` | Адаптирует любой `IChatClient` к `ILLMProvider` Delibera (со **стримингом** через `ChatStreamAsync`) |
+| `EmbeddingGeneratorProvider` | Адаптирует любой `IEmbeddingGenerator<string, Embedding<float>>` к `IEmbeddingProvider` для RAG |
+| `MicrosoftAIExtensions` | Мосты: `AsLLMProvider()`, `AsEmbeddingProvider()`, `AsChatClient()`, `WithMiddleware()` |
+| `ProviderFactory.CreateFromChatClient(...)` | Создаёт кэшируемый провайдер прямо из `IChatClient` |
+| `AddDeliberaChatClient(...)` / `AddDeliberaEmbeddingGenerator(...)` | Регистрация стандартных AI-сервисов в DI |
+
+### Использование любого `IChatClient` как провайдера Delibera
+
+```csharp
+using Delibera.Core.Extensions;
+using Microsoft.Extensions.AI;
+
+// 1) Подключите свой IChatClient. Для OpenAI:
+//    dotnet add package Microsoft.Extensions.AI.OpenAI
+IChatClient client = new OpenAI.Chat.ChatClient("gpt-4o-mini", apiKey).AsIChatClient();
+
+// 2) (опционально) middleware — вызов функций + логирование
+client = client.WithMiddleware(enableFunctionInvocation: true, loggerFactory);
+
+// 3) отдайте его Delibera
+ILLMProvider provider = client.AsLLMProvider("OpenAI");
+
+var executor = new CouncilBuilder()
+   .AddMember("gpt-4o-mini", provider, "Архитектор")
+   .AddMember("gpt-4o-mini", provider, "Скептик")
+   .SetChairman(Chairman.CreateStandard("gpt-4o-mini", provider))
+   .WithStandardDebate()
+   .WithUserPrompt("Модульный монолит или микросервисы для команды из 5 человек?")
+   .Build();
+```
+
+Ollama работает «из коробки», так как `OllamaApiClient` из OllamaSharp нативно реализует
+`IChatClient` и `IEmbeddingGenerator`:
+
+```csharp
+using var ollama = new OllamaProvider("http://localhost:11434");
+IChatClient chat = ollama.AsChatClient();                 // готов к middleware
+ILLMProvider provider = chat.AsLLMProvider("Ollama");
+IEmbeddingProvider embeddings = ollama.AsEmbeddingGenerator().AsEmbeddingProvider("nomic-embed-text");
+```
+
+### Стриминг
+
+```csharp
+await foreach (var chunk in provider.ChatStreamAsync("gpt-4o-mini", systemPrompt, userPrompt))
+   Console.Write(chunk);
+```
+
+`ChatStreamAsync` — это additive-метод по умолчанию в `ILLMProvider`: провайдеры на базе
+`IChatClient` стримят токен за токеном, а старые провайдеры прозрачно используют один вызов.
+
+### Внедрение зависимостей (DI)
+
+```csharp
+services.AddDeliberaChatClient(
+   sp => new OpenAI.Chat.ChatClient("gpt-4o-mini", apiKey)
+            .AsIChatClient()
+            .WithMiddleware(enableFunctionInvocation: true),
+   providerName: "OpenAI");
+
+services.AddDeliberaEmbeddingGenerator(
+   sp => /* ваш IEmbeddingGenerator */,
+   modelName: "text-embedding-3-small");
+```
+
+> Попробуйте: `dotnet run --project src/Delibera.ConsoleApp -- --msai`
 
 ---
 
@@ -654,10 +737,11 @@ Delibera.Core
 ├── Debate/               ← StandardDebate, CritiqueDebate, ConsensusDebate
 ├── Compression/          ← Semantic / Deduplication / Summarization / Hybrid
 ├── Providers/
-│   ├── LLM/              ← OllamaProvider, OllamaEmbeddingProvider
+│   ├── LLM/              ← OllamaProvider, ChatClientLLMProvider, EmbeddingGeneratorProvider
 │   ├── RAG/              ← QdrantRagProvider, PgVectorRagProvider
 │   └── Mcp/              ← McpClientAdapter (Operator ↔ MCP-серверы)
-├── DependencyInjection/  ← AddDelibera() + CouncilOptions
+├── Extensions/           ← MicrosoftAIExtensions (мосты IChatClient ↔ ILLMProvider)
+├── DependencyInjection/  ← AddDelibera() / AddDeliberaChatClient() + CouncilOptions
 ├── Knowledge/            ← MarkdownKnowledgeBase
 ├── Models/               ← CouncilMember, DebateResult, DebateRound, TokenStatistics, ...
 └── Interfaces/           ← ILLMProvider, IRagProvider, IContextCompressor, IOperator, IMcpClient, ...
