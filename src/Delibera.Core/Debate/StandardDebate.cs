@@ -30,6 +30,7 @@ public sealed class StandardDebate : DebateScenario
       PromptContext context,
       CouncilMember? chairman,
       KnowledgeKeeper? knowledgeKeeper,
+      Operator? @operator,
       int maxRounds = 4,
       float temperature = 0.7f,
       Action<DebateRound>? onRoundCompleted = null,
@@ -37,8 +38,12 @@ public sealed class StandardDebate : DebateScenario
    {
       ArgumentNullException.ThrowIfNull(members);
       ArgumentNullException.ThrowIfNull(context);
-      var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper);
+      var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper, @operator);
       var fullUserPrompt = context.GetFullUserPrompt();
+
+      // Operator briefing is appended to participant system prompts so they know what tools exist.
+      var operatorBriefing = BuildOperatorBriefing(@operator);
+      var baseSystemPrompt = context.SystemPrompt + operatorBriefing;
 
       // ── Chairman opening ──
       if (chairman is not null)
@@ -60,9 +65,11 @@ public sealed class StandardDebate : DebateScenario
          ? fullUserPrompt
          : $"{fullUserPrompt}\n\n📚 Knowledge Keeper context:\n{knowledgeContext}";
 
-      var r1Responses = await CollectResponsesAsync(members, context.SystemPrompt, r1Prompt, temperature, ct);
+      var r1Responses = await CollectResponsesAsync(members, baseSystemPrompt, r1Prompt, temperature, ct);
+      // Operator: fulfil any [[OPERATOR: ...]] requests raised in round 1.
+      var r1Op = await ProcessOperatorRequestsAsync(@operator, r1Responses, ct);
       var round1 = CreateRound(1, "Initial Responses",
-         "All models provide their initial answers.", r1Responses, r1Prompt, r1Ki);
+         "All models provide their initial answers.", r1Responses, r1Prompt, r1Ki, r1Op);
       builder.AddRound(round1);
       onRoundCompleted?.Invoke(round1);
 
@@ -79,8 +86,9 @@ public sealed class StandardDebate : DebateScenario
 
       // ══════════ Round 2: Critique ══════════
       var r1Text = FormatRoundResponses(round1);
+      var r1OpText = FormatOperatorInteractions(r1Op);
       var r2System = $"""
-                      {context.SystemPrompt}
+                      {baseSystemPrompt}
 
                       You are now in critique mode. Critically analyse the responses from other council members.
                       Identify strengths, weaknesses, factual errors, logical gaps, and areas for improvement.
@@ -91,13 +99,14 @@ public sealed class StandardDebate : DebateScenario
 
                       Initial responses:
                       {r1Text}
-
+                      {(string.IsNullOrWhiteSpace(r1OpText) ? "" : $"\n{r1OpText}")}
                       Provide your detailed critique of each response.
                       """;
 
       var r2Responses = await CollectResponsesAsync(members, r2System, r2Prompt, temperature, ct);
+      var r2Op = await ProcessOperatorRequestsAsync(@operator, r2Responses, ct);
       var round2 = CreateRound(2, "Critique",
-         "Models critically analyse each other's responses.", r2Responses, r2Prompt, r2Ki);
+         "Models critically analyse each other's responses.", r2Responses, r2Prompt, r2Ki, r2Op);
       builder.AddRound(round2);
       onRoundCompleted?.Invoke(round2);
 
@@ -114,8 +123,9 @@ public sealed class StandardDebate : DebateScenario
 
       // ══════════ Round 3: Improved Responses ══════════
       var r2Text = FormatRoundResponses(round2);
+      var r2OpText = FormatOperatorInteractions(r2Op);
       var r3System = $"""
-                      {context.SystemPrompt}
+                      {baseSystemPrompt}
 
                       You have received critiques. Provide your FINAL, IMPROVED answer.
                       Take the best ideas from all participants, address the critiques,
@@ -129,13 +139,14 @@ public sealed class StandardDebate : DebateScenario
 
                       Critiques:
                       {r2Text}
-
+                      {(string.IsNullOrWhiteSpace(r1OpText) && string.IsNullOrWhiteSpace(r2OpText) ? "" : $"\n{r1OpText}\n{r2OpText}")}
                       Provide your final, improved answer.
                       """;
 
       var r3Responses = await CollectResponsesAsync(members, r3System, r3Prompt, temperature, ct);
+      var r3Op = await ProcessOperatorRequestsAsync(@operator, r3Responses, ct);
       var round3 = CreateRound(3, "Final Improved Responses",
-         "Models provide refined answers incorporating critiques.", r3Responses, r3Prompt, r3Ki);
+         "Models provide refined answers incorporating critiques.", r3Responses, r3Prompt, r3Ki, r3Op);
       builder.AddRound(round3);
       onRoundCompleted?.Invoke(round3);
 

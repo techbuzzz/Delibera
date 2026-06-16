@@ -12,7 +12,8 @@ internal sealed class DebateResultBuilder(
    IReadOnlyList<CouncilMember> members,
    PromptContext context,
    CouncilMember? chairman,
-   KnowledgeKeeper? knowledgeKeeper)
+   KnowledgeKeeper? knowledgeKeeper,
+   Operator? @operator = null)
 {
    private readonly List<DebateRound> _rounds = [];
    private string? _openingStatement;
@@ -37,6 +38,7 @@ internal sealed class DebateResultBuilder(
       Participants = members.Select(m => m.DisplayName).ToList(),
       ChairmanName = chairman?.DisplayName,
       KnowledgeKeeperName = knowledgeKeeper?.DisplayName,
+      OperatorName = @operator?.DisplayName,
       OpeningStatement = _openingStatement,
       Rounds = _rounds,
       FinalVerdict = _finalVerdict,

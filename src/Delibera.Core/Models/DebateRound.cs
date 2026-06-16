@@ -55,6 +55,9 @@ public sealed record DebateRound
    /// <summary>Knowledge Keeper queries &amp; answers that occurred during this round.</summary>
    public IReadOnlyList<KnowledgeInteraction> KnowledgeInteractions { get; init; } = [];
 
+   /// <summary>Operator tasks delegated by participants that occurred during this round.</summary>
+   public IReadOnlyList<OperatorInteraction> OperatorInteractions { get; init; } = [];
+
    /// <summary>Timestamp when the round started.</summary>
    public DateTime StartedAt { get; init; } = DateTime.UtcNow;
 

@@ -1,5 +1,6 @@
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
+using Delibera.Core.Providers.Mcp;
 
 namespace Delibera.Core.Council;
 
@@ -15,6 +16,10 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private IContextCompressor? _compressor;
    private IKnowledgeBase? _knowledgeBase;
    private KnowledgeKeeper? _knowledgeKeeper;
+   private Operator? _operator;
+   private bool _operatorReuseCompression;
+   private CouncilMember? _operatorModel;
+   private IReadOnlyList<McpServerConfig>? _operatorServers;
    private int _maxRounds = 4;
    private string? _outputPath;
    private IDebateStrategy _strategy = new StandardDebate();
@@ -86,6 +91,37 @@ public sealed class CouncilBuilder : ICouncilBuilder
       ArgumentNullException.ThrowIfNull(llmProvider);
       var member = new CouncilMember(modelName, llmProvider, "Knowledge Keeper");
       _knowledgeKeeper = new KnowledgeKeeper(ragProvider, member, collectionName);
+      return this;
+   }
+
+   // ── Operator (MCP tool micro-agent) ──
+
+   /// <inheritdoc />
+   public ICouncilBuilder WithOperator(Operator @operator)
+   {
+      _operator = @operator ?? throw new ArgumentNullException(nameof(@operator));
+      return this;
+   }
+
+   /// <inheritdoc />
+   public ICouncilBuilder WithOperator(
+      string modelName,
+      ILLMProvider provider,
+      IEnumerable<McpServerConfig> servers,
+      bool reuseCompression = true)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+      ArgumentNullException.ThrowIfNull(provider);
+      ArgumentNullException.ThrowIfNull(servers);
+
+      var serverList = servers.ToList();
+      if (serverList.Count == 0)
+         throw new ArgumentException("At least one MCP server configuration is required.", nameof(servers));
+
+      // Operator construction is deferred to Build() so it can reuse the council's compressor.
+      _operatorModel = new CouncilMember(modelName, provider, "Operator");
+      _operatorServers = serverList;
+      _operatorReuseCompression = reuseCompression;
       return this;
    }
 
@@ -202,6 +238,19 @@ public sealed class CouncilBuilder : ICouncilBuilder
          KnowledgeFiles = _knowledgeBase?.GetLoadedSources().ToList() ?? []
       };
 
+      // Build the deferred Operator (if configured via the convenience overload) so it can reuse
+      // the council's compressor when requested.
+      var @operator = _operator;
+      if (@operator is null && _operatorModel is not null && _operatorServers is not null)
+      {
+         var clients = _operatorServers.Select(s => (IMcpClient)new McpClientAdapter(s)).ToList();
+         @operator = new Operator(
+            _operatorModel,
+            clients,
+            _operatorReuseCompression ? _compressor : null,
+            _operatorReuseCompression ? _compressionOptions : null);
+      }
+
       return new CouncilExecutor(
          _members.AsReadOnly(),
          _chairman,
@@ -213,7 +262,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
          _outputPath,
          _compressor,
          _compressionOptions,
-         _compressionCache);
+         _compressionCache,
+         @operator);
    }
 
    /// <inheritdoc />

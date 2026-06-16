@@ -4,7 +4,7 @@
 
 ### ⚖️ Thoughtful AI Decisions
 
-**Collective decision making through structured AI deliberation — with RAG, pgvector, Knowledge Keeper, Chairman, Context Compression, Dependency Injection & Execution Logging.**
+**Collective decision making through structured AI deliberation — with RAG, pgvector, Knowledge Keeper, Operator (MCP tools), Chairman, Context Compression, Dependency Injection & Execution Logging.**
 
 [![NuGet](https://img.shields.io/nuget/v/Delibera.Core.svg)](https://www.nuget.org/packages/Delibera.Core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](../LICENSE)
@@ -28,6 +28,7 @@ backed by **Qdrant** or **PostgreSQL/pgvector** (RAG), with **context compressio
 - 🏛️ **Multi-Model Councils** — orchestrate any number of LLM participants across structured debate rounds
 - ⚖️ **Chairman Synthesis** — a dedicated moderator opens, regulates and synthesises the final verdict
 - 📚 **Knowledge Keeper (RAG)** — per-round semantic retrieval with Qdrant or pgvector
+- 🛠️ **Operator (MCP Tools)** — a micro-agent that delegates tasks to MCP servers (web search, file system, Notion, PostgreSQL…) on demand during the debate
 - 🗜️ **Context Compression** — 4 strategies (Semantic, Deduplication, Summarization, Hybrid) save 30–70% of tokens
 - 💉 **Dependency Injection** — `AddDelibera()` extension for `IServiceCollection`
 - 📋 **Execution Logging** — `ExecutionLog` with `LogLevel` for Chairman, KK, Compression & participants
@@ -171,6 +172,95 @@ await keeper.IndexFileAsync("./docs/architecture.md");
 
 ---
 
+## 🛠️ Operator (MCP Tools)
+
+The **Operator** is a lightweight micro-agent that connects the council to the outside world through
+[**MCP (Model Context Protocol)**](https://modelcontextprotocol.io) servers. It exposes whatever tools
+those servers provide — web search, file system access, Notion, PostgreSQL, a debate-history store, etc. —
+to the debate participants.
+
+**How it works**
+
+1. The Operator connects to one or more MCP servers and discovers their tools on `InitializeAsync`.
+2. Participants are told (in their system prompt) what the Operator can do, and can delegate a task at
+   **any moment** during the debate by writing a marker in their message:
+
+   ```
+   [[OPERATOR: search the web for the latest EU AI Act timeline and save it to Notion]]
+   ```
+
+3. The Operator interprets the request with its **own (cheaper) LLM model**, picks and calls the right
+   MCP tools, interprets the results, and returns a concise answer that is injected into the next round.
+4. If the council uses **context compression**, the Operator can reuse the same strategy to compress
+   large tool outputs before they re-enter the debate.
+
+All Operator interactions are recorded per round and rendered in the final Markdown report under a
+**🛠️ Operator Interactions** block.
+
+### Quick usage
+
+```csharp
+using Delibera.Core.Council;
+using Delibera.Core.Models;
+using Delibera.Core.Providers.LLM;
+
+var ollama = new OllamaProvider("http://localhost:11434");
+
+// Define the MCP servers the Operator may use
+var servers = new[]
+{
+    // stdio transport — launches a local MCP server process
+    McpServerConfig.Stdio(
+        name: "everything",
+        command: "npx",
+        arguments: new[] { "-y", "@modelcontextprotocol/server-everything" }),
+
+    McpServerConfig.Stdio(
+        name: "filesystem",
+        command: "npx",
+        arguments: new[] { "-y", "@modelcontextprotocol/server-filesystem", "/data" }),
+
+    // …or an HTTP/SSE transport for a remote MCP server
+    // McpServerConfig.Http(
+    //     name: "remote",
+    //     endpoint: "https://my-mcp-host.example.com/mcp",
+    //     additionalHeaders: new Dictionary<string, string> { ["Authorization"] = "Bearer <token>" }),
+};
+
+var council = new CouncilBuilder()
+    .AddMember("gpt-oss:20b",  ollama, "Optimist")
+    .AddMember("llama3.1:8b",  ollama, "Skeptic")
+    .WithChairman("gpt-oss:20b", ollama)
+    // Operator uses its own cheaper model; reuseCompression shares the council's compressor
+    .WithOperator("llama3.2:3b", ollama, servers, reuseCompression: true)
+    .WithTopic("Should we migrate the data pipeline to Kafka?")
+    .Build();
+
+var result = await council.ExecuteAsync();
+```
+
+Prefer to build the `Operator` yourself? Pass a pre-built instance:
+
+```csharp
+var @operator = new Operator(
+    new CouncilMember("llama3.2:3b", ollama, "Operator"),
+    new IMcpClient[] { new McpClientAdapter(servers[0]), new McpClientAdapter(servers[1]) },
+    compressor: null,            // optional IContextCompressor
+    compressionOptions: null);   // optional CompressionOptions
+
+var council = new CouncilBuilder()
+    /* …members… */
+    .WithOperator(@operator)
+    .Build();
+```
+
+### Dependency Injection
+
+Configure the Operator declaratively in `appsettings.json` under `Delibera:Operator` (see the
+configuration section below), then build the council from `CouncilOptions` as usual.
+
+---
+
 ## 🗣️ Debate Strategies
 
 | Strategy              | Flow                                                    | Use Case                |
@@ -214,6 +304,25 @@ var (resultPath, statsPath, logsPath) = await result.SaveAllAsync("./output");
     },
     "Compression": { "Enabled": true, "Strategy": "Hybrid", "TargetRatio": 0.5 },
     "Rag":         { "Enabled": false, "ProviderType": "Qdrant", "Host": "localhost", "Port": 6334 },
+    "Operator": {
+      "Enabled": true,
+      "ModelName": "llama3.2:3b",
+      "ReuseCompression": true,
+      "McpServers": [
+        {
+          "Name": "filesystem",
+          "Transport": "Stdio",
+          "Command": "npx",
+          "Arguments": [ "-y", "@modelcontextprotocol/server-filesystem", "/data" ]
+        },
+        {
+          "Name": "remote",
+          "Transport": "Http",
+          "Endpoint": "https://my-mcp-host.example.com/mcp",
+          "AdditionalHeaders": { "Authorization": "Bearer <token>" }
+        }
+      ]
+    },
     "Output":      { "Directory": "./debate_results", "SeparateFiles": true }
   }
 }
@@ -231,6 +340,7 @@ in `Providers:ApiKey`.
 | `OllamaSharp`            | Ollama API client                |
 | `Qdrant.Client`          | Qdrant vector DB gRPC client     |
 | `Npgsql` / `Pgvector`    | PostgreSQL/pgvector support      |
+| `ModelContextProtocol`   | MCP client for the Operator role |
 | `Microsoft.Extensions.*` | Configuration, DI and Options    |
 
 ---

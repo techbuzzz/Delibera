@@ -17,6 +17,9 @@ public interface ICouncilExecutor
    /// <summary>Knowledge Keeper (may be <c>null</c>).</summary>
    KnowledgeKeeper? KnowledgeKeeper { get; }
 
+   /// <summary>Operator (may be <c>null</c>).</summary>
+   Operator? Operator { get; }
+
    /// <summary>Debate strategy.</summary>
    IDebateStrategy Strategy { get; }
 
