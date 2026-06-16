@@ -433,6 +433,7 @@ The repository ships with a runnable demo under
 | RAG (pgvector)       | `dotnet run -- --pgvector`       | PostgreSQL-backed vector search                |
 | Operator (basics)    | `dotnet run -- --operator`       | Operator role with MCP tools                   |
 | Operator + MCP       | `dotnet run -- --operator-mcp`   | 🆕 Browser + Marp MCP servers in a council     |
+| Microsoft.Extensions.AI | `dotnet run -- --msai`        | 🆕 `IChatClient`/`IEmbeddingGenerator` + middleware |
 
 ---
 

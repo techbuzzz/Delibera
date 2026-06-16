@@ -33,6 +33,7 @@ backed by **Qdrant** or **PostgreSQL/pgvector** (RAG), with **context compressio
 - 💉 **Dependency Injection** — `AddDelibera()` extension for `IServiceCollection`
 - 📋 **Execution Logging** — `ExecutionLog` with `LogLevel` for Chairman, KK, Compression & participants
 - 📁 **Separate File Output** — export `result.md`, `statistics.md`, `logs.md` independently
+- 🤝 **Microsoft.Extensions.AI** — first-class `IChatClient` / `IEmbeddingGenerator` interop with logging & function-invocation middleware
 - 🔌 **Interface-First** — clean abstractions for providers, factories, builders and executors
 - 🧱 **Modern C# 12** — file-scoped namespaces, records, init-only properties, global usings
 
@@ -341,6 +342,7 @@ in `Providers:ApiKey`.
 | `Qdrant.Client`          | Qdrant vector DB gRPC client     |
 | `Npgsql` / `Pgvector`    | PostgreSQL/pgvector support      |
 | `ModelContextProtocol`   | MCP client for the Operator role |
+| `Microsoft.Extensions.AI`| `IChatClient` / `IEmbeddingGenerator` abstractions & middleware |
 | `Microsoft.Extensions.*` | Configuration, DI and Options    |
 
 ---

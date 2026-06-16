@@ -1,7 +1,10 @@
 using Delibera.Core.Compression;
 using Delibera.Core.Council;
+using Delibera.Core.Interfaces;
 using Delibera.Core.Providers;
+using Delibera.Core.Providers.LLM;
 using Delibera.Core.Providers.RAG;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -70,6 +73,79 @@ public static class ServiceCollectionExtensions
       ArgumentNullException.ThrowIfNull(configureOptions);
       services.AddDelibera();
       services.Configure(configureOptions);
+
+      return services;
+   }
+
+   /// <summary>
+   ///    Registers a Microsoft.Extensions.AI <see cref="IChatClient" /> and exposes it as a Delibera
+   ///    <see cref="ILLMProvider" /> (<see cref="ChatClientLLMProvider" />).
+   /// </summary>
+   /// <remarks>
+   ///    Lets you wire any Microsoft.Extensions.AI backend (OpenAI, Azure OpenAI, Ollama, local
+   ///    OpenAI-compatible servers) into the container and consume it through Delibera's provider
+   ///    abstraction. The factory delegate may compose a middleware pipeline (function invocation,
+   ///    logging, caching) before returning the client.
+   /// </remarks>
+   /// <param name="services">The service collection.</param>
+   /// <param name="chatClientFactory">Factory that builds the chat client (optionally with middleware).</param>
+   /// <param name="providerName">Optional friendly provider name surfaced by <see cref="ILLMProvider.ProviderName" />.</param>
+   public static IServiceCollection AddDeliberaChatClient(
+      this IServiceCollection services,
+      Func<IServiceProvider, IChatClient> chatClientFactory,
+      string? providerName = null)
+   {
+      ArgumentNullException.ThrowIfNull(chatClientFactory);
+
+      services.AddDelibera();
+      services.TryAddSingleton(chatClientFactory);
+      // The DI container owns the IChatClient lifetime, so the provider must not dispose it.
+      services.TryAddSingleton<ILLMProvider>(sp =>
+         new ChatClientLLMProvider(sp.GetRequiredService<IChatClient>(), providerName, ownsClient: false));
+
+      return services;
+   }
+
+   /// <summary>
+   ///    Registers an already-constructed Microsoft.Extensions.AI <see cref="IChatClient" /> and exposes it
+   ///    as a Delibera <see cref="ILLMProvider" />.
+   /// </summary>
+   /// <param name="services">The service collection.</param>
+   /// <param name="chatClient">The chat client instance.</param>
+   /// <param name="providerName">Optional friendly provider name.</param>
+   public static IServiceCollection AddDeliberaChatClient(
+      this IServiceCollection services,
+      IChatClient chatClient,
+      string? providerName = null)
+   {
+      ArgumentNullException.ThrowIfNull(chatClient);
+      return services.AddDeliberaChatClient(_ => chatClient, providerName);
+   }
+
+   /// <summary>
+   ///    Registers a Microsoft.Extensions.AI <see cref="IEmbeddingGenerator{TInput,TEmbedding}" /> and exposes
+   ///    it as a Delibera <see cref="IEmbeddingProvider" /> (<see cref="EmbeddingGeneratorProvider" />).
+   /// </summary>
+   /// <param name="services">The service collection.</param>
+   /// <param name="generatorFactory">Factory that builds the embedding generator.</param>
+   /// <param name="modelName">Optional friendly model name.</param>
+   /// <param name="vectorSize">Optional known vector dimensionality.</param>
+   public static IServiceCollection AddDeliberaEmbeddingGenerator(
+      this IServiceCollection services,
+      Func<IServiceProvider, IEmbeddingGenerator<string, Embedding<float>>> generatorFactory,
+      string? modelName = null,
+      int? vectorSize = null)
+   {
+      ArgumentNullException.ThrowIfNull(generatorFactory);
+
+      services.AddDelibera();
+      services.TryAddSingleton(generatorFactory);
+      services.TryAddSingleton<IEmbeddingProvider>(sp =>
+         new EmbeddingGeneratorProvider(
+            sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
+            modelName,
+            vectorSize,
+            ownsGenerator: false));
 
       return services;
    }

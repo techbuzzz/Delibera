@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Delibera.ConsoleApp/Delibera.ConsoleApp.csproj" />
+    <Project Path="src/Delibera.Core/Delibera.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Delibera.Core.Tests/Delibera.Core.Tests.csproj" />
+  </Folder>
+</Solution>
