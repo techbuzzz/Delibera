@@ -44,6 +44,19 @@ public sealed class TokenCounter
       if (TokenizerFunc is not null)
          return TokenizerFunc(text);
 
+      return EstimateTokens(text.AsSpan());
+   }
+
+   /// <summary>
+   ///    Estimates the token count for the given text span without allocating.
+   ///    Note: a custom <see cref="TokenizerFunc" /> is ignored on this allocation-free path.
+   /// </summary>
+   /// <param name="text">Input text span.</param>
+   /// <returns>Estimated token count.</returns>
+   public int EstimateTokens(ReadOnlySpan<char> text)
+   {
+      if (text.IsEmpty) return 0;
+
       // Heuristic: count words + account for sub-word tokenization
       // Blend word-count and char-count estimates for better accuracy
       var wordCount = CountWords(text);
@@ -95,7 +108,7 @@ public sealed class TokenCounter
 
    // ──────────────────────────────────────────────
 
-   private static int CountWords(string text)
+   private static int CountWords(ReadOnlySpan<char> text)
    {
       var count = 0;
       var inWord = false;

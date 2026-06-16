@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 
@@ -110,9 +111,33 @@ public sealed class CompressionCache(int maxEntries = 256)
 
    private static string ComputeKey(string text, string strategyName)
    {
-      var input = $"{strategyName}:{text}";
-      var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
-      return Convert.ToHexString(hashBytes);
+      // Compose "{strategy}:{text}" into a pooled char buffer, then UTF-8 encode
+      // into a pooled byte buffer — avoids two intermediate heap allocations
+      // (the interpolated string and the GetBytes array) on this hot path.
+      var charCount = strategyName.Length + 1 + text.Length;
+      var chars = ArrayPool<char>.Shared.Rent(charCount);
+      byte[]? bytes = null;
+      try
+      {
+         strategyName.AsSpan().CopyTo(chars);
+         chars[strategyName.Length] = ':';
+         text.AsSpan().CopyTo(chars.AsSpan(strategyName.Length + 1));
+         var charSpan = chars.AsSpan(0, charCount);
+
+         var maxBytes = Encoding.UTF8.GetMaxByteCount(charCount);
+         bytes = ArrayPool<byte>.Shared.Rent(maxBytes);
+         var byteCount = Encoding.UTF8.GetBytes(charSpan, bytes);
+
+         Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
+         SHA256.HashData(bytes.AsSpan(0, byteCount), hash);
+         return Convert.ToHexString(hash);
+      }
+      finally
+      {
+         ArrayPool<char>.Shared.Return(chars);
+         if (bytes is not null)
+            ArrayPool<byte>.Shared.Return(bytes);
+      }
    }
 
    private sealed class CacheEntry
