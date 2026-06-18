@@ -105,7 +105,10 @@ public sealed class CompressionCache(int maxEntries = 256)
    /// <summary>
    ///    Returns a formatted summary of cache performance.
    /// </summary>
-   public string GetSummary() => $"Cache: {Count} entries, {HitCount} hits / {MissCount} misses ({HitRate:P1} hit rate)";
+   public string GetSummary()
+   {
+      return $"Cache: {Count} entries, {HitCount} hits / {MissCount} misses ({HitRate:P1} hit rate)";
+   }
 
    // ──────────────────────────────────────────────
 

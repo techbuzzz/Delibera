@@ -16,11 +16,11 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private IContextCompressor? _compressor;
    private IKnowledgeBase? _knowledgeBase;
    private KnowledgeKeeper? _knowledgeKeeper;
-   private Operator? _operator;
-   private bool _operatorReuseCompression;
-   private CouncilMember? _operatorModel;
-   private IReadOnlyList<McpServerConfig>? _operatorServers;
    private int _maxRounds = 4;
+   private Operator? _operator;
+   private CouncilMember? _operatorModel;
+   private bool _operatorReuseCompression;
+   private IReadOnlyList<McpServerConfig>? _operatorServers;
    private string? _outputPath;
    private IDebateStrategy _strategy = new StandardDebate();
    private string _systemPrompt = "You are a helpful AI assistant participating in a council debate.";
@@ -62,35 +62,12 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
-   /// <summary>Backward-compatible alias for <see cref="SetChairman(CouncilMember)" />.</summary>
-   [Obsolete("Use SetChairman instead.")]
-   public ICouncilBuilder SetModerator(CouncilMember moderator) => SetChairman(moderator);
-
-   /// <summary>Backward-compatible alias for <see cref="SetChairman(string, ILLMProvider, string?)" />.</summary>
-   [Obsolete("Use SetChairman instead.")]
-   public ICouncilBuilder SetModerator(string modelName, ILLMProvider provider, string? persona = null)
-      => SetChairman(modelName, provider, persona);
-
    // ── Knowledge Keeper ──
 
    /// <inheritdoc />
    public ICouncilBuilder WithKnowledgeKeeper(KnowledgeKeeper knowledgeKeeper)
    {
       _knowledgeKeeper = knowledgeKeeper ?? throw new ArgumentNullException(nameof(knowledgeKeeper));
-      return this;
-   }
-
-   /// <summary>Creates and attaches a Knowledge Keeper from a RAG provider, model and collection.</summary>
-   public ICouncilBuilder WithKnowledgeKeeper(
-      IRagProvider ragProvider,
-      string modelName,
-      ILLMProvider llmProvider,
-      string collectionName = "council_knowledge")
-   {
-      ArgumentNullException.ThrowIfNull(ragProvider);
-      ArgumentNullException.ThrowIfNull(llmProvider);
-      var member = new CouncilMember(modelName, llmProvider, "Knowledge Keeper");
-      _knowledgeKeeper = new KnowledgeKeeper(ragProvider, member, collectionName);
       return this;
    }
 
@@ -217,6 +194,40 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
+   /// <inheritdoc />
+   ICouncilExecutor ICouncilBuilder.Build()
+   {
+      return Build();
+   }
+
+   /// <summary>Backward-compatible alias for <see cref="SetChairman(CouncilMember)" />.</summary>
+   [Obsolete("Use SetChairman instead.")]
+   public ICouncilBuilder SetModerator(CouncilMember moderator)
+   {
+      return SetChairman(moderator);
+   }
+
+   /// <summary>Backward-compatible alias for <see cref="SetChairman(string, ILLMProvider, string?)" />.</summary>
+   [Obsolete("Use SetChairman instead.")]
+   public ICouncilBuilder SetModerator(string modelName, ILLMProvider provider, string? persona = null)
+   {
+      return SetChairman(modelName, provider, persona);
+   }
+
+   /// <summary>Creates and attaches a Knowledge Keeper from a RAG provider, model and collection.</summary>
+   public ICouncilBuilder WithKnowledgeKeeper(
+      IRagProvider ragProvider,
+      string modelName,
+      ILLMProvider llmProvider,
+      string collectionName = "council_knowledge")
+   {
+      ArgumentNullException.ThrowIfNull(ragProvider);
+      ArgumentNullException.ThrowIfNull(llmProvider);
+      var member = new CouncilMember(modelName, llmProvider, "Knowledge Keeper");
+      _knowledgeKeeper = new KnowledgeKeeper(ragProvider, member, collectionName);
+      return this;
+   }
+
    // ── Build ──
 
    /// <summary>
@@ -247,8 +258,12 @@ public sealed class CouncilBuilder : ICouncilBuilder
          @operator = new Operator(
             _operatorModel,
             clients,
-            _operatorReuseCompression ? _compressor : null,
-            _operatorReuseCompression ? _compressionOptions : null);
+            _operatorReuseCompression
+               ? _compressor
+               : null,
+            _operatorReuseCompression
+               ? _compressionOptions
+               : null);
       }
 
       return new CouncilExecutor(
@@ -265,7 +280,4 @@ public sealed class CouncilBuilder : ICouncilBuilder
          _compressionCache,
          @operator);
    }
-
-   /// <inheritdoc />
-   ICouncilExecutor ICouncilBuilder.Build() => Build();
 }

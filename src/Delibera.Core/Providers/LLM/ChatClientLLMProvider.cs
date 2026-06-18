@@ -1,4 +1,4 @@
-using Delibera.Core.Interfaces;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 
 namespace Delibera.Core.Providers.LLM;
@@ -23,7 +23,6 @@ namespace Delibera.Core.Providers.LLM;
 /// </remarks>
 public sealed class ChatClientLLMProvider : ILLMProvider
 {
-   private readonly IChatClient _chatClient;
    private readonly bool _ownsClient;
    private bool _disposed;
 
@@ -41,12 +40,14 @@ public sealed class ChatClientLLMProvider : ILLMProvider
    /// </param>
    public ChatClientLLMProvider(IChatClient chatClient, string? providerName = null, bool ownsClient = true)
    {
-      _chatClient = chatClient ?? throw new ArgumentNullException(nameof(chatClient));
+      ChatClient = chatClient ?? throw new ArgumentNullException(nameof(chatClient));
       _ownsClient = ownsClient;
 
       var metadata = chatClient.GetService(typeof(ChatClientMetadata)) as ChatClientMetadata;
-      ProviderName = providerName
-                     ?? (string.IsNullOrWhiteSpace(metadata?.ProviderName) ? "ChatClient" : metadata!.ProviderName!);
+      ProviderName = providerName ??
+                     (string.IsNullOrWhiteSpace(metadata?.ProviderName)
+                        ? "ChatClient"
+                        : metadata!.ProviderName!);
       DefaultModelId = metadata?.DefaultModelId;
    }
 
@@ -54,7 +55,7 @@ public sealed class ChatClientLLMProvider : ILLMProvider
    public string? DefaultModelId { get; }
 
    /// <summary>Exposes the wrapped <see cref="IChatClient" /> for advanced scenarios and middleware composition.</summary>
-   public IChatClient ChatClient => _chatClient;
+   public IChatClient ChatClient { get; }
 
    /// <inheritdoc />
    public string ProviderName { get; }
@@ -95,7 +96,7 @@ public sealed class ChatClientLLMProvider : ILLMProvider
 
       try
       {
-         var response = await _chatClient.GetResponseAsync(messages, options, ct);
+         var response = await ChatClient.GetResponseAsync(messages, options, ct);
          var text = response.Text?.Trim() ?? string.Empty;
          if (string.IsNullOrWhiteSpace(text))
             throw new InvalidOperationException($"Empty response from model '{model}' ({ProviderName}).");
@@ -118,19 +119,28 @@ public sealed class ChatClientLLMProvider : ILLMProvider
       string systemPrompt,
       string userPrompt,
       float temperature = 0.7f,
-      [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+      [EnumeratorCancellation] CancellationToken ct = default)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(userPrompt);
 
       var messages = BuildMessages(systemPrompt, userPrompt);
       var options = BuildOptions(model, temperature);
 
-      await foreach (var update in _chatClient.GetStreamingResponseAsync(messages, options, ct))
+      await foreach (var update in ChatClient.GetStreamingResponseAsync(messages, options, ct))
       {
          var text = update.Text;
          if (!string.IsNullOrEmpty(text))
             yield return text;
       }
+   }
+
+   /// <inheritdoc />
+   public void Dispose()
+   {
+      if (_disposed) return;
+      _disposed = true;
+      if (_ownsClient) ChatClient.Dispose();
+      GC.SuppressFinalize(this);
    }
 
    private static List<ChatMessage> BuildMessages(string systemPrompt, string userPrompt)
@@ -142,19 +152,15 @@ public sealed class ChatClientLLMProvider : ILLMProvider
       return messages;
    }
 
-   private ChatOptions BuildOptions(string model, float temperature) => new()
+   private ChatOptions BuildOptions(string model, float temperature)
    {
-      // Prefer the explicitly requested model; fall back to the client's default.
-      ModelId = string.IsNullOrWhiteSpace(model) ? DefaultModelId : model,
-      Temperature = temperature
-   };
-
-   /// <inheritdoc />
-   public void Dispose()
-   {
-      if (_disposed) return;
-      _disposed = true;
-      if (_ownsClient) _chatClient.Dispose();
-      GC.SuppressFinalize(this);
+      return new ChatOptions
+      {
+         // Prefer the explicitly requested model; fall back to the client's default.
+         ModelId = string.IsNullOrWhiteSpace(model)
+            ? DefaultModelId
+            : model,
+         Temperature = temperature
+      };
    }
 }

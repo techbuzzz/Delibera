@@ -1,4 +1,3 @@
-using Delibera.Core.Interfaces;
 using Microsoft.Extensions.AI;
 
 namespace Delibera.Core.Providers.LLM;
@@ -14,7 +13,6 @@ namespace Delibera.Core.Providers.LLM;
 /// </remarks>
 public sealed class EmbeddingGeneratorProvider : IEmbeddingProvider, IDisposable
 {
-   private readonly IEmbeddingGenerator<string, Embedding<float>> _generator;
    private readonly bool _ownsGenerator;
    private int? _cachedVectorSize;
    private bool _disposed;
@@ -40,17 +38,28 @@ public sealed class EmbeddingGeneratorProvider : IEmbeddingProvider, IDisposable
       int? vectorSize = null,
       bool ownsGenerator = true)
    {
-      _generator = generator ?? throw new ArgumentNullException(nameof(generator));
+      Generator = generator ?? throw new ArgumentNullException(nameof(generator));
       _ownsGenerator = ownsGenerator;
 
       var metadata = generator.GetService(typeof(EmbeddingGeneratorMetadata)) as EmbeddingGeneratorMetadata;
-      EmbeddingModelName = modelName
-                           ?? (string.IsNullOrWhiteSpace(metadata?.DefaultModelId) ? "embedding" : metadata!.DefaultModelId!);
+      EmbeddingModelName = modelName ??
+                           (string.IsNullOrWhiteSpace(metadata?.DefaultModelId)
+                              ? "embedding"
+                              : metadata!.DefaultModelId!);
       _cachedVectorSize = vectorSize ?? metadata?.DefaultModelDimensions;
    }
 
    /// <summary>Exposes the wrapped generator for advanced scenarios and middleware composition.</summary>
-   public IEmbeddingGenerator<string, Embedding<float>> Generator => _generator;
+   public IEmbeddingGenerator<string, Embedding<float>> Generator { get; }
+
+   /// <inheritdoc />
+   public void Dispose()
+   {
+      if (_disposed) return;
+      _disposed = true;
+      if (_ownsGenerator) Generator.Dispose();
+      GC.SuppressFinalize(this);
+   }
 
    /// <inheritdoc />
    public string EmbeddingModelName { get; }
@@ -65,9 +74,8 @@ public sealed class EmbeddingGeneratorProvider : IEmbeddingProvider, IDisposable
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
-      var result = await _generator.GenerateAsync([text], cancellationToken: ct);
-      var embedding = result.FirstOrDefault()
-                      ?? throw new InvalidOperationException($"No embedding returned by model '{EmbeddingModelName}'.");
+      var result = await Generator.GenerateAsync([text], cancellationToken: ct);
+      var embedding = result.FirstOrDefault() ?? throw new InvalidOperationException($"No embedding returned by model '{EmbeddingModelName}'.");
 
       var vector = embedding.Vector.ToArray();
       _cachedVectorSize ??= vector.Length;
@@ -80,7 +88,7 @@ public sealed class EmbeddingGeneratorProvider : IEmbeddingProvider, IDisposable
       ArgumentNullException.ThrowIfNull(texts);
       if (texts.Count == 0) return [];
 
-      var result = await _generator.GenerateAsync(texts, cancellationToken: ct);
+      var result = await Generator.GenerateAsync(texts, cancellationToken: ct);
 
       var vectors = new List<float[]>(texts.Count);
       foreach (var embedding in result)
@@ -91,14 +99,5 @@ public sealed class EmbeddingGeneratorProvider : IEmbeddingProvider, IDisposable
       }
 
       return vectors.AsReadOnly();
-   }
-
-   /// <inheritdoc />
-   public void Dispose()
-   {
-      if (_disposed) return;
-      _disposed = true;
-      if (_ownsGenerator) _generator.Dispose();
-      GC.SuppressFinalize(this);
    }
 }

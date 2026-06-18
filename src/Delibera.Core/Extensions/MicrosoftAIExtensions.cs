@@ -1,6 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Text;
-using Delibera.Core.Interfaces;
 using Delibera.Core.Providers.LLM;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -15,8 +13,14 @@ namespace Delibera.Core.Extensions;
 /// <remarks>
 ///    These extensions let the two worlds interoperate in either direction:
 ///    <list type="bullet">
-///       <item>Adopt any Microsoft.Extensions.AI client as a Delibera provider via <see cref="AsLLMProvider" /> / <see cref="AsEmbeddingProvider" />.</item>
-///       <item>Expose a Delibera provider as a Microsoft.Extensions.AI <see cref="IChatClient" /> via <see cref="AsChatClient" />, so it can participate in the standard middleware pipeline.</item>
+///       <item>
+///          Adopt any Microsoft.Extensions.AI client as a Delibera provider via <see cref="AsLLMProvider" /> /
+///          <see cref="AsEmbeddingProvider" />.
+///       </item>
+///       <item>
+///          Expose a Delibera provider as a Microsoft.Extensions.AI <see cref="IChatClient" /> via
+///          <see cref="AsChatClient" />, so it can participate in the standard middleware pipeline.
+///       </item>
 ///       <item>Compose middleware (function invocation, logging) with <see cref="WithMiddleware" />.</item>
 ///    </list>
 /// </remarks>
@@ -29,7 +33,9 @@ public static class MicrosoftAIExtensions
    /// <param name="providerName">Optional friendly provider name (defaults to client metadata).</param>
    /// <param name="ownsClient">Whether disposing the provider also disposes the client.</param>
    public static ILLMProvider AsLLMProvider(this IChatClient chatClient, string? providerName = null, bool ownsClient = true)
-      => new ChatClientLLMProvider(chatClient, providerName, ownsClient);
+   {
+      return new ChatClientLLMProvider(chatClient, providerName, ownsClient);
+   }
 
    /// <summary>
    ///    Adopts a Microsoft.Extensions.AI <see cref="IEmbeddingGenerator{TInput,TEmbedding}" /> as a
@@ -40,7 +46,9 @@ public static class MicrosoftAIExtensions
       string? modelName = null,
       int? vectorSize = null,
       bool ownsGenerator = true)
-      => new EmbeddingGeneratorProvider(generator, modelName, vectorSize, ownsGenerator);
+   {
+      return new EmbeddingGeneratorProvider(generator, modelName, vectorSize, ownsGenerator);
+   }
 
    /// <summary>
    ///    Exposes a Delibera <see cref="ILLMProvider" /> as a Microsoft.Extensions.AI <see cref="IChatClient" />.
@@ -121,10 +129,17 @@ public static class MicrosoftAIExtensions
          return null;
       }
 
-      public void Dispose() => provider.Dispose();
+      public void Dispose()
+      {
+         provider.Dispose();
+      }
 
-      private string ResolveModel(ChatOptions? options) =>
-         options?.ModelId is { Length: > 0 } m ? m : defaultModel ?? string.Empty;
+      private string ResolveModel(ChatOptions? options)
+      {
+         return options?.ModelId is { Length: > 0 } m
+            ? m
+            : defaultModel ?? string.Empty;
+      }
 
       private static (string System, string User) SplitMessages(IEnumerable<ChatMessage> messages)
       {
@@ -132,7 +147,9 @@ public static class MicrosoftAIExtensions
          var user = new StringBuilder();
          foreach (var message in messages)
          {
-            var target = message.Role == ChatRole.System ? system : user;
+            var target = message.Role == ChatRole.System
+               ? system
+               : user;
             if (target.Length > 0) target.Append('\n');
             target.Append(message.Text);
          }

@@ -1,6 +1,5 @@
 using Delibera.Core.Compression;
 using Delibera.Core.Council;
-using Delibera.Core.Interfaces;
 using Delibera.Core.Providers;
 using Delibera.Core.Providers.LLM;
 using Delibera.Core.Providers.RAG;
@@ -101,7 +100,7 @@ public static class ServiceCollectionExtensions
       services.TryAddSingleton(chatClientFactory);
       // The DI container owns the IChatClient lifetime, so the provider must not dispose it.
       services.TryAddSingleton<ILLMProvider>(sp =>
-         new ChatClientLLMProvider(sp.GetRequiredService<IChatClient>(), providerName, ownsClient: false));
+         new ChatClientLLMProvider(sp.GetRequiredService<IChatClient>(), providerName, false));
 
       return services;
    }
@@ -145,7 +144,7 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
             modelName,
             vectorSize,
-            ownsGenerator: false));
+            false));
 
       return services;
    }

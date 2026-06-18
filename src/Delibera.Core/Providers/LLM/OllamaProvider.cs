@@ -1,6 +1,8 @@
+using Microsoft.Extensions.AI;
 using OllamaSharp;
 using OllamaSharp.Models;
 using OllamaSharp.Models.Chat;
+using ChatRole = OllamaSharp.Models.Chat.ChatRole;
 
 namespace Delibera.Core.Providers.LLM;
 
@@ -40,21 +42,6 @@ public sealed class OllamaProvider : ILLMProvider
 
    /// <inheritdoc />
    public string ProviderName => "Ollama";
-
-   /// <summary>
-   ///    Exposes the underlying OllamaSharp client as a Microsoft.Extensions.AI <see cref="Microsoft.Extensions.AI.IChatClient" />.
-   /// </summary>
-   /// <remarks>
-   ///    <see cref="OllamaApiClient" /> natively implements <see cref="Microsoft.Extensions.AI.IChatClient" />, so this lets the
-   ///    Ollama provider plug into the standard Microsoft.Extensions.AI middleware pipeline
-   ///    (function invocation, caching, telemetry).
-   /// </remarks>
-   public Microsoft.Extensions.AI.IChatClient AsChatClient() => Client;
-
-   /// <summary>
-   ///    Exposes the underlying OllamaSharp client as a Microsoft.Extensions.AI embedding generator.
-   /// </summary>
-   public Microsoft.Extensions.AI.IEmbeddingGenerator<string, Microsoft.Extensions.AI.Embedding<float>> AsEmbeddingGenerator() => Client;
 
    /// <inheritdoc />
    public async Task<bool> IsAvailableAsync(CancellationToken ct = default)
@@ -140,5 +127,28 @@ public sealed class OllamaProvider : ILLMProvider
       if (_disposed) return;
       _disposed = true;
       GC.SuppressFinalize(this);
+   }
+
+   /// <summary>
+   ///    Exposes the underlying OllamaSharp client as a Microsoft.Extensions.AI
+   ///    <see cref="Microsoft.Extensions.AI.IChatClient" />.
+   /// </summary>
+   /// <remarks>
+   ///    <see cref="OllamaApiClient" /> natively implements <see cref="Microsoft.Extensions.AI.IChatClient" />, so this lets
+   ///    the
+   ///    Ollama provider plug into the standard Microsoft.Extensions.AI middleware pipeline
+   ///    (function invocation, caching, telemetry).
+   /// </remarks>
+   public IChatClient AsChatClient()
+   {
+      return Client;
+   }
+
+   /// <summary>
+   ///    Exposes the underlying OllamaSharp client as a Microsoft.Extensions.AI embedding generator.
+   /// </summary>
+   public IEmbeddingGenerator<string, Embedding<float>> AsEmbeddingGenerator()
+   {
+      return Client;
    }
 }

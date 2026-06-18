@@ -112,13 +112,15 @@ public sealed class McpClientAdapter : IMcpClient
       }
    }
 
-   private static IClientTransport CreateTransport(McpServerConfig config) =>
-      config.TransportType switch
+   private static IClientTransport CreateTransport(McpServerConfig config)
+   {
+      return config.TransportType switch
       {
          McpTransportType.Stdio => CreateStdioTransport(config),
          McpTransportType.Http => CreateHttpTransport(config),
          _ => throw new NotSupportedException($"Unsupported MCP transport: {config.TransportType}")
       };
+   }
 
    private static StdioClientTransport CreateStdioTransport(McpServerConfig config)
    {

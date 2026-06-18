@@ -127,8 +127,10 @@ public sealed class OperatorConfig
    public List<McpServerOptions> McpServers { get; set; } = [];
 
    /// <summary>Materialises the configured MCP servers into <see cref="Models.McpServerConfig" /> instances.</summary>
-   public IReadOnlyList<Models.McpServerConfig> ToServerConfigs() =>
-      McpServers.Select(s => s.ToConfig()).ToList();
+   public IReadOnlyList<McpServerConfig> ToServerConfigs()
+   {
+      return McpServers.Select(s => s.ToConfig()).ToList();
+   }
 }
 
 /// <summary>
@@ -165,18 +167,20 @@ public sealed class McpServerOptions
    public Dictionary<string, string> AdditionalHeaders { get; set; } = [];
 
    /// <summary>Converts these options into a <see cref="Models.McpServerConfig" />.</summary>
-   public Models.McpServerConfig ToConfig() =>
-      string.Equals(Transport, "Http", StringComparison.OrdinalIgnoreCase)
-         ? Models.McpServerConfig.Http(
+   public McpServerConfig ToConfig()
+   {
+      return string.Equals(Transport, "Http", StringComparison.OrdinalIgnoreCase)
+         ? McpServerConfig.Http(
             Name,
             new Uri(Endpoint ?? throw new InvalidOperationException($"MCP server '{Name}' uses Http transport but has no Endpoint.")),
             AdditionalHeaders)
-         : Models.McpServerConfig.Stdio(
+         : McpServerConfig.Stdio(
             Name,
             Command ?? throw new InvalidOperationException($"MCP server '{Name}' uses Stdio transport but has no Command."),
             Arguments,
             EnvironmentVariables,
             WorkingDirectory);
+   }
 }
 
 /// <summary>

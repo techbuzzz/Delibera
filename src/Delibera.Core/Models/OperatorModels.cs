@@ -69,8 +69,9 @@ public sealed record McpServerConfig
       string command,
       IReadOnlyList<string>? arguments = null,
       IReadOnlyDictionary<string, string>? environmentVariables = null,
-      string? workingDirectory = null) =>
-      new()
+      string? workingDirectory = null)
+   {
+      return new McpServerConfig
       {
          Name = name,
          TransportType = McpTransportType.Stdio,
@@ -79,19 +80,22 @@ public sealed record McpServerConfig
          EnvironmentVariables = environmentVariables ?? new Dictionary<string, string>(),
          WorkingDirectory = workingDirectory
       };
+   }
 
    /// <summary>Creates an HTTP/SSE MCP server configuration.</summary>
    public static McpServerConfig Http(
       string name,
       Uri endpoint,
-      IReadOnlyDictionary<string, string>? additionalHeaders = null) =>
-      new()
+      IReadOnlyDictionary<string, string>? additionalHeaders = null)
+   {
+      return new McpServerConfig
       {
          Name = name,
          TransportType = McpTransportType.Http,
          Endpoint = endpoint,
          AdditionalHeaders = additionalHeaders ?? new Dictionary<string, string>()
       };
+   }
 }
 
 /// <summary>
@@ -171,6 +175,8 @@ public sealed record OperatorResult(
    bool Compressed)
 {
    /// <summary>Converts this result into a loggable <see cref="OperatorInteraction" />.</summary>
-   public OperatorInteraction ToInteraction() =>
-      new(RequesterName, Task, Answer, ToolCalls, Compressed, DateTime.UtcNow);
+   public OperatorInteraction ToInteraction()
+   {
+      return new OperatorInteraction(RequesterName, Task, Answer, ToolCalls, Compressed, DateTime.UtcNow);
+   }
 }

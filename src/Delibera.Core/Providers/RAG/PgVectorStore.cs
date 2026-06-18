@@ -110,8 +110,12 @@ public sealed class PgVectorStore : IVectorStore
 
       foreach (var p in points)
       {
-         var id = Guid.TryParse(p.Id, out var guid) ? guid : Guid.NewGuid();
-         var metadataJson = p.Metadata is { Count: > 0 } ? JsonSerializer.Serialize(p.Metadata) : null;
+         var id = Guid.TryParse(p.Id, out var guid)
+            ? guid
+            : Guid.NewGuid();
+         var metadataJson = p.Metadata is { Count: > 0 }
+            ? JsonSerializer.Serialize(p.Metadata)
+            : null;
 
          var cmd = new NpgsqlBatchCommand($"""
                                            INSERT INTO {tableName} (id, text, metadata, embedding)
@@ -164,7 +168,9 @@ public sealed class PgVectorStore : IVectorStore
       {
          var id = reader.GetGuid(0).ToString();
          var text = reader.GetString(1);
-         var metaJson = reader.IsDBNull(2) ? null : reader.GetString(2);
+         var metaJson = reader.IsDBNull(2)
+            ? null
+            : reader.GetString(2);
          var score = (float)reader.GetDouble(3);
 
          Dictionary<string, string>? metadata = null;

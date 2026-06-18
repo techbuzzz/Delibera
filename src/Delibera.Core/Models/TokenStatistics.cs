@@ -52,13 +52,16 @@ public sealed record TokenStatistics
    /// <summary>
    ///    Formats the statistics as a human-readable summary.
    /// </summary>
-   public string ToSummary() => $"""
-                                  📊 Token Statistics:
-                                    Original tokens:    {TotalOriginalTokens:N0}
-                                    Compressed tokens:  {TotalCompressedTokens:N0}
-                                    Response tokens:    {TotalResponseTokens:N0}
-                                    Tokens saved:       {TokensSaved:N0} ({SavedPercent:F1}%)
-                                    Compression ratio:  {OverallCompressionRatio:P1}
-                                    Grand total:        {GrandTotal:N0}
-                                  """;
+   public string ToSummary()
+   {
+      return $"""
+              📊 Token Statistics:
+                Original tokens:    {TotalOriginalTokens:N0}
+                Compressed tokens:  {TotalCompressedTokens:N0}
+                Response tokens:    {TotalResponseTokens:N0}
+                Tokens saved:       {TokensSaved:N0} ({SavedPercent:F1}%)
+                Compression ratio:  {OverallCompressionRatio:P1}
+                Grand total:        {GrandTotal:N0}
+              """;
+   }
 }

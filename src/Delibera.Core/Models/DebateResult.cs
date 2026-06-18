@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace Delibera.Core.Models;
 
 /// <summary>
@@ -272,19 +270,28 @@ public sealed record DebateResult
    ///    Saves the debate result (rounds and verdict) to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the result Markdown file.</param>
-   public Task SaveToMarkdownAsync(string filePath) => WriteAllTextAsync(filePath, ToMarkdown());
+   public Task SaveToMarkdownAsync(string filePath)
+   {
+      return WriteAllTextAsync(filePath, ToMarkdown());
+   }
 
    /// <summary>
    ///    Saves token statistics and compression logs to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the statistics Markdown file.</param>
-   public Task SaveStatisticsAsync(string filePath) => WriteAllTextAsync(filePath, ToStatisticsMarkdown());
+   public Task SaveStatisticsAsync(string filePath)
+   {
+      return WriteAllTextAsync(filePath, ToStatisticsMarkdown());
+   }
 
    /// <summary>
    ///    Saves execution logs to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the logs Markdown file.</param>
-   public Task SaveLogsAsync(string filePath) => WriteAllTextAsync(filePath, ToLogsMarkdown());
+   public Task SaveLogsAsync(string filePath)
+   {
+      return WriteAllTextAsync(filePath, ToLogsMarkdown());
+   }
 
    /// <summary>
    ///    Saves all three files (result.md, statistics.md, logs.md) to the specified directory.

@@ -250,8 +250,13 @@ public sealed class CouncilExecutor : ICouncilExecutor
       return sb.ToString();
    }
 
-   private void Log(ExecutionLog entry) => _executionLogs.Add(entry);
+   private void Log(ExecutionLog entry)
+   {
+      _executionLogs.Add(entry);
+   }
 
-   private static string Truncate(string text, int max) =>
-      string.IsNullOrEmpty(text) ? "(empty)" : text.Length <= max ? text : text[..max] + "…";
+   private static string Truncate(string text, int max)
+   {
+      return string.IsNullOrEmpty(text) ? "(empty)" : text.Length <= max ? text : text[..max] + "…";
+   }
 }

@@ -82,7 +82,10 @@ public sealed class TokenCounter
    /// <summary>
    ///    Returns <c>true</c> if the text exceeds the specified token limit.
    /// </summary>
-   public bool ExceedsLimit(string text, int tokenLimit) => EstimateTokens(text) > tokenLimit;
+   public bool ExceedsLimit(string text, int tokenLimit)
+   {
+      return EstimateTokens(text) > tokenLimit;
+   }
 
    /// <summary>
    ///    Truncates text to approximately fit within the specified token limit.

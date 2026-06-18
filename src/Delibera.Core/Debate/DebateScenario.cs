@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Delibera.Core.Council;
 
 namespace Delibera.Core.Debate;
@@ -9,6 +10,20 @@ namespace Delibera.Core.Debate;
 /// </summary>
 public abstract class DebateScenario : IDebateStrategy
 {
+   // ──────────────────────────────────────────────
+   // Operator helpers
+   // ──────────────────────────────────────────────
+
+   /// <summary>
+   ///    Marker participants use to delegate a task to the Operator, e.g.:
+   ///    <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
+   /// </summary>
+   private static readonly Regex OperatorRequestRegex =
+      new(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]",
+         RegexOptions.Singleline |
+         RegexOptions.IgnoreCase |
+         RegexOptions.Compiled);
+
    /// <inheritdoc />
    public abstract string StrategyName { get; }
 
@@ -72,8 +87,10 @@ public abstract class DebateScenario : IDebateStrategy
    }
 
    /// <summary>Formats all rounds into a single text block.</summary>
-   protected static string FormatAllRounds(IReadOnlyList<DebateRound> rounds) =>
-      string.Join("\n\n", rounds.Select(FormatRoundResponses));
+   protected static string FormatAllRounds(IReadOnlyList<DebateRound> rounds)
+   {
+      return string.Join("\n\n", rounds.Select(FormatRoundResponses));
+   }
 
    /// <summary>Creates a completed debate round.</summary>
    protected static DebateRound CreateRound(
@@ -83,8 +100,9 @@ public abstract class DebateScenario : IDebateStrategy
       Dictionary<string, string> responses,
       string? prompt = null,
       IReadOnlyList<KnowledgeInteraction>? knowledgeInteractions = null,
-      IReadOnlyList<OperatorInteraction>? operatorInteractions = null) =>
-      new()
+      IReadOnlyList<OperatorInteraction>? operatorInteractions = null)
+   {
+      return new DebateRound
       {
          RoundNumber = number,
          RoundName = name,
@@ -95,6 +113,7 @@ public abstract class DebateScenario : IDebateStrategy
          OperatorInteractions = operatorInteractions ?? [],
          CompletedAt = DateTime.UtcNow
       };
+   }
 
    /// <summary>
    ///    Optionally queries the Knowledge Keeper for context relevant to the debate topic.
@@ -159,20 +178,6 @@ public abstract class DebateScenario : IDebateStrategy
       }
    }
 
-   // ──────────────────────────────────────────────
-   // Operator helpers
-   // ──────────────────────────────────────────────
-
-   /// <summary>
-   ///    Marker participants use to delegate a task to the Operator, e.g.:
-   ///    <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
-   /// </summary>
-   private static readonly System.Text.RegularExpressions.Regex OperatorRequestRegex =
-      new(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]",
-         System.Text.RegularExpressions.RegexOptions.Singleline |
-         System.Text.RegularExpressions.RegexOptions.IgnoreCase |
-         System.Text.RegularExpressions.RegexOptions.Compiled);
-
    /// <summary>
    ///    Builds an "Operator briefing" describing the Operator's tools and how to delegate
    ///    tasks to it. Appended to the participants' system prompt so they know what is available.
@@ -216,7 +221,7 @@ public abstract class DebateScenario : IDebateStrategy
       {
          if (string.IsNullOrWhiteSpace(response)) continue;
 
-         foreach (System.Text.RegularExpressions.Match match in OperatorRequestRegex.Matches(response))
+         foreach (Match match in OperatorRequestRegex.Matches(response))
          {
             var task = match.Groups["task"].Value.Trim();
             if (string.IsNullOrWhiteSpace(task)) continue;

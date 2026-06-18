@@ -31,11 +31,11 @@ public sealed record PromptContext(
          return UserPrompt;
 
       return $$"""
-              ### Context (Knowledge Base):
-              {{KnowledgeContent}}
+               ### Context (Knowledge Base):
+               {{KnowledgeContent}}
 
-              ### Question:
-              {{UserPrompt}}
-              """;
+               ### Question:
+               {{UserPrompt}}
+               """;
    }
 }

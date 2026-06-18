@@ -101,7 +101,9 @@ public sealed class Operator : IOperator
          sb.AppendLine($"\n• Server \"{byServer.Key}\":");
          foreach (var tool in byServer)
          {
-            var desc = string.IsNullOrWhiteSpace(tool.Description) ? "(no description)" : tool.Description.Trim();
+            var desc = string.IsNullOrWhiteSpace(tool.Description)
+               ? "(no description)"
+               : tool.Description.Trim();
             sb.AppendLine($"   - {tool.QualifiedName}: {desc}");
          }
       }
@@ -167,6 +169,20 @@ public sealed class Operator : IOperator
       return operatorResult;
    }
 
+   /// <inheritdoc />
+   public async ValueTask DisposeAsync()
+   {
+      foreach (var client in _mcpClients.Values)
+         try
+         {
+            await client.DisposeAsync();
+         }
+         catch
+         {
+            // ignore disposal errors
+         }
+   }
+
    // ──────────────────────────────────────────────
    // Micro-agent internals
    // ──────────────────────────────────────────────
@@ -227,8 +243,12 @@ public sealed class Operator : IOperator
          var calls = new List<OperatorToolCall>();
          foreach (var callEl in callsEl.EnumerateArray())
          {
-            var server = callEl.TryGetProperty("server", out var s) ? s.GetString() : null;
-            var tool = callEl.TryGetProperty("tool", out var t) ? t.GetString() : null;
+            var server = callEl.TryGetProperty("server", out var s)
+               ? s.GetString()
+               : null;
+            var tool = callEl.TryGetProperty("tool", out var t)
+               ? t.GetString()
+               : null;
             if (string.IsNullOrWhiteSpace(server) || string.IsNullOrWhiteSpace(tool))
                continue;
 
@@ -323,32 +343,25 @@ public sealed class Operator : IOperator
 
       var start = raw.IndexOf('{');
       var end = raw.LastIndexOf('}');
-      return start >= 0 && end > start ? raw[start..(end + 1)] : string.Empty;
+      return start >= 0 && end > start
+         ? raw[start..(end + 1)]
+         : string.Empty;
    }
 
-   private static object? JsonElementToObject(JsonElement el) => el.ValueKind switch
+   private static object? JsonElementToObject(JsonElement el)
    {
-      JsonValueKind.String => el.GetString(),
-      JsonValueKind.Number => el.TryGetInt64(out var l) ? l : el.GetDouble(),
-      JsonValueKind.True => true,
-      JsonValueKind.False => false,
-      JsonValueKind.Null => null,
-      JsonValueKind.Array => el.EnumerateArray().Select(JsonElementToObject).ToList(),
-      JsonValueKind.Object => el.EnumerateObject().ToDictionary(p => p.Name, p => JsonElementToObject(p.Value)),
-      _ => el.GetRawText()
-   };
-
-   /// <inheritdoc />
-   public async ValueTask DisposeAsync()
-   {
-      foreach (var client in _mcpClients.Values)
-         try
-         {
-            await client.DisposeAsync();
-         }
-         catch
-         {
-            // ignore disposal errors
-         }
+      return el.ValueKind switch
+      {
+         JsonValueKind.String => el.GetString(),
+         JsonValueKind.Number => el.TryGetInt64(out var l)
+            ? l
+            : el.GetDouble(),
+         JsonValueKind.True => true,
+         JsonValueKind.False => false,
+         JsonValueKind.Null => null,
+         JsonValueKind.Array => el.EnumerateArray().Select(JsonElementToObject).ToList(),
+         JsonValueKind.Object => el.EnumerateObject().ToDictionary(p => p.Name, p => JsonElementToObject(p.Value)),
+         _ => el.GetRawText()
+      };
    }
 }

@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Delibera.Core.Interfaces;
 
 /// <summary>
@@ -52,7 +54,7 @@ public interface ILLMProvider : IDisposable
       string systemPrompt,
       string userPrompt,
       float temperature = 0.7f,
-      [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+      [EnumeratorCancellation] CancellationToken ct = default)
    {
       yield return await ChatAsync(model, systemPrompt, userPrompt, temperature, ct);
    }

@@ -16,32 +16,47 @@ internal sealed class DebateResultBuilder(
    Operator? @operator = null)
 {
    private readonly List<DebateRound> _rounds = [];
-   private string? _openingStatement;
-   private string? _finalVerdict;
    private DateTime? _completedAt;
+   private string? _finalVerdict;
+   private string? _openingStatement;
 
    public string StrategyName => strategy.StrategyName;
    public IReadOnlyList<DebateRound> Rounds => _rounds;
 
-   public void SetOpeningStatement(string? statement) => _openingStatement = statement;
-
-   public void AddRound(DebateRound round) => _rounds.Add(round);
-
-   public void SetFinalVerdict(string? verdict) => _finalVerdict = verdict;
-
-   public void MarkCompleted() => _completedAt = DateTime.UtcNow;
-
-   public DebateResult Build() => new()
+   public void SetOpeningStatement(string? statement)
    {
-      StrategyName = strategy.StrategyName,
-      Context = context,
-      Participants = members.Select(m => m.DisplayName).ToList(),
-      ChairmanName = chairman?.DisplayName,
-      KnowledgeKeeperName = knowledgeKeeper?.DisplayName,
-      OperatorName = @operator?.DisplayName,
-      OpeningStatement = _openingStatement,
-      Rounds = _rounds,
-      FinalVerdict = _finalVerdict,
-      CompletedAt = _completedAt
-   };
+      _openingStatement = statement;
+   }
+
+   public void AddRound(DebateRound round)
+   {
+      _rounds.Add(round);
+   }
+
+   public void SetFinalVerdict(string? verdict)
+   {
+      _finalVerdict = verdict;
+   }
+
+   public void MarkCompleted()
+   {
+      _completedAt = DateTime.UtcNow;
+   }
+
+   public DebateResult Build()
+   {
+      return new DebateResult
+      {
+         StrategyName = strategy.StrategyName,
+         Context = context,
+         Participants = members.Select(m => m.DisplayName).ToList(),
+         ChairmanName = chairman?.DisplayName,
+         KnowledgeKeeperName = knowledgeKeeper?.DisplayName,
+         OperatorName = @operator?.DisplayName,
+         OpeningStatement = _openingStatement,
+         Rounds = _rounds,
+         FinalVerdict = _finalVerdict,
+         CompletedAt = _completedAt
+      };
+   }
 }

@@ -1,4 +1,5 @@
 using Delibera.Core.Council;
+using Delibera.Core.Debate;
 
 namespace Delibera.Core.Interfaces;
 
@@ -73,13 +74,22 @@ public interface ICouncilBuilder
    ICouncilBuilder WithStrategy(IDebateStrategy strategy);
 
    /// <summary>Uses the standard 4-round debate strategy.</summary>
-   ICouncilBuilder WithStandardDebate() => WithStrategy(new Debate.StandardDebate());
+   ICouncilBuilder WithStandardDebate()
+   {
+      return WithStrategy(new StandardDebate());
+   }
 
    /// <summary>Uses the adversarial critique debate strategy.</summary>
-   ICouncilBuilder WithCritiqueDebate() => WithStrategy(new Debate.CritiqueDebate());
+   ICouncilBuilder WithCritiqueDebate()
+   {
+      return WithStrategy(new CritiqueDebate());
+   }
 
    /// <summary>Uses the consensus-building debate strategy.</summary>
-   ICouncilBuilder WithConsensusDebate() => WithStrategy(new Debate.ConsensusDebate());
+   ICouncilBuilder WithConsensusDebate()
+   {
+      return WithStrategy(new ConsensusDebate());
+   }
 
    /// <summary>Attaches a legacy knowledge base for prompt injection.</summary>
    /// <param name="knowledgeBase">Knowledge base instance.</param>
