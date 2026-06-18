@@ -1,25 +1,27 @@
-<div align="center">
-
-# Delibera
+# [Delibera](https://www.nuget.org/packages/Delibera.Core)
 
 ### ⚖️ Thoughtful AI Decisions
 
 **Collective decision making through structured AI deliberation — with RAG, pgvector, Knowledge Keeper, Operator (MCP tools), Chairman, Context Compression, Dependency Injection & Execution Logging.**
 
 [![NuGet](https://img.shields.io/nuget/v/Delibera.Core.svg)](https://www.nuget.org/packages/Delibera.Core)
-[![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](../LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](https://github.com/techbuzzz/Delibera/blob/develop/LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-1F2937.svg)](https://dotnet.microsoft.com)
-
-</div>
+[![C# 15](https://img.shields.io/badge/C%23-15.0--preview-239120.svg)](https://learn.microsoft.com/dotnet/csharp/)
 
 ---
 
 ## What is Delibera?
 
 **Delibera** is a C# / .NET 10 framework that orchestrates **multi-model deliberations** between LLMs.
-Multiple models reason through a question across structured rounds, critique each other, and a
-**Chairman** synthesises a balanced final verdict — optionally enriched by a **Knowledge Keeper**
-backed by **Qdrant** or **PostgreSQL/pgvector** (RAG), with **context compression** to minimise tokens.
+Multiple AI models reason through a question across structured rounds, critique each other's answers,
+and a **Chairman** weighs the arguments to synthesise a balanced final verdict — enriched by a
+**Knowledge Keeper** backed by **Qdrant** or **PostgreSQL/pgvector** (RAG), with **intelligent context
+compression** to minimise token usage.
+
+The name comes from *deliberation* — the careful weighing of evidence and viewpoints before reaching
+a decision. Delibera brings that discipline to AI, helping teams reach **thoughtful, well-reasoned
+outcomes** rather than single-model guesses.
 
 ---
 
@@ -28,14 +30,15 @@ backed by **Qdrant** or **PostgreSQL/pgvector** (RAG), with **context compressio
 - 🏛️ **Multi-Model Councils** — orchestrate any number of LLM participants across structured debate rounds
 - ⚖️ **Chairman Synthesis** — a dedicated moderator opens, regulates and synthesises the final verdict
 - 📚 **Knowledge Keeper (RAG)** — per-round semantic retrieval with Qdrant or pgvector
+- 🐘 **Qdrant + pgvector** — pluggable vector stores (dedicated DB or your existing PostgreSQL)
 - 🛠️ **Operator (MCP Tools)** — a micro-agent that delegates tasks to MCP servers (web search, file system, Notion, PostgreSQL…) on demand during the debate
 - 🗜️ **Context Compression** — 4 strategies (Semantic, Deduplication, Summarization, Hybrid) save 30–70% of tokens
-- 💉 **Dependency Injection** — `AddDelibera()` extension for `IServiceCollection`
-- 📋 **Execution Logging** — `ExecutionLog` with `LogLevel` for Chairman, KK, Compression & participants
+- 💉 **Dependency Injection** — `AddDelibera()` extension for `IServiceCollection` with full options binding
+- 📋 **Execution Logging** — `ExecutionLog` model with `LogLevel` for Chairman, KK, Compression & participants
 - 📁 **Separate File Output** — export `result.md`, `statistics.md`, `logs.md` independently
 - 🤝 **Microsoft.Extensions.AI** — first-class `IChatClient` / `IEmbeddingGenerator` interop with logging & function-invocation middleware
 - 🔌 **Interface-First** — clean abstractions for providers, factories, builders and executors
-- 🧱 **Modern C# 12** — file-scoped namespaces, records, init-only properties, global usings
+- 🧱 **Modern C# 15** — file-scoped namespaces, records, init-only properties, global usings
 
 ---
 
@@ -47,7 +50,12 @@ backed by **Qdrant** or **PostgreSQL/pgvector** (RAG), with **context compressio
 dotnet add package Delibera.Core
 ```
 
-### 2. Pull the recommended models
+### 2. Prerequisites
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+- A running [Ollama](https://ollama.com) instance — local (`ollama serve`) or [Ollama Cloud](https://ollama.com/cloud) (just an API key, no install).
+
+### 3. Pull the recommended models
 
 ```bash
 ollama pull llama3.2:3b       # council member
@@ -56,9 +64,9 @@ ollama pull nomic-embed-text  # embeddings (RAG)
 ```
 
 > ☁️ To use **Ollama Cloud** instead, just pass an API key — no local models required.
-> See the [Configuration section](#-dependency-injection) below.
+> See the [Configuration section](#-configuration-appsettingsjson) below.
 
-### 3. Run your first deliberation
+### 4. Run your first deliberation
 
 ```csharp
 using Delibera.Core.Council;
@@ -68,16 +76,16 @@ using var factory = new ProviderFactory();
 var ollama = factory.CreateOllama("http://localhost:11434");
 
 var result = await new CouncilBuilder()
-    .AddMember("llama3.2:3b", ollama, "Analyst")
-    .AddMember("qwen2.5:7b", ollama, "Strategist")
-    .SetChairman(Chairman.CreateStandard("qwen2.5:7b", ollama))
-    .WithStandardDebate()
-    .WithSystemPrompt("You are a software architecture expert.")
-    .WithUserPrompt("Microservices vs Monolith for a 5-person startup?")
-    .WithMaxRounds(4)
-    .SaveResultTo("./deliberation.md")
-    .Build()
-    .ExecuteAsync();
+	 .AddMember("llama3.2:3b", ollama, "Analyst")
+	 .AddMember("qwen2.5:7b", ollama, "Strategist")
+	 .SetChairman(Chairman.CreateStandard("qwen2.5:7b", ollama))
+	 .WithStandardDebate()
+	 .WithSystemPrompt("You are a software architecture expert.")
+	 .WithUserPrompt("Microservices vs Monolith for a 5-person startup?")
+	 .WithMaxRounds(4)
+	 .SaveResultTo("./deliberation.md")
+	 .Build()
+	 .ExecuteAsync();
 
 Console.WriteLine(result.FinalVerdict);
 ```
@@ -86,19 +94,23 @@ Console.WriteLine(result.FinalVerdict);
 
 ## 💉 Dependency Injection
 
+Register all Delibera services in one line:
+
 ```csharp
 using Delibera.Core.DependencyInjection;
 
-// A: with configuration binding
+// A: with configuration binding (binds the "Delibera" section)
 services.AddDelibera(configuration, "Delibera");
 
 // B: with options delegate
 services.AddDelibera(options =>
 {
-    options.Strategy = "Standard";
-    options.MaxRounds = 4;
-    options.Compression.Enabled = true;
-    options.Compression.Strategy = "Hybrid";
+	 options.Strategy = "Standard";
+	 options.MaxRounds = 4;
+	 options.Temperature = 0.7f;
+	 options.Compression.Enabled = true;
+	 options.Compression.Strategy = "Hybrid";
+	 options.Compression.TargetRatio = 0.5;
 });
 
 // C: defaults only
@@ -116,7 +128,53 @@ Resolved services:
 
 ---
 
+## 🤝 Microsoft.Extensions.AI Interop
+
+Delibera integrates with [`Microsoft.Extensions.AI`](https://learn.microsoft.com/dotnet/ai/microsoft-extensions-ai)
+through `ChatClientLLMProvider` and `EmbeddingGeneratorProvider`. Adapt **any** `IChatClient` /
+`IEmbeddingGenerator` (OpenAI, Azure OpenAI, Ollama, custom…) and use the full middleware pipeline
+(logging, function invocation, telemetry).
+
+```csharp
+using Delibera.Core.Providers.LLM;
+using Microsoft.Extensions.AI;
+using OpenAI;
+
+var openAi = new OpenAIClient(apiKey);
+
+// IChatClient — works with any MEAI-compatible client
+var chatClient = openAi.GetChatClient("gpt-4o").AsIChatClient();
+var llm = new ChatClientLLMProvider(chatClient);
+
+// IEmbeddingGenerator — for Knowledge Keeper / compression
+var embeddingGen = openAi.GetEmbeddingClient("text-embedding-3-small").AsIEmbeddingGenerator();
+var embeddings = new EmbeddingGeneratorProvider(embeddingGen);
+
+var result = await new CouncilBuilder()
+	 .AddMember("gpt-4o", llm, "Analyst")
+	 .SetChairman(Chairman.CreateStandard("gpt-4o", llm))
+	 .WithStandardDebate()
+	 .WithUserPrompt("Should we adopt event sourcing?")
+	 .Build()
+	 .ExecuteAsync();
+```
+
+Streaming via `ChatStreamAsync` and DI helpers (`AddDeliberaChatClient`) are also included. Fully
+backward compatible with the existing `OllamaProvider` / `OllamaEmbeddingProvider` APIs.
+
+---
+
 ## 🗜️ Context Compression
+
+Automatically compress context between deliberation rounds — save **30–70% of tokens** without losing meaning.
+
+| Strategy          | How It Works                                               | Best For                         |
+| ----------------- | ---------------------------------------------------------- | -------------------------------- |
+| **Semantic**      | Embeds sentences, ranks by relevance to topic, keeps top-N | Large knowledge contexts         |
+| **Deduplication** | Removes semantically similar sentences across participants | Multi-model debates with overlap |
+| **Summarization** | LLM produces a concise summary preserving key facts        | Maximum compression ratio        |
+| **Hybrid**        | Dedup → Semantic → Summarize pipeline                      | Best overall quality             |
+| **None**          | Pass-through (when disabled)                               | Debugging                        |
 
 ```csharp
 using Delibera.Core.Compression;
@@ -126,25 +184,26 @@ var ollama = new OllamaProvider("http://localhost:11434");
 var embeddings = new OllamaEmbeddingProvider(ollama, "nomic-embed-text");
 
 var result = await new CouncilBuilder()
-    .AddMember("llama3.2:3b", ollama)
-    .SetChairman(Chairman.CreateStandard("qwen2.5:7b", ollama))
-    .WithCompression(CompressionStrategy.Hybrid,
-        llmProvider: ollama,
-        modelName: "llama3.2:3b",
-        embeddingProvider: embeddings)
-    .WithCompressionCache()
-    .WithUserPrompt("Analyze our architecture options...")
-    .Build()
-    .ExecuteAsync();
+	 .AddMember("llama3.2:3b", ollama)
+	 .SetChairman(Chairman.CreateStandard("qwen2.5:7b", ollama))
+	 .WithCompression(CompressionStrategy.Hybrid,
+		  llmProvider: ollama,
+		  modelName: "llama3.2:3b",
+		  embeddingProvider: embeddings)
+	 .WithCompressionOptions(new CompressionOptions { TargetRatio = 0.5 })
+	 .WithCompressionCache()
+	 .WithUserPrompt("Analyze our architecture options...")
+	 .Build()
+	 .ExecuteAsync();
 
 Console.WriteLine(result.TokenStats?.ToSummary());
 ```
 
-Strategies: **Semantic**, **Deduplication**, **Summarization**, **Hybrid** (Dedup → Semantic → Summarize).
-
 ---
 
 ## 📚 RAG Integration
+
+Use a dedicated **Qdrant** instance or your existing **PostgreSQL/pgvector** database as a vector store.
 
 ```csharp
 using Delibera.Core.Council;
@@ -155,20 +214,25 @@ using Delibera.Core.Providers.RAG;
 var ollama = new OllamaProvider("http://localhost:11434");
 var embeddings = new OllamaEmbeddingProvider(ollama, "nomic-embed-text");
 
-// pgvector — point at your existing PostgreSQL
-var rag = new RagProviderFactory().CreatePgVector(
-    embeddings,
-    "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres");
+// pgvector — just add a connection string
+var ragFactory = new RagProviderFactory();
+var rag = ragFactory.CreatePgVector(
+	 embeddings,
+	 "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres");
 
-// …or Qdrant
-// var rag = new RagProviderFactory().CreateQdrant(embeddings, "localhost", 6334);
+await rag.IndexDocumentAsync("my_collection", documentText);
+var results = await rag.SearchAsync("my_collection", "query", limit: 5);
 
-var keeper = new KnowledgeKeeper(
-    rag,
-    new CouncilMember("llama3.2:3b", ollama, "Knowledge Keeper"),
-    "my_knowledge");
-
+// Wire into a Knowledge Keeper
+var kkMember = new CouncilMember("llama3.2:3b", ollama, "Knowledge Keeper");
+var keeper = new KnowledgeKeeper(rag, kkMember, "my_knowledge");
 await keeper.IndexFileAsync("./docs/architecture.md");
+```
+
+…or use **Qdrant**:
+
+```csharp
+var rag = ragFactory.CreateQdrant(embeddings, "localhost", 6334);
 ```
 
 ---
@@ -184,16 +248,16 @@ to the debate participants.
 
 1. The Operator connects to one or more MCP servers and discovers their tools on `InitializeAsync`.
 2. Participants are told (in their system prompt) what the Operator can do, and can delegate a task at
-   **any moment** during the debate by writing a marker in their message:
+	**any moment** during the debate by writing a marker in their message:
 
-   ```
-   [[OPERATOR: search the web for the latest EU AI Act timeline and save it to Notion]]
-   ```
+	```
+	[[OPERATOR: search the web for the latest EU AI Act timeline and save it to Notion]]
+	```
 
 3. The Operator interprets the request with its **own (cheaper) LLM model**, picks and calls the right
-   MCP tools, interprets the results, and returns a concise answer that is injected into the next round.
+	MCP tools, interprets the results, and returns a concise answer that is injected into the next round.
 4. If the council uses **context compression**, the Operator can reuse the same strategy to compress
-   large tool outputs before they re-enter the debate.
+	large tool outputs before they re-enter the debate.
 
 All Operator interactions are recorded per round and rendered in the final Markdown report under a
 **🛠️ Operator Interactions** block.
@@ -210,32 +274,30 @@ var ollama = new OllamaProvider("http://localhost:11434");
 // Define the MCP servers the Operator may use
 var servers = new[]
 {
-    // stdio transport — launches a local MCP server process
-    McpServerConfig.Stdio(
-        name: "everything",
-        command: "npx",
-        arguments: new[] { "-y", "@modelcontextprotocol/server-everything" }),
+	 McpServerConfig.Stdio(
+		  name: "everything",
+		  command: "npx",
+		  arguments: new[] { "-y", "@modelcontextprotocol/server-everything" }),
 
-    McpServerConfig.Stdio(
-        name: "filesystem",
-        command: "npx",
-        arguments: new[] { "-y", "@modelcontextprotocol/server-filesystem", "/data" }),
+	 McpServerConfig.Stdio(
+		  name: "filesystem",
+		  command: "npx",
+		  arguments: new[] { "-y", "@modelcontextprotocol/server-filesystem", "/data" }),
 
-    // …or an HTTP/SSE transport for a remote MCP server
-    // McpServerConfig.Http(
-    //     name: "remote",
-    //     endpoint: "https://my-mcp-host.example.com/mcp",
-    //     additionalHeaders: new Dictionary<string, string> { ["Authorization"] = "Bearer <token>" }),
+	 // McpServerConfig.Http(
+	 //     name: "remote",
+	 //     endpoint: "https://my-mcp-host.example.com/mcp",
+	 //     additionalHeaders: new Dictionary<string, string> { ["Authorization"] = "Bearer <token>" }),
 };
 
 var council = new CouncilBuilder()
-    .AddMember("gpt-oss:20b",  ollama, "Optimist")
-    .AddMember("llama3.1:8b",  ollama, "Skeptic")
-    .WithChairman("gpt-oss:20b", ollama)
-    // Operator uses its own cheaper model; reuseCompression shares the council's compressor
-    .WithOperator("llama3.2:3b", ollama, servers, reuseCompression: true)
-    .WithTopic("Should we migrate the data pipeline to Kafka?")
-    .Build();
+	 .AddMember("gpt-oss:20b",  ollama, "Optimist")
+	 .AddMember("llama3.1:8b",  ollama, "Skeptic")
+	 .WithChairman("gpt-oss:20b", ollama)
+	 // Operator uses its own cheaper model; reuseCompression shares the council's compressor
+	 .WithOperator("llama3.2:3b", ollama, servers, reuseCompression: true)
+	 .WithTopic("Should we migrate the data pipeline to Kafka?")
+	 .Build();
 
 var result = await council.ExecuteAsync();
 ```
@@ -244,21 +306,16 @@ Prefer to build the `Operator` yourself? Pass a pre-built instance:
 
 ```csharp
 var @operator = new Operator(
-    new CouncilMember("llama3.2:3b", ollama, "Operator"),
-    new IMcpClient[] { new McpClientAdapter(servers[0]), new McpClientAdapter(servers[1]) },
-    compressor: null,            // optional IContextCompressor
-    compressionOptions: null);   // optional CompressionOptions
+	 new CouncilMember("llama3.2:3b", ollama, "Operator"),
+	 new IMcpClient[] { new McpClientAdapter(servers[0]), new McpClientAdapter(servers[1]) },
+	 compressor: null,            // optional IContextCompressor
+	 compressionOptions: null);   // optional CompressionOptions
 
 var council = new CouncilBuilder()
-    /* …members… */
-    .WithOperator(@operator)
-    .Build();
+	 /* …members… */
+	 .WithOperator(@operator)
+	 .Build();
 ```
-
-### Dependency Injection
-
-Configure the Operator declaratively in `appsettings.json` under `Delibera:Operator` (see the
-configuration section below), then build the council from `CouncilOptions` as usual.
 
 ---
 
@@ -270,9 +327,15 @@ configuration section below), then build the council from `CouncilOptions` as us
 | **CritiqueDebate**    | Position → Attack → Defence → Judge                     | Hypothesis testing      |
 | **ConsensusDebate**   | Perspectives → Common Ground → Consensus → Facilitator  | Optimal solution search |
 
+Each strategy is implemented as an `IDebateStrategy` — combine with `Builder`, `Template Method`
+(`DebateScenario`) and `Factory` patterns (`ProviderFactory`, `RagProviderFactory`, `CompressionFactory`,
+`Chairman`) to compose custom flows.
+
 ---
 
 ## 📁 Output Files
+
+Each deliberation can be exported as a single file or as three separate Markdown documents:
 
 ```csharp
 var result = await executor.ExecuteAsync();
@@ -287,6 +350,12 @@ var (resultPath, statsPath, logsPath) = await result.SaveAllAsync("./output");
 // → debate_<timestamp>_logs.md        (ExecutionLog)
 ```
 
+| File              | Contents                                                                     |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `*_result.md`     | Full deliberation transcript, rounds, and the Chairman's final verdict       |
+| `*_statistics.md` | Token usage statistics with per-round breakdown                              |
+| `*_logs.md`       | Execution logs (`ExecutionLog`) for Chairman, KK, compression & participants |
+
 ---
 
 ## 📦 Configuration (`appsettings.json`)
@@ -294,37 +363,53 @@ var (resultPath, statsPath, logsPath) = await result.SaveAllAsync("./output");
 ```json
 {
   "Delibera": {
-    "Strategy": "Standard",
-    "MaxRounds": 4,
-    "Temperature": 0.7,
-    "Providers": {
-      "DefaultType": "Ollama",
-      "DefaultEndpoint": "http://localhost:11434",
-      "ApiKey": "",
-      "EmbeddingModel": "nomic-embed-text"
-    },
-    "Compression": { "Enabled": true, "Strategy": "Hybrid", "TargetRatio": 0.5 },
-    "Rag":         { "Enabled": false, "ProviderType": "Qdrant", "Host": "localhost", "Port": 6334 },
-    "Operator": {
-      "Enabled": true,
-      "ModelName": "llama3.2:3b",
-      "ReuseCompression": true,
-      "McpServers": [
-        {
-          "Name": "filesystem",
-          "Transport": "Stdio",
-          "Command": "npx",
-          "Arguments": [ "-y", "@modelcontextprotocol/server-filesystem", "/data" ]
-        },
-        {
-          "Name": "remote",
-          "Transport": "Http",
-          "Endpoint": "https://my-mcp-host.example.com/mcp",
-          "AdditionalHeaders": { "Authorization": "Bearer <token>" }
-        }
-      ]
-    },
-    "Output":      { "Directory": "./debate_results", "SeparateFiles": true }
+	 "Strategy": "Standard",
+	 "MaxRounds": 4,
+	 "Temperature": 0.7,
+	 "SystemPrompt": "You are a knowledgeable AI expert participating in a council debate.",
+	 "Providers": {
+		"DefaultType": "Ollama",
+		"DefaultEndpoint": "http://localhost:11434",
+		"ApiKey": "",
+		"EmbeddingModel": "nomic-embed-text"
+	 },
+	 "Compression": {
+		"Enabled": true,
+		"Strategy": "Hybrid",
+		"TargetRatio": 0.5,
+		"EnableCache": true,
+		"MaxCacheEntries": 256
+	 },
+	 "Rag": {
+		"Enabled": false,
+		"ProviderType": "Qdrant",
+		"Host": "localhost",
+		"Port": 6334,
+		"CollectionName": "council_knowledge"
+	 },
+	 "Operator": {
+		"Enabled": true,
+		"ModelName": "llama3.2:3b",
+		"ReuseCompression": true,
+		"McpServers": [
+		  {
+			 "Name": "filesystem",
+			 "Transport": "Stdio",
+			 "Command": "npx",
+			 "Arguments": [ "-y", "@modelcontextprotocol/server-filesystem", "/data" ]
+		  },
+		  {
+			 "Name": "remote",
+			 "Transport": "Http",
+			 "Endpoint": "https://my-mcp-host.example.com/mcp",
+			 "AdditionalHeaders": { "Authorization": "Bearer <token>" }
+		  }
+		]
+	 },
+	 "Output": {
+		"Directory": "./debate_results",
+		"SeparateFiles": true
+	 }
   }
 }
 ```
@@ -336,31 +421,30 @@ in `Providers:ApiKey`.
 
 ## 📦 NuGet Dependencies
 
-| Package                  | Purpose                          |
-| ------------------------ | -------------------------------- |
-| `OllamaSharp`            | Ollama API client                |
-| `Qdrant.Client`          | Qdrant vector DB gRPC client     |
-| `Npgsql` / `Pgvector`    | PostgreSQL/pgvector support      |
-| `ModelContextProtocol`   | MCP client for the Operator role |
-| `Microsoft.Extensions.AI`| `IChatClient` / `IEmbeddingGenerator` abstractions & middleware |
-| `Microsoft.Extensions.*` | Configuration, DI and Options    |
+| Package                   | Purpose                                                     |
+| ------------------------- | ----------------------------------------------------------- |
+| `Microsoft.Extensions.AI` | `IChatClient` / `IEmbeddingGenerator` abstractions & middleware |
+| `OllamaSharp`             | Ollama API client                                           |
+| `Qdrant.Client`           | Qdrant vector DB gRPC client                                |
+| `Npgsql` / `Pgvector`     | PostgreSQL/pgvector support                                 |
+| `ModelContextProtocol`    | MCP client for the Operator role                            |
+| `Microsoft.Extensions.*`  | Configuration, DI and Options                               |
 
 ---
 
 ## 📚 Learn More
 
-- 📖 Full README (architecture, design patterns, console app examples) → [github.com/delibera/Delibera](https://github.com/delibera/Delibera)
-- 📄 Step-by-step walkthrough → [docs/QuickStart.md](https://github.com/delibera/Delibera/blob/main/docs/QuickStart.md)
-- 🤝 [CONTRIBUTING.md](https://github.com/delibera/Delibera/blob/main/CONTRIBUTING.md)
+- 📖 Full README (architecture, design patterns, console app examples) → [github.com/techbuzzz/Delibera](https://github.com/techbuzzz/Delibera)
+- 📄 Step-by-step walkthrough → [docs/QuickStart.md](https://github.com/techbuzzz/Delibera/blob/develop/docs/QuickStart.md)
+- 💻 Console app examples → [src/Delibera.ConsoleApp](https://github.com/techbuzzz/Delibera/tree/develop/src/Delibera.ConsoleApp)
+- 🤝 [CONTRIBUTING.md](https://github.com/techbuzzz/Delibera/blob/develop/CONTRIBUTING.md)
 
 ---
 
 ## 📄 License
 
-[MIT](../LICENSE) — Copyright © 2026 Delibera Project.
-
-<div align="center">
+[MIT](https://github.com/techbuzzz/Delibera/blob/develop/LICENSE) — Copyright © 2026 Delibera Project.
 
 **⚖️ Delibera — Thoughtful AI Decisions**
 
-</div>
+*Built with care for AI-powered collective intelligence*

@@ -13,7 +13,7 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-1F2937.svg)](https://dotnet.microsoft.com)
 [![C# 15](https://img.shields.io/badge/C%23-15.0--preview-239120.svg)](https://learn.microsoft.com/dotnet/csharp/)
 
-🇷🇺 [Русская версия (README-RU.md)](README-RU.md)
+[EN](README.md) / [RU](README-RU.md)
 
 </div>
 
