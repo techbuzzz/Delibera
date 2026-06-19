@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace Delibera.Core.Models;
 
 /// <summary>
@@ -24,6 +22,9 @@ public sealed record DebateResult
 
    /// <summary>Knowledge Keeper name (if assigned).</summary>
    public string? KnowledgeKeeperName { get; init; }
+
+   /// <summary>Operator name (if assigned).</summary>
+   public string? OperatorName { get; init; }
 
    /// <summary>All debate rounds.</summary>
    public IReadOnlyList<DebateRound> Rounds { get; init; } = [];
@@ -97,6 +98,8 @@ public sealed record DebateResult
          sb.AppendLine($"**Chairman:** {ChairmanName}");
       if (!string.IsNullOrEmpty(KnowledgeKeeperName))
          sb.AppendLine($"**Knowledge Keeper:** {KnowledgeKeeperName}");
+      if (!string.IsNullOrEmpty(OperatorName))
+         sb.AppendLine($"**Operator:** {OperatorName}");
       sb.AppendLine();
 
       // Opening statement
@@ -125,6 +128,23 @@ public sealed record DebateResult
             {
                sb.AppendLine($"> **Q:** {ki.Query}");
                sb.AppendLine($"> **A:** {ki.Answer} *({ki.SourceChunks} chunks)*");
+               sb.AppendLine();
+            }
+         }
+
+         // Operator interactions
+         if (round.OperatorInteractions is { Count: > 0 })
+         {
+            sb.AppendLine("### 🛠️ Operator Interactions");
+            sb.AppendLine();
+            foreach (var oi in round.OperatorInteractions)
+            {
+               var tools = oi.ToolCalls.Count > 0
+                  ? string.Join(", ", oi.ToolCalls.Select(c => $"`{c.ServerName}.{c.ToolName}`"))
+                  : "none";
+               sb.AppendLine($"> **{oi.RequesterName}** requested: {oi.Task}");
+               sb.AppendLine($"> **Tools used:** {tools}");
+               sb.AppendLine($"> **Answer:** {oi.Answer}{(oi.Compressed ? " *(compressed)*" : "")}");
                sb.AppendLine();
             }
          }
@@ -250,19 +270,28 @@ public sealed record DebateResult
    ///    Saves the debate result (rounds and verdict) to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the result Markdown file.</param>
-   public Task SaveToMarkdownAsync(string filePath) => WriteAllTextAsync(filePath, ToMarkdown());
+   public Task SaveToMarkdownAsync(string filePath)
+   {
+      return WriteAllTextAsync(filePath, ToMarkdown());
+   }
 
    /// <summary>
    ///    Saves token statistics and compression logs to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the statistics Markdown file.</param>
-   public Task SaveStatisticsAsync(string filePath) => WriteAllTextAsync(filePath, ToStatisticsMarkdown());
+   public Task SaveStatisticsAsync(string filePath)
+   {
+      return WriteAllTextAsync(filePath, ToStatisticsMarkdown());
+   }
 
    /// <summary>
    ///    Saves execution logs to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the logs Markdown file.</param>
-   public Task SaveLogsAsync(string filePath) => WriteAllTextAsync(filePath, ToLogsMarkdown());
+   public Task SaveLogsAsync(string filePath)
+   {
+      return WriteAllTextAsync(filePath, ToLogsMarkdown());
+   }
 
    /// <summary>
    ///    Saves all three files (result.md, statistics.md, logs.md) to the specified directory.

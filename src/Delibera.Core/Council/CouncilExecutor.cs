@@ -26,11 +26,13 @@ public sealed class CouncilExecutor : ICouncilExecutor
       string? outputPath,
       IContextCompressor? compressor = null,
       CompressionOptions? compressionOptions = null,
-      CompressionCache? compressionCache = null)
+      CompressionCache? compressionCache = null,
+      Operator? @operator = null)
    {
       Members = members;
       Chairman = chairman;
       KnowledgeKeeper = knowledgeKeeper;
+      Operator = @operator;
       Strategy = strategy;
       _context = context;
       _maxRounds = maxRounds;
@@ -52,6 +54,9 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
    /// <summary>Knowledge Keeper (may be <c>null</c>).</summary>
    public KnowledgeKeeper? KnowledgeKeeper { get; }
+
+   /// <summary>Operator (may be <c>null</c>).</summary>
+   public Operator? Operator { get; }
 
    /// <summary>Debate strategy.</summary>
    public IDebateStrategy Strategy { get; }
@@ -80,6 +85,25 @@ public sealed class CouncilExecutor : ICouncilExecutor
       if (KnowledgeKeeper is not null)
          Log(ExecutionLog.Info("KnowledgeKeeper", $"Knowledge Keeper ready: {KnowledgeKeeper.DisplayName} (collection: {KnowledgeKeeper.CollectionName})"));
 
+      // Initialise the Operator (connect to MCP servers, discover tools) before the debate begins.
+      if (Operator is not null)
+      {
+         if (!Operator.IsInitialized)
+         {
+            Log(ExecutionLog.Info("Operator", $"Initialising Operator: {Operator.DisplayName}…"));
+            try
+            {
+               await Operator.InitializeAsync(ct);
+            }
+            catch (Exception ex)
+            {
+               Log(ExecutionLog.Error("Operator", $"Operator initialisation failed: {ex.Message}"));
+            }
+         }
+
+         Log(ExecutionLog.Info("Operator", $"Operator ready: {Operator.DisplayName} ({Operator.AvailableTools.Count} tool(s) available)"));
+      }
+
       if (Compressor is not null)
          Log(ExecutionLog.Info("Compression", $"Compression enabled: {Compressor.StrategyName}"));
 
@@ -91,6 +115,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
          _context,
          Chairman,
          KnowledgeKeeper,
+         Operator,
          _maxRounds,
          _temperature,
          round =>
@@ -100,6 +125,10 @@ public sealed class CouncilExecutor : ICouncilExecutor
             // Log knowledge interactions
             foreach (var ki in round.KnowledgeInteractions)
                Log(ExecutionLog.Info("KnowledgeKeeper", $"Query: \"{Truncate(ki.Query, 100)}\" → {ki.SourceChunks} chunks"));
+
+            // Log operator interactions
+            foreach (var oi in round.OperatorInteractions)
+               Log(ExecutionLog.Info("Operator", $"{oi.RequesterName} → \"{Truncate(oi.Task, 100)}\" ({oi.ToolCallCount} tool call(s))"));
 
             // Log participant responses
             foreach (var (member, response) in round.Responses)
@@ -186,6 +215,13 @@ public sealed class CouncilExecutor : ICouncilExecutor
          sb.AppendLine($"    📚 {KnowledgeKeeper.DisplayName} (collection: {KnowledgeKeeper.CollectionName})");
       }
 
+      if (Operator is not null)
+      {
+         sb.AppendLine();
+         sb.AppendLine("  ── Operator ──");
+         sb.AppendLine($"    🛠️  {Operator.DisplayName} ({Operator.AvailableTools.Count} tool(s))");
+      }
+
       if (Compressor is not null)
       {
          sb.AppendLine();
@@ -214,8 +250,13 @@ public sealed class CouncilExecutor : ICouncilExecutor
       return sb.ToString();
    }
 
-   private void Log(ExecutionLog entry) => _executionLogs.Add(entry);
+   private void Log(ExecutionLog entry)
+   {
+      _executionLogs.Add(entry);
+   }
 
-   private static string Truncate(string text, int max) =>
-      string.IsNullOrEmpty(text) ? "(empty)" : text.Length <= max ? text : text[..max] + "…";
+   private static string Truncate(string text, int max)
+   {
+      return string.IsNullOrEmpty(text) ? "(empty)" : text.Length <= max ? text : text[..max] + "…";
+   }
 }

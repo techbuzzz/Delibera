@@ -65,6 +65,24 @@ public static class Program
          return;
       }
 
+      if (args.Contains("--operator"))
+      {
+         await OperatorExample.RunAsync();
+         return;
+      }
+
+      if (args.Contains("--operator-mcp"))
+      {
+         await OperatorMcpToolsExample.RunAsync();
+         return;
+      }
+
+      if (args.Contains("--msai"))
+      {
+         await MicrosoftExtensionsAiExample.RunAsync();
+         return;
+      }
+
       // Quick DI showcase before main demo
       Console.WriteLine("🆕 v3.1 DI Quick Demo:");
       Console.WriteLine("   Run with --di for full DI example");
@@ -78,7 +96,7 @@ public static class Program
       var configuration = new ConfigurationBuilder()
          .SetBasePath(Directory.GetCurrentDirectory())
          .AddJsonFile("appsettings.json", false, true)
-         .AddUserSecrets(Assembly.GetEntryAssembly())
+         .AddUserSecrets(Assembly.GetEntryAssembly()!)
          .Build();
 
       var cfg = configuration.GetSection("DeliberaApp");
@@ -394,6 +412,13 @@ public static class Program
                Console.WriteLine($"    Q: {ki.Query[..Math.Min(80, ki.Query.Length)]}… → {ki.SourceChunks} chunks");
          }
 
+         if (round.OperatorInteractions.Count > 0)
+         {
+            Console.WriteLine("  🛠️  Operator interactions:");
+            foreach (var oi in round.OperatorInteractions)
+               Console.WriteLine($"    {oi.RequesterName}: {oi.Task[..Math.Min(80, oi.Task.Length)]}… → {oi.ToolCallCount} tool call(s)");
+         }
+
          foreach (var (member, response) in round.Responses)
          {
             var preview = response.Length > 300
@@ -421,6 +446,8 @@ public static class Program
          Console.WriteLine($"  Participants:       {string.Join(", ", result.Participants)}");
          if (result.KnowledgeKeeperName is not null)
             Console.WriteLine($"  Knowledge Keeper:   {result.KnowledgeKeeperName}");
+         if (result.OperatorName is not null)
+            Console.WriteLine($"  Operator:           {result.OperatorName}");
 
          // Token statistics
          if (result.TokenStats is not null) Console.WriteLine($"\n{result.TokenStats.ToSummary()}");

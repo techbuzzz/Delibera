@@ -83,14 +83,18 @@ public sealed class QdrantVectorStore : IVectorStore
          collectionName,
          queryVector,
          limit: (ulong)limit,
-         scoreThreshold: scoreThreshold > 0 ? scoreThreshold : null,
+         scoreThreshold: scoreThreshold > 0
+            ? scoreThreshold
+            : null,
          cancellationToken: ct);
 
       var results = new List<VectorSearchResult>(scored.Count);
 
       foreach (var s in scored)
       {
-         var text = s.Payload.TryGetValue("text", out var tv) ? tv.StringValue : string.Empty;
+         var text = s.Payload.TryGetValue("text", out var tv)
+            ? tv.StringValue
+            : string.Empty;
 
          var meta = new Dictionary<string, string>();
          foreach (var (k, v) in s.Payload)
@@ -101,15 +105,19 @@ public sealed class QdrantVectorStore : IVectorStore
             s.Id.Uuid,
             text,
             s.Score,
-            meta.Count > 0 ? meta : null));
+            meta.Count > 0
+               ? meta
+               : null));
       }
 
       return results.AsReadOnly();
    }
 
    /// <inheritdoc />
-   public Task DeleteCollectionAsync(string collectionName, CancellationToken ct = default) =>
-      _client.DeleteCollectionAsync(collectionName, cancellationToken: ct);
+   public Task DeleteCollectionAsync(string collectionName, CancellationToken ct = default)
+   {
+      return _client.DeleteCollectionAsync(collectionName, cancellationToken: ct);
+   }
 
    /// <inheritdoc />
    public async Task<long> CountAsync(string collectionName, CancellationToken ct = default)

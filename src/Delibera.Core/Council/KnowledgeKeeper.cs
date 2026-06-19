@@ -7,9 +7,9 @@ namespace Delibera.Core.Council;
 /// </summary>
 public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember model, string collectionName)
 {
-   private readonly IRagProvider _ragProvider = ragProvider ?? throw new ArgumentNullException(nameof(ragProvider));
-   private readonly CouncilMember _model = model ?? throw new ArgumentNullException(nameof(model));
    private readonly List<KnowledgeInteraction> _interactions = [];
+   private readonly CouncilMember _model = model ?? throw new ArgumentNullException(nameof(model));
+   private readonly IRagProvider _ragProvider = ragProvider ?? throw new ArgumentNullException(nameof(ragProvider));
 
    /// <summary>RAG collection used for searching.</summary>
    public string CollectionName { get; } = collectionName ?? throw new ArgumentNullException(nameof(collectionName));
@@ -28,8 +28,10 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
    /// <param name="ct">Cancellation token.</param>
    /// <returns>Scored search results from the vector store.</returns>
    public Task<IReadOnlyList<VectorSearchResult>> SearchKnowledgeAsync(
-      string query, int limit = 5, CancellationToken ct = default) =>
-      _ragProvider.SearchAsync(CollectionName, query, limit, ct: ct);
+      string query, int limit = 5, CancellationToken ct = default)
+   {
+      return _ragProvider.SearchAsync(CollectionName, query, limit, ct: ct);
+   }
 
    /// <summary>
    ///    Generates an answer to a question using RAG context.
@@ -221,8 +223,10 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
       Dictionary<string, string>? metadata = null,
       int chunkSize = 500,
       int chunkOverlap = 50,
-      CancellationToken ct = default) =>
-      _ragProvider.IndexDocumentAsync(CollectionName, documentText, metadata, chunkSize, chunkOverlap, ct);
+      CancellationToken ct = default)
+   {
+      return _ragProvider.IndexDocumentAsync(CollectionName, documentText, metadata, chunkSize, chunkOverlap, ct);
+   }
 
    /// <summary>
    ///    Indexes a file into the Knowledge Keeper's collection.
@@ -231,6 +235,8 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
       string filePath,
       int chunkSize = 500,
       int chunkOverlap = 50,
-      CancellationToken ct = default) =>
-      _ragProvider.IndexFileAsync(CollectionName, filePath, chunkSize, chunkOverlap, ct);
+      CancellationToken ct = default)
+   {
+      return _ragProvider.IndexFileAsync(CollectionName, filePath, chunkSize, chunkOverlap, ct);
+   }
 }

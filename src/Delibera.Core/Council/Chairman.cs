@@ -12,36 +12,44 @@ public static class Chairman
    // ──────────────────────────────────────────────
 
    /// <summary>Creates a standard, neutral Chairman.</summary>
-   public static CouncilMember CreateStandard(string modelName, ILLMProvider provider) =>
-      new(modelName, provider, "Chairman",
+   public static CouncilMember CreateStandard(string modelName, ILLMProvider provider)
+   {
+      return new CouncilMember(modelName, provider, "Chairman",
          """
          You are the Chairman of an AI Council debate — neutral, objective and fair.
          You organise the debate process, ensure every participant is heard,
          synthesise diverse viewpoints and produce clear, actionable verdicts.
          Prioritise accuracy, completeness and practical usefulness.
          """);
+   }
 
    /// <summary>Creates a strict, evidence-focused Chairman.</summary>
-   public static CouncilMember CreateStrict(string modelName, ILLMProvider provider) =>
-      new(modelName, provider, "Strict Chairman",
+   public static CouncilMember CreateStrict(string modelName, ILLMProvider provider)
+   {
+      return new CouncilMember(modelName, provider, "Strict Chairman",
          """
          You are a strict, evidence-focused Chairman. You demand factual accuracy,
          reject unsupported claims and penalise logical fallacies.
          If no participant provides a satisfactory answer, say so clearly.
          """);
+   }
 
    /// <summary>Creates a creative Chairman who encourages novel thinking.</summary>
-   public static CouncilMember CreateCreative(string modelName, ILLMProvider provider) =>
-      new(modelName, provider, "Creative Chairman",
+   public static CouncilMember CreateCreative(string modelName, ILLMProvider provider)
+   {
+      return new CouncilMember(modelName, provider, "Creative Chairman",
          """
          You are a creative Chairman who looks beyond conventional answers.
          While maintaining accuracy, you seek innovative connections between ideas,
          encourage thinking outside the box, and surface unexpected insights.
          """);
+   }
 
    /// <summary>Creates a Chairman with a custom persona prompt.</summary>
-   public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt) =>
-      new(modelName, provider, "Chairman", personaPrompt);
+   public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt)
+   {
+      return new CouncilMember(modelName, provider, "Chairman", personaPrompt);
+   }
 
    // ──────────────────────────────────────────────
    // Specialised Chairman actions (each has its own prompt)
@@ -278,14 +286,26 @@ public static class Chairman
 public static class Moderator
 {
    /// <inheritdoc cref="Chairman.CreateStandard" />
-   public static CouncilMember CreateStandard(string modelName, ILLMProvider provider) => Chairman.CreateStandard(modelName, provider);
+   public static CouncilMember CreateStandard(string modelName, ILLMProvider provider)
+   {
+      return Chairman.CreateStandard(modelName, provider);
+   }
 
    /// <inheritdoc cref="Chairman.CreateStrict" />
-   public static CouncilMember CreateStrict(string modelName, ILLMProvider provider) => Chairman.CreateStrict(modelName, provider);
+   public static CouncilMember CreateStrict(string modelName, ILLMProvider provider)
+   {
+      return Chairman.CreateStrict(modelName, provider);
+   }
 
    /// <inheritdoc cref="Chairman.CreateCreative" />
-   public static CouncilMember CreateCreative(string modelName, ILLMProvider provider) => Chairman.CreateCreative(modelName, provider);
+   public static CouncilMember CreateCreative(string modelName, ILLMProvider provider)
+   {
+      return Chairman.CreateCreative(modelName, provider);
+   }
 
    /// <inheritdoc cref="Chairman.CreateCustom" />
-   public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt) => Chairman.CreateCustom(modelName, provider, personaPrompt);
+   public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt)
+   {
+      return Chairman.CreateCustom(modelName, provider, personaPrompt);
+   }
 }

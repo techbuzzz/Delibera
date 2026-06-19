@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace Delibera.Core.Compression;
 
 /// <summary>
@@ -12,8 +10,9 @@ internal static class CompressedContextFactory
    /// <summary>
    ///    Builds a result describing text that was passed through unchanged.
    /// </summary>
-   public static CompressedContext PassThrough(string text, int tokens, string strategyName, TimeSpan duration) =>
-      new()
+   public static CompressedContext PassThrough(string text, int tokens, string strategyName, TimeSpan duration)
+   {
+      return new CompressedContext
       {
          Text = text,
          OriginalLength = text.Length,
@@ -23,6 +22,7 @@ internal static class CompressedContextFactory
          StrategyUsed = strategyName,
          Duration = duration
       };
+   }
 
    /// <summary>
    ///    Builds a result describing text that was actually compressed.
@@ -33,8 +33,9 @@ internal static class CompressedContextFactory
       int originalTokens,
       int compressedTokens,
       string strategyName,
-      TimeSpan duration) =>
-      new()
+      TimeSpan duration)
+   {
+      return new CompressedContext
       {
          Text = compressed,
          OriginalLength = original.Length,
@@ -44,4 +45,5 @@ internal static class CompressedContextFactory
          StrategyUsed = strategyName,
          Duration = duration
       };
+   }
 }

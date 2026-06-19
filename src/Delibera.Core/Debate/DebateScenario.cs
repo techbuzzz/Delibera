@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Delibera.Core.Council;
 
 namespace Delibera.Core.Debate;
@@ -9,6 +10,20 @@ namespace Delibera.Core.Debate;
 /// </summary>
 public abstract class DebateScenario : IDebateStrategy
 {
+   // ──────────────────────────────────────────────
+   // Operator helpers
+   // ──────────────────────────────────────────────
+
+   /// <summary>
+   ///    Marker participants use to delegate a task to the Operator, e.g.:
+   ///    <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
+   /// </summary>
+   private static readonly Regex OperatorRequestRegex =
+      new(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]",
+         RegexOptions.Singleline |
+         RegexOptions.IgnoreCase |
+         RegexOptions.Compiled);
+
    /// <inheritdoc />
    public abstract string StrategyName { get; }
 
@@ -21,6 +36,7 @@ public abstract class DebateScenario : IDebateStrategy
       PromptContext context,
       CouncilMember? chairman,
       KnowledgeKeeper? knowledgeKeeper,
+      Operator? @operator,
       int maxRounds = 4,
       float temperature = 0.7f,
       Action<DebateRound>? onRoundCompleted = null,
@@ -71,8 +87,10 @@ public abstract class DebateScenario : IDebateStrategy
    }
 
    /// <summary>Formats all rounds into a single text block.</summary>
-   protected static string FormatAllRounds(IReadOnlyList<DebateRound> rounds) =>
-      string.Join("\n\n", rounds.Select(FormatRoundResponses));
+   protected static string FormatAllRounds(IReadOnlyList<DebateRound> rounds)
+   {
+      return string.Join("\n\n", rounds.Select(FormatRoundResponses));
+   }
 
    /// <summary>Creates a completed debate round.</summary>
    protected static DebateRound CreateRound(
@@ -81,8 +99,10 @@ public abstract class DebateScenario : IDebateStrategy
       string? description,
       Dictionary<string, string> responses,
       string? prompt = null,
-      IReadOnlyList<KnowledgeInteraction>? knowledgeInteractions = null) =>
-      new()
+      IReadOnlyList<KnowledgeInteraction>? knowledgeInteractions = null,
+      IReadOnlyList<OperatorInteraction>? operatorInteractions = null)
+   {
+      return new DebateRound
       {
          RoundNumber = number,
          RoundName = name,
@@ -90,8 +110,10 @@ public abstract class DebateScenario : IDebateStrategy
          Responses = responses,
          RoundPrompt = prompt,
          KnowledgeInteractions = knowledgeInteractions ?? [],
+         OperatorInteractions = operatorInteractions ?? [],
          CompletedAt = DateTime.UtcNow
       };
+   }
 
    /// <summary>
    ///    Optionally queries the Knowledge Keeper for context relevant to the debate topic.
@@ -154,5 +176,92 @@ public abstract class DebateScenario : IDebateStrategy
       {
          return (string.Empty, null);
       }
+   }
+
+   /// <summary>
+   ///    Builds an "Operator briefing" describing the Operator's tools and how to delegate
+   ///    tasks to it. Appended to the participants' system prompt so they know what is available.
+   ///    Returns an empty string when no Operator is configured.
+   /// </summary>
+   protected static string BuildOperatorBriefing(Operator? @operator)
+   {
+      if (@operator is null) return string.Empty;
+
+      return $"""
+
+              ── OPERATOR (tools available) ──
+              A shared Operator agent is available to all participants.
+              {@operator.GetToolCatalog()}
+
+              To delegate a task to the Operator, include a line in your response using this exact marker:
+              [[OPERATOR: <your natural-language task here>]]
+              For example: [[OPERATOR: search the web for recent benchmarks comparing PostgreSQL and MySQL]]
+              The Operator's answer will be provided to all participants in the next round.
+              Only delegate when external information or actions (web search, database lookup, writing to Notion, etc.) are genuinely needed.
+              """;
+   }
+
+   /// <summary>
+   ///    Scans participant responses for Operator request markers, executes each delegated
+   ///    task via the Operator, and returns the recorded interactions.
+   /// </summary>
+   /// <param name="operator">Operator instance (may be <c>null</c>).</param>
+   /// <param name="responses">Participant responses keyed by display name.</param>
+   /// <param name="ct">Cancellation token.</param>
+   /// <returns>Operator interactions produced during this round.</returns>
+   protected static async Task<IReadOnlyList<OperatorInteraction>> ProcessOperatorRequestsAsync(
+      Operator? @operator,
+      IReadOnlyDictionary<string, string> responses,
+      CancellationToken ct = default)
+   {
+      if (@operator is null || responses.Count == 0) return [];
+
+      var interactions = new List<OperatorInteraction>();
+      foreach (var (member, response) in responses)
+      {
+         if (string.IsNullOrWhiteSpace(response)) continue;
+
+         foreach (Match match in OperatorRequestRegex.Matches(response))
+         {
+            var task = match.Groups["task"].Value.Trim();
+            if (string.IsNullOrWhiteSpace(task)) continue;
+
+            try
+            {
+               var result = await @operator.ExecuteTaskAsync(member, task, ct);
+               interactions.Add(result.ToInteraction());
+            }
+            catch (Exception ex)
+            {
+               interactions.Add(new OperatorInteraction(
+                  member, task, $"[Operator error: {ex.Message}]", [], false, DateTime.UtcNow));
+            }
+         }
+      }
+
+      return interactions;
+   }
+
+   /// <summary>
+   ///    Formats Operator interactions into a context block that can be injected into the
+   ///    next round's prompt so participants can use the Operator's findings.
+   /// </summary>
+   protected static string FormatOperatorInteractions(IReadOnlyList<OperatorInteraction> interactions)
+   {
+      if (interactions is not { Count: > 0 }) return string.Empty;
+
+      var sb = new StringBuilder();
+      sb.AppendLine("🛠️ Operator results (requested by participants):");
+      foreach (var i in interactions)
+      {
+         var tools = i.ToolCalls.Count > 0
+            ? string.Join(", ", i.ToolCalls.Select(c => $"{c.ServerName}.{c.ToolName}"))
+            : "no tools";
+         sb.AppendLine($"\n• {i.RequesterName} asked: {i.Task}");
+         sb.AppendLine($"  Tools used: {tools}");
+         sb.AppendLine($"  Answer: {i.Answer}");
+      }
+
+      return sb.ToString();
    }
 }

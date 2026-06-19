@@ -35,7 +35,7 @@ public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvide
       if (sentences.Count <= 1)
          return CompressedContextFactory.PassThrough(text, originalTokens, StrategyName, sw.Elapsed);
 
-      List<string> unique = _embeddingProvider is not null
+      var unique = _embeddingProvider is not null
          ? await DeduplicateWithEmbeddingsAsync(sentences, options.DeduplicationThreshold, ct)
          : DeduplicateWithHeuristics(sentences, options.DeduplicationThreshold);
 
@@ -140,5 +140,8 @@ public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvide
          : 0;
    }
 
-   private static string NormalizeText(string text) => text.Trim().ToLowerInvariant();
+   private static string NormalizeText(string text)
+   {
+      return text.Trim().ToLowerInvariant();
+   }
 }

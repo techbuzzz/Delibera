@@ -5,6 +5,10 @@ namespace Delibera.Core.Models;
 /// </summary>
 public sealed class CouncilMember(string modelName, ILLMProvider provider, string? role = null, string? personaPrompt = null)
 {
+   private readonly string? _personaPrompt = personaPrompt;
+
+   private string _role = role ?? "Expert";
+
    /// <summary>Unique participant identifier.</summary>
    public string Id { get; } = $"{provider.ProviderName}:{modelName}:{Guid.NewGuid():N}".ToLowerInvariant();
 
@@ -17,8 +21,6 @@ public sealed class CouncilMember(string modelName, ILLMProvider provider, strin
    /// <summary>LLM provider that serves this model.</summary>
    public ILLMProvider Provider { get; } = provider ?? throw new ArgumentNullException(nameof(provider));
 
-   private string _role = role ?? "Expert";
-
    /// <summary>Role in the debate (Expert, Critic, Chairman, etc.).</summary>
    public string Role
    {
@@ -26,14 +28,8 @@ public sealed class CouncilMember(string modelName, ILLMProvider provider, strin
       set => field = value ?? "Expert";
    }
 
-   private string? _personaPrompt = personaPrompt;
-
    /// <summary>Optional persona system-prompt that personalises the model's behaviour.</summary>
-   public string? PersonaPrompt
-   {
-      get => field;
-      set => field = value;
-   }
+   public string? PersonaPrompt { get; set; }
 
    /// <summary>Sends a request to the underlying model.</summary>
    public Task<string> AskAsync(
@@ -53,5 +49,8 @@ public sealed class CouncilMember(string modelName, ILLMProvider provider, strin
    }
 
    /// <inheritdoc />
-   public override string ToString() => DisplayName;
+   public override string ToString()
+   {
+      return DisplayName;
+   }
 }

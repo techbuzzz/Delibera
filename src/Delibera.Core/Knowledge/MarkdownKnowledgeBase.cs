@@ -86,7 +86,10 @@ public sealed class MarkdownKnowledgeBase : IKnowledgeBase
    }
 
    /// <inheritdoc />
-   public IReadOnlyList<string> GetLoadedSources() => _documents.Keys.ToList().AsReadOnly();
+   public IReadOnlyList<string> GetLoadedSources()
+   {
+      return _documents.Keys.ToList().AsReadOnly();
+   }
 
    /// <summary>Loads all matching files from a directory.</summary>
    public async Task LoadDirectoryAsync(string directoryPath, string pattern = "*.md")

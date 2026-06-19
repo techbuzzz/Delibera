@@ -16,7 +16,9 @@ public sealed class RagProviderFactory : CachingFactory<Func<IConfigurationSecti
       RegisterBuilder("Qdrant", (config, embeddings) =>
       {
          var host = config["Host"] ?? "localhost";
-         var port = int.TryParse(config["Port"], out var p) ? p : 6334;
+         var port = int.TryParse(config["Port"], out var p)
+            ? p
+            : 6334;
          var https = bool.TryParse(config["Https"], out var h) && h;
          var apiKey = config["ApiKey"];
 
@@ -42,11 +44,24 @@ public sealed class RagProviderFactory : CachingFactory<Func<IConfigurationSecti
    /// <summary>
    ///    Creates (or returns cached) a RAG provider instance.
    /// </summary>
-   public IRagProvider Create(string name, string providerType, IConfigurationSection config, IEmbeddingProvider embeddingProvider) =>
-      GetOrCreate(name, providerType, b => b(config, embeddingProvider));
+   public IRagProvider Create(string name, string providerType, IConfigurationSection config, IEmbeddingProvider embeddingProvider)
+   {
+      return GetOrCreate(name, providerType, b => b(config, embeddingProvider));
+   }
 
    /// <summary>Returns a cached provider by name.</summary>
-   public IRagProvider? GetProvider(string name) => GetInstance(name);
+   public IRagProvider? GetProvider(string name)
+   {
+      return GetInstance(name);
+   }
+
+   /// <inheritdoc />
+   public async ValueTask DisposeAsync()
+   {
+      foreach (var p in EnumerateInstances())
+         await p.DisposeAsync();
+      ClearInstances();
+   }
 
    /// <summary>
    ///    Creates a Qdrant RAG provider with direct parameters.
@@ -84,13 +99,5 @@ public sealed class RagProviderFactory : CachingFactory<Func<IConfigurationSecti
    {
       foreach (var p in EnumerateInstances())
          p.DisposeAsync().AsTask().GetAwaiter().GetResult();
-   }
-
-   /// <inheritdoc />
-   public async ValueTask DisposeAsync()
-   {
-      foreach (var p in EnumerateInstances())
-         await p.DisposeAsync();
-      ClearInstances();
    }
 }

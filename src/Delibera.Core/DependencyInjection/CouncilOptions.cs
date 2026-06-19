@@ -30,6 +30,9 @@ public sealed class CouncilOptions
    /// <summary>RAG configuration options.</summary>
    public RagOptions Rag { get; set; } = new();
 
+   /// <summary>Operator (MCP tool micro-agent) configuration options.</summary>
+   public OperatorConfig Operator { get; set; } = new();
+
    /// <summary>Output configuration options.</summary>
    public OutputOptions Output { get; set; } = new();
 }
@@ -99,6 +102,85 @@ public sealed class RagOptions
 
    /// <summary>Connection string (for PgVector).</summary>
    public string? ConnectionString { get; set; }
+}
+
+/// <summary>
+///    Configuration options for the Operator (MCP tool micro-agent).
+/// </summary>
+/// <remarks>
+///    Bind this from configuration (e.g., <c>Delibera:Operator</c>) and use
+///    <see cref="ToServerConfigs" /> to materialise <see cref="Models.McpServerConfig" /> instances
+///    for <c>ICouncilBuilder.WithOperator(...)</c>.
+/// </remarks>
+public sealed class OperatorConfig
+{
+   /// <summary>Whether the Operator is enabled.</summary>
+   public bool Enabled { get; set; }
+
+   /// <summary>Model name used by the Operator (typically a cheaper model than the participants).</summary>
+   public string ModelName { get; set; } = string.Empty;
+
+   /// <summary>Whether the Operator reuses the council's compressor for large tool results.</summary>
+   public bool ReuseCompression { get; set; } = true;
+
+   /// <summary>MCP servers the Operator connects to.</summary>
+   public List<McpServerOptions> McpServers { get; set; } = [];
+
+   /// <summary>Materialises the configured MCP servers into <see cref="Models.McpServerConfig" /> instances.</summary>
+   public IReadOnlyList<McpServerConfig> ToServerConfigs()
+   {
+      return McpServers.Select(s => s.ToConfig()).ToList();
+   }
+}
+
+/// <summary>
+///    Configuration for a single MCP server bound from configuration.
+/// </summary>
+public sealed class McpServerOptions
+{
+   /// <summary>Logical server name surfaced to participants (e.g., "web", "notion", "postgres").</summary>
+   public string Name { get; set; } = string.Empty;
+
+   /// <summary>Transport type: "Stdio" (default) or "Http".</summary>
+   public string Transport { get; set; } = "Stdio";
+
+   // ── Stdio ──
+
+   /// <summary>Executable command for stdio transport (e.g., "npx", "uvx", "dotnet").</summary>
+   public string? Command { get; set; }
+
+   /// <summary>Command-line arguments for stdio transport.</summary>
+   public List<string> Arguments { get; set; } = [];
+
+   /// <summary>Working directory for the spawned stdio process.</summary>
+   public string? WorkingDirectory { get; set; }
+
+   /// <summary>Environment variables passed to the stdio process.</summary>
+   public Dictionary<string, string> EnvironmentVariables { get; set; } = [];
+
+   // ── Http ──
+
+   /// <summary>Endpoint URL for HTTP/SSE transport.</summary>
+   public string? Endpoint { get; set; }
+
+   /// <summary>Additional HTTP headers (e.g., authorization) for HTTP transport.</summary>
+   public Dictionary<string, string> AdditionalHeaders { get; set; } = [];
+
+   /// <summary>Converts these options into a <see cref="Models.McpServerConfig" />.</summary>
+   public McpServerConfig ToConfig()
+   {
+      return string.Equals(Transport, "Http", StringComparison.OrdinalIgnoreCase)
+         ? McpServerConfig.Http(
+            Name,
+            new Uri(Endpoint ?? throw new InvalidOperationException($"MCP server '{Name}' uses Http transport but has no Endpoint.")),
+            AdditionalHeaders)
+         : McpServerConfig.Stdio(
+            Name,
+            Command ?? throw new InvalidOperationException($"MCP server '{Name}' uses Stdio transport but has no Command."),
+            Arguments,
+            EnvironmentVariables,
+            WorkingDirectory);
+   }
 }
 
 /// <summary>

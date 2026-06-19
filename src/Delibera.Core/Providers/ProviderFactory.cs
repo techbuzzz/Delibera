@@ -1,4 +1,5 @@
 using Delibera.Core.Providers.LLM;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 
 namespace Delibera.Core.Providers;
@@ -19,11 +20,29 @@ public abstract class CachingFactory<TBuilder, TInstance>
    /// <summary>Registered provider type names (read-only view).</summary>
    public IReadOnlyCollection<string> RegisteredTypes => _builders.Keys.ToList().AsReadOnly();
 
+   /// <inheritdoc />
+   public void Dispose()
+   {
+      if (_disposed) return;
+      _disposed = true;
+      DisposeInstances();
+      ClearInstances();
+      GC.SuppressFinalize(this);
+   }
+
    /// <summary>All currently cached provider instances.</summary>
-   public IReadOnlyDictionary<string, TInstance> GetAllInstances() => _instances;
+   public IReadOnlyDictionary<string, TInstance> GetAllInstances()
+   {
+      return _instances;
+   }
 
    /// <summary>Returns a cached instance by name, or <c>null</c>.</summary>
-   public TInstance? GetInstance(string name) => _instances.TryGetValue(name, out var p) ? p : null;
+   public TInstance? GetInstance(string name)
+   {
+      return _instances.TryGetValue(name, out var p)
+         ? p
+         : null;
+   }
 
    /// <summary>Registers a builder for a new provider type (e.g., "OpenAI", "YandexGPT").</summary>
    public CachingFactory<TBuilder, TInstance> RegisterBuilder(string providerType, TBuilder builder)
@@ -60,19 +79,15 @@ public abstract class CachingFactory<TBuilder, TInstance>
    }
 
    /// <summary>Iterates every cached instance — used by the derived <c>Dispose</c> methods.</summary>
-   protected IEnumerable<TInstance> EnumerateInstances() => _instances.Values;
+   protected IEnumerable<TInstance> EnumerateInstances()
+   {
+      return _instances.Values;
+   }
 
    /// <summary>Clears the cache without disposing anything.</summary>
-   protected void ClearInstances() => _instances.Clear();
-
-   /// <inheritdoc />
-   public void Dispose()
+   protected void ClearInstances()
    {
-      if (_disposed) return;
-      _disposed = true;
-      DisposeInstances();
-      ClearInstances();
-      GC.SuppressFinalize(this);
+      _instances.Clear();
    }
 
    /// <summary>Disposes every cached instance. Subclasses override to call the correct dispose method.</summary>
@@ -106,14 +121,22 @@ public sealed class ProviderFactory : CachingFactory<Func<IConfigurationSection,
    /// <summary>
    ///    Creates (or returns a cached) provider from configuration.
    /// </summary>
-   public ILLMProvider Create(string name, string providerType, IConfigurationSection config) =>
-      GetOrCreate(name, providerType, b => b(config));
+   public ILLMProvider Create(string name, string providerType, IConfigurationSection config)
+   {
+      return GetOrCreate(name, providerType, b => b(config));
+   }
 
    /// <summary>Returns a cached provider by name, or <c>null</c>.</summary>
-   public ILLMProvider? GetProvider(string name) => GetInstance(name);
+   public ILLMProvider? GetProvider(string name)
+   {
+      return GetInstance(name);
+   }
 
    /// <summary>All created provider instances.</summary>
-   public IReadOnlyDictionary<string, ILLMProvider> GetAllProviders() => GetAllInstances();
+   public IReadOnlyDictionary<string, ILLMProvider> GetAllProviders()
+   {
+      return GetAllInstances();
+   }
 
    /// <summary>Creates an Ollama provider with direct parameters.</summary>
    public OllamaProvider CreateOllama(string endpoint, string apiKey = "")
@@ -123,6 +146,35 @@ public sealed class ProviderFactory : CachingFactory<Func<IConfigurationSection,
 
       var provider = new OllamaProvider(endpoint, apiKey);
       CacheInstance(key, provider);
+      return provider;
+   }
+
+   /// <summary>
+   ///    Creates (or returns a cached) <see cref="ChatClientLLMProvider" /> from any Microsoft.Extensions.AI
+   ///    <see cref="IChatClient" />.
+   /// </summary>
+   /// <remarks>
+   ///    This is the entry point for plugging arbitrary Microsoft.Extensions.AI backends — OpenAI, Azure
+   ///    OpenAI, Anthropic, local OpenAI-compatible servers — into a Delibera council through the standard
+   ///    .NET AI abstractions.
+   /// </remarks>
+   /// <param name="name">Unique instance name used for caching.</param>
+   /// <param name="chatClient">The chat client to wrap.</param>
+   /// <param name="providerName">Optional friendly provider name (defaults to client metadata).</param>
+   /// <param name="ownsClient">Whether disposing the factory also disposes the client.</param>
+   public ChatClientLLMProvider CreateFromChatClient(
+      string name,
+      IChatClient chatClient,
+      string? providerName = null,
+      bool ownsClient = true)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(name);
+      ArgumentNullException.ThrowIfNull(chatClient);
+
+      if (GetInstance(name) is ChatClientLLMProvider existing) return existing;
+
+      var provider = new ChatClientLLMProvider(chatClient, providerName, ownsClient);
+      CacheInstance(name, provider);
       return provider;
    }
 

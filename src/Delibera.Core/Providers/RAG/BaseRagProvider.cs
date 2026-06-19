@@ -8,15 +8,6 @@ namespace Delibera.Core.Providers.RAG;
 /// </summary>
 public abstract class BaseRagProvider : IRagProvider
 {
-   /// <summary>Abstract <see cref="IRagProvider" /> implementations describe themselves.</summary>
-   public abstract string ProviderName { get; }
-
-   /// <inheritdoc />
-   public IVectorStore VectorStore { get; }
-
-   /// <inheritdoc />
-   public IEmbeddingProvider EmbeddingProvider { get; }
-
    /// <summary>
    ///    Initialises a base RAG provider with the supplied vector store and embedding provider.
    /// </summary>
@@ -25,6 +16,15 @@ public abstract class BaseRagProvider : IRagProvider
       VectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
       EmbeddingProvider = embeddingProvider ?? throw new ArgumentNullException(nameof(embeddingProvider));
    }
+
+   /// <summary>Abstract <see cref="IRagProvider" /> implementations describe themselves.</summary>
+   public abstract string ProviderName { get; }
+
+   /// <inheritdoc />
+   public IVectorStore VectorStore { get; }
+
+   /// <inheritdoc />
+   public IEmbeddingProvider EmbeddingProvider { get; }
 
    /// <inheritdoc />
    public virtual async Task<int> IndexDocumentAsync(
@@ -124,5 +124,8 @@ public abstract class BaseRagProvider : IRagProvider
    }
 
    /// <inheritdoc />
-   public virtual ValueTask DisposeAsync() => VectorStore.DisposeAsync();
+   public virtual ValueTask DisposeAsync()
+   {
+      return VectorStore.DisposeAsync();
+   }
 }

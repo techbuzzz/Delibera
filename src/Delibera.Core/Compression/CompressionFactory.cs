@@ -24,18 +24,21 @@ public static class CompressionFactory
       CompressionStrategy strategy,
       ILLMProvider? llmProvider = null,
       string? modelName = null,
-      IEmbeddingProvider? embeddingProvider = null) => strategy switch
+      IEmbeddingProvider? embeddingProvider = null)
    {
-      CompressionStrategy.None => PassThroughCompressor.Instance,
-      CompressionStrategy.Semantic => new SemanticCompressor(
-         embeddingProvider ?? throw new ArgumentException("Semantic compression requires an IEmbeddingProvider.", nameof(embeddingProvider))),
-      CompressionStrategy.Deduplication => new DeduplicationCompressor(embeddingProvider),
-      CompressionStrategy.Summarization => new SummarizationCompressor(
-         llmProvider ?? throw new ArgumentException("Summarization compression requires an ILLMProvider.", nameof(llmProvider)),
-         modelName ?? throw new ArgumentException("Summarization compression requires a modelName.", nameof(modelName))),
-      CompressionStrategy.Hybrid => new HybridCompressor(llmProvider, modelName, embeddingProvider),
-      _ => throw new ArgumentOutOfRangeException(nameof(strategy), $"Unknown compression strategy: {strategy}")
-   };
+      return strategy switch
+      {
+         CompressionStrategy.None => PassThroughCompressor.Instance,
+         CompressionStrategy.Semantic => new SemanticCompressor(
+            embeddingProvider ?? throw new ArgumentException("Semantic compression requires an IEmbeddingProvider.", nameof(embeddingProvider))),
+         CompressionStrategy.Deduplication => new DeduplicationCompressor(embeddingProvider),
+         CompressionStrategy.Summarization => new SummarizationCompressor(
+            llmProvider ?? throw new ArgumentException("Summarization compression requires an ILLMProvider.", nameof(llmProvider)),
+            modelName ?? throw new ArgumentException("Summarization compression requires a modelName.", nameof(modelName))),
+         CompressionStrategy.Hybrid => new HybridCompressor(llmProvider, modelName, embeddingProvider),
+         _ => throw new ArgumentOutOfRangeException(nameof(strategy), $"Unknown compression strategy: {strategy}")
+      };
+   }
 
    /// <summary>
    ///    Creates a compressor from a strategy name string (case-insensitive).
@@ -55,12 +58,14 @@ public static class CompressionFactory
 
 /// <summary>
 ///    No-op compressor — passes text through unchanged. Used when compression is disabled.
-///    </summary>
+/// </summary>
 internal sealed class PassThroughCompressor : IContextCompressor
 {
    public static readonly PassThroughCompressor Instance = new();
 
-   private PassThroughCompressor() { }
+   private PassThroughCompressor()
+   {
+   }
 
    /// <inheritdoc />
    public string StrategyName => "None";

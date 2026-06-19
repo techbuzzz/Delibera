@@ -1,5 +1,6 @@
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
+using Delibera.Core.Providers.Mcp;
 
 namespace Delibera.Core.Council;
 
@@ -16,6 +17,10 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private IKnowledgeBase? _knowledgeBase;
    private KnowledgeKeeper? _knowledgeKeeper;
    private int _maxRounds = 4;
+   private Operator? _operator;
+   private CouncilMember? _operatorModel;
+   private bool _operatorReuseCompression;
+   private IReadOnlyList<McpServerConfig>? _operatorServers;
    private string? _outputPath;
    private IDebateStrategy _strategy = new StandardDebate();
    private string _systemPrompt = "You are a helpful AI assistant participating in a council debate.";
@@ -57,15 +62,6 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
-   /// <summary>Backward-compatible alias for <see cref="SetChairman(CouncilMember)" />.</summary>
-   [Obsolete("Use SetChairman instead.")]
-   public ICouncilBuilder SetModerator(CouncilMember moderator) => SetChairman(moderator);
-
-   /// <summary>Backward-compatible alias for <see cref="SetChairman(string, ILLMProvider, string?)" />.</summary>
-   [Obsolete("Use SetChairman instead.")]
-   public ICouncilBuilder SetModerator(string modelName, ILLMProvider provider, string? persona = null)
-      => SetChairman(modelName, provider, persona);
-
    // ── Knowledge Keeper ──
 
    /// <inheritdoc />
@@ -75,17 +71,34 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
-   /// <summary>Creates and attaches a Knowledge Keeper from a RAG provider, model and collection.</summary>
-   public ICouncilBuilder WithKnowledgeKeeper(
-      IRagProvider ragProvider,
-      string modelName,
-      ILLMProvider llmProvider,
-      string collectionName = "council_knowledge")
+   // ── Operator (MCP tool micro-agent) ──
+
+   /// <inheritdoc />
+   public ICouncilBuilder WithOperator(Operator @operator)
    {
-      ArgumentNullException.ThrowIfNull(ragProvider);
-      ArgumentNullException.ThrowIfNull(llmProvider);
-      var member = new CouncilMember(modelName, llmProvider, "Knowledge Keeper");
-      _knowledgeKeeper = new KnowledgeKeeper(ragProvider, member, collectionName);
+      _operator = @operator ?? throw new ArgumentNullException(nameof(@operator));
+      return this;
+   }
+
+   /// <inheritdoc />
+   public ICouncilBuilder WithOperator(
+      string modelName,
+      ILLMProvider provider,
+      IEnumerable<McpServerConfig> servers,
+      bool reuseCompression = true)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+      ArgumentNullException.ThrowIfNull(provider);
+      ArgumentNullException.ThrowIfNull(servers);
+
+      var serverList = servers.ToList();
+      if (serverList.Count == 0)
+         throw new ArgumentException("At least one MCP server configuration is required.", nameof(servers));
+
+      // Operator construction is deferred to Build() so it can reuse the council's compressor.
+      _operatorModel = new CouncilMember(modelName, provider, "Operator");
+      _operatorServers = serverList;
+      _operatorReuseCompression = reuseCompression;
       return this;
    }
 
@@ -181,6 +194,40 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
+   /// <inheritdoc />
+   ICouncilExecutor ICouncilBuilder.Build()
+   {
+      return Build();
+   }
+
+   /// <summary>Backward-compatible alias for <see cref="SetChairman(CouncilMember)" />.</summary>
+   [Obsolete("Use SetChairman instead.")]
+   public ICouncilBuilder SetModerator(CouncilMember moderator)
+   {
+      return SetChairman(moderator);
+   }
+
+   /// <summary>Backward-compatible alias for <see cref="SetChairman(string, ILLMProvider, string?)" />.</summary>
+   [Obsolete("Use SetChairman instead.")]
+   public ICouncilBuilder SetModerator(string modelName, ILLMProvider provider, string? persona = null)
+   {
+      return SetChairman(modelName, provider, persona);
+   }
+
+   /// <summary>Creates and attaches a Knowledge Keeper from a RAG provider, model and collection.</summary>
+   public ICouncilBuilder WithKnowledgeKeeper(
+      IRagProvider ragProvider,
+      string modelName,
+      ILLMProvider llmProvider,
+      string collectionName = "council_knowledge")
+   {
+      ArgumentNullException.ThrowIfNull(ragProvider);
+      ArgumentNullException.ThrowIfNull(llmProvider);
+      var member = new CouncilMember(modelName, llmProvider, "Knowledge Keeper");
+      _knowledgeKeeper = new KnowledgeKeeper(ragProvider, member, collectionName);
+      return this;
+   }
+
    // ── Build ──
 
    /// <summary>
@@ -202,6 +249,23 @@ public sealed class CouncilBuilder : ICouncilBuilder
          KnowledgeFiles = _knowledgeBase?.GetLoadedSources().ToList() ?? []
       };
 
+      // Build the deferred Operator (if configured via the convenience overload) so it can reuse
+      // the council's compressor when requested.
+      var @operator = _operator;
+      if (@operator is null && _operatorModel is not null && _operatorServers is not null)
+      {
+         var clients = _operatorServers.Select(s => (IMcpClient)new McpClientAdapter(s)).ToList();
+         @operator = new Operator(
+            _operatorModel,
+            clients,
+            _operatorReuseCompression
+               ? _compressor
+               : null,
+            _operatorReuseCompression
+               ? _compressionOptions
+               : null);
+      }
+
       return new CouncilExecutor(
          _members.AsReadOnly(),
          _chairman,
@@ -213,9 +277,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
          _outputPath,
          _compressor,
          _compressionOptions,
-         _compressionCache);
+         _compressionCache,
+         @operator);
    }
-
-   /// <inheritdoc />
-   ICouncilExecutor ICouncilBuilder.Build() => Build();
 }
