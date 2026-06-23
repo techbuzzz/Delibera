@@ -1,5 +1,4 @@
 using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -18,21 +17,21 @@ namespace Delibera.Core.Providers.LLM;
 /// </remarks>
 public sealed class YandexGptProvider : ILLMProvider
 {
-   private readonly HttpClient _http;
-   private readonly string _apiKey;
-   private readonly string _folderId;
-   private readonly string _endpoint;
-   private readonly string _legacyEndpoint;
-   private readonly float _temperature;
-   private readonly int _maxOutputTokens;
-   private bool _disposed;
-
    private static readonly JsonSerializerOptions JsonOptions = new()
    {
       PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
       DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
       WriteIndented = false
    };
+
+   private readonly string _apiKey;
+   private readonly string _endpoint;
+   private readonly string _folderId;
+   private readonly HttpClient _http;
+   private readonly string _legacyEndpoint;
+   private readonly int _maxOutputTokens;
+   private readonly float _temperature;
+   private bool _disposed;
 
    /// <summary>
    ///    Creates a YandexGPT provider.
@@ -61,21 +60,36 @@ public sealed class YandexGptProvider : ILLMProvider
       _maxOutputTokens = maxOutputTokens;
 
       _http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-   }
 
-   /// <inheritdoc />
-   public string ProviderName => "YandexGPT";
+      // Use the new OpenAI-compatible gateway when a folder id is configured.
+      // The legacy Bearer endpoint is kept for backward compatibility only.
+      if (!string.IsNullOrWhiteSpace(_folderId))
+      {
+         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Api-Key", _apiKey);
+         _http.DefaultRequestHeaders.Add("OpenAI-Project", _folderId);
+      }
+      else
+      {
+         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+      }
+   }
 
    /// <summary>Whether the provider uses the new /v1/responses gateway.</summary>
    private bool UseNewEndpoint => !string.IsNullOrWhiteSpace(_folderId);
+
+   /// <inheritdoc />
+   public string ProviderName => "YandexGPT";
 
    /// <inheritdoc />
    public async Task<bool> IsAvailableAsync(CancellationToken ct = default)
    {
       try
       {
-         var request = new HttpRequestMessage(HttpMethod.Get, UseNewEndpoint ? $"{_endpoint}/models" : $"{_legacyEndpoint}/models");
-         AddAuthHeaders(request.Headers);
+         // Yandex does not publish a stable /models URL on either gateway,
+         // so we treat the configured endpoint itself as the liveness probe.
+         using var request = new HttpRequestMessage(HttpMethod.Get, UseNewEndpoint
+            ? _endpoint
+            : _legacyEndpoint);
          using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
          return response.IsSuccessStatusCode;
       }
@@ -142,9 +156,14 @@ public sealed class YandexGptProvider : ILLMProvider
 
       var json = JsonSerializer.Serialize(requestBody, JsonOptions);
       using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-      foreach (var h in headers)
-         request.Headers.TryAddWithoutValidation(h.Key, h.Value);
       request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+      // On the legacy endpoint auth headers travel with each request.
+      // On the new endpoint they were already configured on the HttpClient
+      // in the constructor (Authorization: Api-Key … and OpenAI-Project).
+      if (!UseNewEndpoint)
+         foreach (var h in headers)
+            request.Headers.TryAddWithoutValidation(h.Key, h.Value);
 
       using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
       var content = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -153,12 +172,30 @@ public sealed class YandexGptProvider : ILLMProvider
          throw new InvalidOperationException($"YandexGPT API failed: {response.StatusCode} — {content}");
 
       using var doc = JsonDocument.Parse(content);
+
+      // Yandex returns HTTP 200 with an embedded error object when the request
+      // is syntactically valid but the model call fails (context overflow,
+      // content policy, rate limit, etc.). Surface that error instead of
+      // swallowing it as an "empty response".
+      if (doc.RootElement.TryGetProperty("error", out var errorElement) &&
+          errorElement.ValueKind == JsonValueKind.Object)
+      {
+         var errorCode = errorElement.TryGetProperty("code", out var c)
+            ? c.GetString()
+            : null;
+         var errorMessage = errorElement.TryGetProperty("message", out var m)
+            ? m.GetString()
+            : null;
+         throw new InvalidOperationException(
+            $"YandexGPT model call failed ({errorCode ?? "unknown"}): {errorMessage ?? content}");
+      }
+
       var text = UseNewEndpoint
          ? ExtractNewShape(doc.RootElement)
          : ExtractLegacyShape(doc.RootElement);
 
       if (string.IsNullOrWhiteSpace(text) || text == "{}")
-         throw new InvalidOperationException($"Empty response from YandexGPT model '{model}'.");
+         throw new InvalidOperationException($"Empty response from YandexGPT model '{model}'. Raw body: {content}");
 
       return text;
    }
@@ -219,20 +256,25 @@ public sealed class YandexGptProvider : ILLMProvider
                 .GetProperty("alternatives")[0]
                 .GetProperty("message")
                 .GetProperty("text")
-                .GetString()
-             ?? "{}";
+                .GetString() ??
+             "{}";
    }
 
    private record YandexCompletionRequest(
-      [property: JsonPropertyName("modelUri")] string ModelUri,
-      [property: JsonPropertyName("completionOptions")] CompletionOptions CompletionOptions,
-      [property: JsonPropertyName("messages")] Message[] Messages
+      [property: JsonPropertyName("modelUri")]
+      string ModelUri,
+      [property: JsonPropertyName("completionOptions")]
+      CompletionOptions CompletionOptions,
+      [property: JsonPropertyName("messages")]
+      Message[] Messages
    );
 
    private record CompletionOptions(
       [property: JsonPropertyName("stream")] bool Stream,
-      [property: JsonPropertyName("temperature")] float Temperature,
-      [property: JsonPropertyName("maxTokens")] int MaxTokens
+      [property: JsonPropertyName("temperature")]
+      float Temperature,
+      [property: JsonPropertyName("maxTokens")]
+      int MaxTokens
    );
 
    private record Message(
