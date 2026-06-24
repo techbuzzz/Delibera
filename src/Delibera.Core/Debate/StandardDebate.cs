@@ -62,10 +62,6 @@ public sealed class StandardDebate : DebateScenario
        var operatorBriefing = BuildOperatorBriefing(@operator);
        var baseSystemPrompt = context.SystemPrompt + operatorBriefing;
 
-      // Operator briefing is appended to participant system prompts so they know what tools exist.
-      var operatorBriefing = BuildOperatorBriefing(@operator);
-      var baseSystemPrompt = context.SystemPrompt + operatorBriefing;
-
       // ── Chairman opening ──
       if (chairman is not null)
          builder.SetOpeningStatement(await Chairman.OpenDebateAsync(

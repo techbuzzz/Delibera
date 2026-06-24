@@ -59,38 +59,17 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
    // Shared helpers
    // ──────────────────────────────────────────────
 
-    /// <summary>Collects responses from all members in parallel.</summary>
-    protected static async Task<Dictionary<string, string>> CollectResponsesAsync(
-       IReadOnlyList<CouncilMember> members,
-       string systemPrompt,
-       string userPrompt,
-       float temperature,
-       CancellationToken ct)
-    {
-       var tasks = members.Select(async member =>
-       {
-          try
-          {
-             var response = await member.AskAsync(systemPrompt, userPrompt, temperature, ct);
-             return (member.Role, member.DisplayName, Response: response);
-          }
-          catch (Exception ex)
-          {
-             return (member.Role, member.DisplayName, Response: $"[ERROR: {ex.Message}]");
-          }
-       });
-
-       var results = await Task.WhenAll(tasks);
-
-      //return results.ToDictionary(r => $"{r.Role}: {r.DisplayName}", r => r.Response);
-      // DisplayName can collide when the same model is registered multiple times.
-      // Disambiguate by appending a counter while preserving the original label for unique names.
-      var seen = new HashSet<string>();
-      var responses = new Dictionary<string, string>(results.Length);
-      foreach (var (role, displayName, response) in results)
+   /// <summary>Collects responses from all members in parallel.</summary>
+   protected static async Task<Dictionary<string, string>> CollectResponsesAsync(
+      IReadOnlyList<CouncilMember> members,
+      string systemPrompt,
+      string userPrompt,
+      float temperature,
+      CancellationToken ct)
+   {
+      var tasks = members.Select(async member =>
       {
-         var key = $"{role}: {displayName}";
-         if (!seen.Add(key))
+         try
          {
             var response = await member.AskAsync(systemPrompt, userPrompt, temperature, ct);
             return (member.Role, member.DisplayName, Response: response);
@@ -99,6 +78,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
          {
             return (member.Role, member.DisplayName, Response: $"[ERROR: {ex.Message}]");
          }
+      });
 
       var results = await Task.WhenAll(tasks);
       //return results.ToDictionary(r => r.DisplayName, r => r.Response);
