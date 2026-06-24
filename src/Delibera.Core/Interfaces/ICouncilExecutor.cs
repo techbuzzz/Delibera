@@ -1,4 +1,5 @@
 using Delibera.Core.Council;
+using Delibera.Core.Models;
 
 namespace Delibera.Core.Interfaces;
 
@@ -34,6 +35,20 @@ public interface ICouncilExecutor
 
    /// <summary>Invoked after each round completes.</summary>
    event Action<DebateRound>? OnRoundCompleted;
+
+   /// <summary>
+   ///    Invoked for every <see cref="ExecutionLog" /> entry produced during
+   ///    <see cref="ExecuteAsync" />. Useful for streaming progress to a console
+   ///    or another observer without having to wait until the debate finishes.
+   /// </summary>
+   event Action<ExecutionLog>? OnLog;
+
+   /// <summary>
+   ///    Invoked when a non-fatal error is caught internally (e.g. failed MCP
+   ///    tool call, failed knowledge index). The debate continues. Fatal errors
+   ///    are surfaced via the <see cref="ExecuteAsync" /> exception path.
+   /// </summary>
+   event Action<Exception, string>? OnError;
 
    /// <summary>
    ///    Runs the debate and returns the full result.

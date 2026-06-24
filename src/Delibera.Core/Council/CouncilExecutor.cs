@@ -70,6 +70,12 @@ public sealed class CouncilExecutor : ICouncilExecutor
    /// <summary>Invoked after each round completes.</summary>
    public event Action<DebateRound>? OnRoundCompleted;
 
+   /// <inheritdoc />
+   public event Action<ExecutionLog>? OnLog;
+
+   /// <inheritdoc />
+   public event Action<Exception, string>? OnError;
+
    /// <summary>
    ///    Runs the debate and returns the full result.
    /// </summary>
@@ -97,7 +103,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
             }
             catch (Exception ex)
             {
-               Log(ExecutionLog.Error("Operator", $"Operator initialisation failed: {ex.Message}"));
+               ReportError(ex, "Operator");
             }
          }
 
@@ -253,6 +259,13 @@ public sealed class CouncilExecutor : ICouncilExecutor
    private void Log(ExecutionLog entry)
    {
       _executionLogs.Add(entry);
+      OnLog?.Invoke(entry);
+   }
+
+   private void ReportError(Exception ex, string context)
+   {
+      Log(ExecutionLog.Error(context, ex.Message));
+      OnError?.Invoke(ex, context);
    }
 
    private static string Truncate(string text, int max)
