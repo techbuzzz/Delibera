@@ -51,7 +51,7 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
       // 1. Retrieve context from RAG
       var context = await _ragProvider.GetContextAsync(CollectionName, question, limit, ct);
 
-      const string SystemPrompt = """
+      const string systemPrompt = """
                                   You are the Knowledge Keeper — a librarian and fact-checker for an AI council debate.
                                   Your role is to provide accurate, well-sourced answers based ONLY on the context provided.
                                   If the context does not contain sufficient information, clearly state what you know
@@ -90,7 +90,7 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
       }
 
       // 2. Generate answer via dedicated LLM
-      var answer = await _model.AskAsync(SystemPrompt, userPrompt, temperature, ct);
+      var answer = await _model.AskAsync(systemPrompt, userPrompt, temperature, ct);
 
       // 3. Log the interaction
       _interactions.Add(new KnowledgeInteraction(question, answer, sourceChunks));
@@ -118,7 +118,7 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
          sb.AppendLine();
       }
 
-      const string SystemPrompt = """
+      const string systemPrompt = """
                                   You are the Knowledge Keeper — a librarian and fact-checker for an AI council debate.
                                   Provide accurate answers based ONLY on the context provided. Cite source numbers.
                                   """;
@@ -131,7 +131,7 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
                         {question}
                         """;
 
-      var answer = await _model.AskAsync(SystemPrompt, userPrompt, temperature, ct);
+      var answer = await _model.AskAsync(systemPrompt, userPrompt, temperature, ct);
       _interactions.Add(new KnowledgeInteraction(question, answer, searchResults.Count));
       return answer;
    }

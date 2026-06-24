@@ -340,22 +340,26 @@ public static class Program
       var maxRounds = debateCfg.GetValue<int?>("MaxRounds") ?? 4;
       var temperature = debateCfg.GetValue<float?>("Temperature") ?? 0.7f;
 
-      var systemPrompt = cfg["Prompts:SystemPrompt"] ?? "You are a helpful AI assistant participating in a council debate.";
-      var userPrompt = cfg["Prompts:UserPrompt"] ?? "What is the different between Microservices vs Monolith?";
+       var systemPrompt = cfg["Prompts:SystemPrompt"] ?? "You are a helpful AI assistant participating in a council debate.";
+       var userPrompt = cfg["Prompts:UserPrompt"] ?? "What is the different between Microservices vs Monolith?";
+       var responseLanguage = debateCfg["ResponseLanguage"];
+       var maxDegreeOfParallelism = debateCfg.GetValue<int?>("MaxDegreeOfParallelism") ?? 0;
 
-      IDebateStrategy strategy = stratName.ToLowerInvariant() switch
-      {
-         "critique" => new CritiqueDebate(),
-         "consensus" => new ConsensusDebate(),
-         _ => new StandardDebate()
-      };
+       IDebateStrategy strategy = stratName.ToLowerInvariant() switch
+       {
+          "critique" => new CritiqueDebate(),
+          "consensus" => new ConsensusDebate(),
+          _ => new StandardDebate()
+       };
 
-      var builder = new CouncilBuilder()
-         .WithStrategy(strategy)
-         .WithSystemPrompt(systemPrompt)
-         .WithUserPrompt(userPrompt)
-         .WithMaxRounds(maxRounds)
-         .WithTemperature(temperature);
+       var builder = new CouncilBuilder()
+          .WithStrategy(strategy)
+          .WithSystemPrompt(systemPrompt)
+          .WithUserPrompt(userPrompt)
+          .WithMaxRounds(maxRounds)
+          .WithTemperature(temperature)
+          .WithResponseLanguage(responseLanguage)
+          .WithMaxDegreeOfParallelism(maxDegreeOfParallelism);
 
       // Add members
       foreach (var mc in cfg.GetSection("Models").GetChildren())
@@ -536,7 +540,7 @@ public static class Program
          if (result.ExecutionLogs.Count > 0)
          {
             Console.WriteLine($"\n  📋 Execution Logs ({result.ExecutionLogs.Count} entries):");
-            foreach (var log in result.ExecutionLogs.Where(l => l.Level >= LogLevel.Info))
+            foreach (var log in result.ExecutionLogs.Where(l => l.Level >= ExecutionLogLevel.Info))
                Console.WriteLine($"    {log}");
          }
       }
@@ -584,14 +588,14 @@ public static class Program
    private static void WriteLogEntry(ExecutionLog entry)
    {
       var prev = Console.ForegroundColor;
-      Console.ForegroundColor = entry.Level switch
-      {
-         LogLevel.Trace => ConsoleColor.DarkGray,
-         LogLevel.Info => ConsoleColor.Cyan,
-         LogLevel.Warning => ConsoleColor.Yellow,
-         LogLevel.Error => ConsoleColor.Red,
-         _ => prev
-      };
+       Console.ForegroundColor = entry.Level switch
+       {
+          ExecutionLogLevel.Trace => ConsoleColor.DarkGray,
+          ExecutionLogLevel.Info => ConsoleColor.Cyan,
+          ExecutionLogLevel.Warning => ConsoleColor.Yellow,
+          ExecutionLogLevel.Error => ConsoleColor.Red,
+          _ => prev
+       };
 
       Console.WriteLine($"  ┊ {entry}");
       Console.ForegroundColor = prev;

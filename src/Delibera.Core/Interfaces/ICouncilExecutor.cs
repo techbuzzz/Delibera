@@ -9,23 +9,31 @@ namespace Delibera.Core.Interfaces;
 /// </summary>
 public interface ICouncilExecutor
 {
-   /// <summary>Council participants.</summary>
-   IReadOnlyList<CouncilMember> Members { get; }
+    /// <summary>Council participants.</summary>
+    IReadOnlyList<CouncilMember> Members { get; }
 
-   /// <summary>Chairman (may be <c>null</c>).</summary>
-   CouncilMember? Chairman { get; }
+    /// <summary>Chairman (may be <c>null</c>).</summary>
+    CouncilMember? Chairman { get; }
 
-   /// <summary>Knowledge Keeper (may be <c>null</c>).</summary>
-   KnowledgeKeeper? KnowledgeKeeper { get; }
+    /// <summary>Knowledge Keeper (may be <c>null</c>).</summary>
+    KnowledgeKeeper? KnowledgeKeeper { get; }
 
-   /// <summary>Operator (may be <c>null</c>).</summary>
-   Operator? Operator { get; }
+    /// <summary>Operator (may be <c>null</c>).</summary>
+    Operator? Operator { get; }
 
-   /// <summary>Debate strategy.</summary>
-   IDebateStrategy Strategy { get; }
+    /// <summary>Debate strategy.</summary>
+    IDebateStrategy Strategy { get; }
 
-   /// <summary>Context compressor (may be <c>null</c> if compression is disabled).</summary>
-   IContextCompressor? Compressor { get; }
+    /// <summary>Context compressor (may be <c>null</c> if compression is disabled).</summary>
+    IContextCompressor? Compressor { get; }
+
+    /// <summary>
+    ///    Optional <see cref="ILogger" /> used by the executor to surface progress
+    ///    (Chairman actions, rounds, compression, errors, …) to a host's logging pipeline.
+    ///    When <c>null</c>, only the <see cref="OnLog" /> event and the
+    ///    <see cref="ExecutionLogs" /> collection are populated.
+    /// </summary>
+    ILogger? Logger { get; }
 
    /// <summary>
    ///    Execution logs collected during the debate.

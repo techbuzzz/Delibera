@@ -41,7 +41,10 @@ well-reasoned outcomes** rather than single-model guesses.
 | **🐘 Qdrant + pgvector**      | Pluggable vector stores — use a dedicated DB or your existing PostgreSQL              |
 | **🗜️ Context Compression**   | 4 strategies (Semantic, Deduplication, Summarization, Hybrid) save 30–70% of tokens   |
 | **💉 Dependency Injection**   | `AddDelibera()` extension for `IServiceCollection` with full options binding          |
-| **📋 Execution Logging**      | `ExecutionLog` model with `LogLevel` — Chairman, KK, Compression & participant events |
+| **📋 Execution Logging**      | `ExecutionLog` model with `ExecutionLogLevel` — Chairman, KK, Compression & participant events |
+| **📝 M.E.Logging**           | Inject your own `ILogger`/`ILoggerFactory` — every debate event is forwarded to the host's logging pipeline |
+| **🌐 Response Language**     | Force every model (participants, Chairman, KK, Operator) to answer in a specific language |
+| **⚡ Parallel Operator**     | `[[OPERATOR: …]]` tasks within a round run in parallel, bounded by `MaxDegreeOfParallelism` |
 | **📁 Separate File Output**   | Export `result.md`, `statistics.md`, and `logs.md` independently                      |
 | **🔌 Interface-First**        | Clean abstractions for providers, factories, builders and executors                   |
 | **🧱 Modern C# 12**           | File-scoped namespaces, records, init-only properties, global usings                  |
@@ -198,6 +201,8 @@ Resolves these interfaces from DI:
     "MaxRounds": 4,
     "Temperature": 0.7,
     "SystemPrompt": "You are a knowledgeable AI expert participating in a council debate.",
+    "ResponseLanguage": "Russian",
+    "MaxDegreeOfParallelism": 0,
     "Providers": {
       "DefaultType": "Ollama",
       "DefaultEndpoint": "http://localhost:11434",
@@ -480,20 +485,101 @@ docker exec -it <container> psql -U postgres -d council_vectors -c "CREATE EXTEN
 
 ---
 
+## 📝 Logging (Microsoft.Extensions.Logging)
+
+Delibera integrates with the standard .NET logging framework. Every debate event — Chairman
+opening, Knowledge Keeper queries, compression operations, Operator interactions, participant
+responses, errors — is forwarded to an injected `ILogger` (category `Delibera.Core.Council`)
+**in addition to** the in-memory `ExecutionLog` collection and the `OnLog`/`OnError` events.
+
+### Inject your logger via the builder
+
+```csharp
+using Microsoft.Extensions.Logging;
+
+var loggerFactory = LoggerFactory.Create(b => { b.AddConsole(); b.SetMinimumLevel(LogLevel.Information); });
+
+var result = await new CouncilBuilder()
+   .AddMember("llama3.2:3b", ollama, "Analyst")
+   .SetChairman(Chairman.CreateStandard("qwen2.5:7b", ollama))
+   .WithStandardDebate()
+   .WithUserPrompt("…")
+   .WithLogger(loggerFactory.CreateLogger("Delibera"))
+   .Build()
+   .ExecuteAsync();
+```
+
+### Inject your logger factory via DI
+
+```csharp
+services.AddDelibera(configuration, loggerFactory, "Delibera");
+// Any ICouncilBuilder resolved from the container is automatically decorated with a logger.
+```
+
+When no `ILogger` is configured, Delibera falls back to the legacy behaviour: events are only
+captured in `DebateResult.ExecutionLogs` and the `OnLog`/`OnError` events.
+
+---
+
+## 🌐 Response Language Enforcement
+
+Force **every** model response (participants, Chairman, Knowledge Keeper, Operator) to be in a
+specific language, regardless of the language used in the prompt or retrieved RAG context.
+
+```csharp
+var result = await new CouncilBuilder()
+   .AddMember("llama3.2:3b", ollama, "Analyst")
+   .AddMember("qwen2.5:7b", ollama, "Strategist")
+   .SetChairman(Chairman.CreateStandard("qwen2.5:7b", ollama))
+   .WithStandardDebate()
+   .WithUserPrompt("Microservices vs Monolith for a 5-person startup?")
+   .WithResponseLanguage("Russian")   // ← force Russian answers
+   .Build()
+   .ExecuteAsync();
+```
+
+Or via configuration (`Delibera:ResponseLanguage`). Delibera injects a strict directive into every
+system prompt: *“You MUST answer exclusively in {language}. Never use any other language…”*.
+Leave empty/null to let the model pick a language from context (legacy behaviour).
+
+---
+
+## ⚡ Performance — Parallel Operator Requests
+
+When participants delegate multiple tasks to the Operator within a round (via `[[OPERATOR: …]]`
+markers), Delibera now executes them **in parallel** using `Parallel.ForEachAsync`, bounded by
+`MaxDegreeOfParallelism`.
+
+```csharp
+var result = await new CouncilBuilder()
+   .AddMember("llama3.2:3b", ollama, "Analyst")
+   .WithOperator("llama3.2:3b", ollama, servers)
+   .WithMaxDegreeOfParallelism(4)   // ← cap at 4 concurrent Operator tasks
+   .Build()
+   .ExecuteAsync();
+```
+
+Or via configuration (`Delibera:MaxDegreeOfParallelism`). Set `0` (default) for unbounded
+parallelism — all delegated tasks in a round run concurrently.
+
+---
+
 ## 🏛️ Architecture
 
 ```
 Delibera.Core
-├── Council/              ← CouncilBuilder, CouncilExecutor, Chairman, KnowledgeKeeper
-├── Debate/               ← StandardDebate, CritiqueDebate, ConsensusDebate
+├── Council/              ← CouncilBuilder, CouncilExecutor, Chairman, KnowledgeKeeper, Operator
+├── Debate/               ← StandardDebate, CritiqueDebate, ConsensusDebate, DebateScenario
 ├── Compression/          ← Semantic / Deduplication / Summarization / Hybrid
 ├── Providers/
-│   ├── LLM/              ← OllamaProvider, OllamaEmbeddingProvider
-│   └── RAG/              ← QdrantRagProvider, PgVectorRagProvider
-├── DependencyInjection/  ← AddDelibera() + CouncilOptions
+│   ├── LLM/              ← OllamaProvider, ChatClientLLMProvider, EmbeddingGeneratorProvider
+│   ├── RAG/              ← QdrantRagProvider, PgVectorRagProvider
+│   └── Mcp/              ← McpClientAdapter (Operator ↔ MCP servers)
+├── Extensions/           ← MicrosoftAIExtensions (IChatClient ↔ ILLMProvider bridges)
+├── DependencyInjection/  ← AddDelibera() / AddDeliberaChatClient() + CouncilOptions
 ├── Knowledge/            ← MarkdownKnowledgeBase
-├── Models/               ← CouncilMember, DebateResult, DebateRound, TokenStatistics, ...
-└── Interfaces/           ← ILLMProvider, IRagProvider, IContextCompressor, ...
+├── Models/               ← CouncilMember, DebateResult, DebateRound, TokenStatistics, DebateExecutionOptions, ...
+└── Interfaces/           ← ILLMProvider, IRagProvider, IContextCompressor, IDebateStrategy, ...
 ```
 
 ---

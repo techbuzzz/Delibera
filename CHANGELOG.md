@@ -5,6 +5,40 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.2.0] - 2026
+
+### Added — Microsoft.Extensions.Logging, response-language enforcement, parallel Operator
+
+- **Microsoft.Extensions.Logging support** — inject your own `ILogger` / `ILoggerFactory` and every
+  debate event (Chairman opening, Knowledge Keeper queries, compression, Operator interactions,
+  participant responses, errors) is forwarded to the host's logging pipeline. New APIs:
+  - `ICouncilBuilder.WithLogger(ILogger?)` and `CouncilBuilder.WithLogger(...)`.
+  - `ICouncilExecutor.Logger` property exposing the configured `ILogger`.
+  - `AddDelibera(IServiceCollection, IConfiguration, ILoggerFactory, string?)` DI overload that
+    auto-decorates every resolved `ICouncilBuilder` with a logger.
+  - `DebateExecutionOptions` record bundles the logger (plus response language + parallelism)
+    threaded through `IDebateStrategy.ExecuteAsync(...)` via a new
+    `IDebateStrategyWithOptions` interface (default method on `IDebateStrategy` keeps custom
+    strategies working unchanged).
+- **Response-language enforcement** — `ICouncilBuilder.WithResponseLanguage(string?)` and
+  `CouncilOptions.ResponseLanguage`. When set, Delibera injects a strict directive into every
+  system and user prompt so all models (participants, Chairman, Knowledge Keeper, Operator) answer
+  exclusively in the chosen language, regardless of the prompt or retrieved RAG context.
+- **Parallel Operator requests** — `[[OPERATOR: …]]` tasks delegated by participants within a round
+  now run concurrently via `Parallel.ForEachAsync`, bounded by
+  `ICouncilBuilder.WithMaxDegreeOfParallelism(int)` / `CouncilOptions.MaxDegreeOfParallelism`
+  (0 = unbounded, default). Delibera-shipped strategies (`StandardDebate`, `CritiqueDebate`,
+  `ConsensusDebate`) opt in via the new `ExecuteAsync(..., DebateExecutionOptions, ...)` overload.
+
+### Changed
+
+- **Renamed `LogLevel` enum to `ExecutionLogLevel`** (in `Delibera.Core.Models`) to avoid a name
+  clash with `Microsoft.Extensions.Logging.LogLevel`, which is now referenced throughout the
+  framework. The `ExecutionLog.Level` field, `DebateResult.ToLogsMarkdown()`, and the console
+  demo all use the renamed enum. `ExecutionLog.ToMicrosoftLogLevel()` maps to the M.E.Logging
+  severity. This is a source-breaking change for consumers that referenced `LogLevel.Info` etc.
+  directly; replace with `ExecutionLogLevel.Info`.
+
 ## [10.1.1] - 2026
 
 ### Added — Microsoft.Extensions.AI integration

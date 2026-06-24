@@ -189,7 +189,7 @@ public sealed class Operator : IOperator
 
    private async Task<IReadOnlyList<OperatorToolCall>> PlanToolCallsAsync(string task, CancellationToken ct)
    {
-      const string SystemPrompt = """
+      const string systemPrompt = """
                                   You are the Operator's planner — a tool-routing micro-agent.
                                   Given a task and a list of available MCP tools, decide which tools to call.
                                   Respond with STRICT JSON only, no prose, in exactly this shape:
@@ -218,7 +218,7 @@ public sealed class Operator : IOperator
       string raw;
       try
       {
-         raw = await _model.AskAsync(SystemPrompt, userPrompt, 0.1f, ct);
+         raw = await _model.AskAsync(systemPrompt, userPrompt, 0.1f, ct);
       }
       catch
       {
