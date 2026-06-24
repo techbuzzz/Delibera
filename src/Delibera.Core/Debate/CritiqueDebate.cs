@@ -20,26 +20,43 @@ public sealed class CritiqueDebate : DebateScenario
    /// <inheritdoc />
    public override string Description => "Adversarial debate: Position → Critique → Defence → Judge Verdict";
 
-   /// <inheritdoc />
-   public override async Task<DebateResult> ExecuteAsync(
-      IReadOnlyList<CouncilMember> members,
-      PromptContext context,
-      CouncilMember? chairman,
-      KnowledgeKeeper? knowledgeKeeper,
-      Operator? @operator,
-      int maxRounds = 4,
-      float temperature = 0.7f,
-      Action<DebateRound>? onRoundCompleted = null,
-      CancellationToken ct = default)
-   {
-      ArgumentNullException.ThrowIfNull(members);
-      ArgumentNullException.ThrowIfNull(context);
-      var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper, @operator);
-      var fullUserPrompt = context.GetFullUserPrompt();
+    /// <inheritdoc />
+    public override async Task<DebateResult> ExecuteAsync(
+       IReadOnlyList<CouncilMember> members,
+       PromptContext context,
+       CouncilMember? chairman,
+       KnowledgeKeeper? knowledgeKeeper,
+       Operator? @operator,
+       int maxRounds = 4,
+       float temperature = 0.7f,
+       Action<DebateRound>? onRoundCompleted = null,
+       CancellationToken ct = default)
+    {
+       return await ExecuteAsync(members, context, chairman, knowledgeKeeper, @operator,
+          DebateExecutionOptions.Default, maxRounds, temperature, onRoundCompleted, ct);
+    }
 
-      // Operator briefing appended to participant system prompts.
-      var operatorBriefing = BuildOperatorBriefing(@operator);
-      var baseSystemPrompt = context.SystemPrompt + operatorBriefing;
+    /// <inheritdoc />
+    public override async Task<DebateResult> ExecuteAsync(
+       IReadOnlyList<CouncilMember> members,
+       PromptContext context,
+       CouncilMember? chairman,
+       KnowledgeKeeper? knowledgeKeeper,
+       Operator? @operator,
+       DebateExecutionOptions executionOptions,
+       int maxRounds = 4,
+       float temperature = 0.7f,
+       Action<DebateRound>? onRoundCompleted = null,
+       CancellationToken ct = default)
+    {
+       ArgumentNullException.ThrowIfNull(members);
+       ArgumentNullException.ThrowIfNull(context);
+       var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper, @operator);
+       var fullUserPrompt = context.GetFullUserPrompt();
+
+       // Operator briefing appended to participant system prompts.
+       var operatorBriefing = BuildOperatorBriefing(@operator);
+       var baseSystemPrompt = context.SystemPrompt + operatorBriefing;
 
       if (chairman is not null)
          builder.SetOpeningStatement(await Chairman.OpenDebateAsync(chairman, context, members, StrategyName, maxRounds, temperature, ct));
@@ -59,8 +76,8 @@ public sealed class CritiqueDebate : DebateScenario
          : $"{fullUserPrompt}\n\n📚 Knowledge:\n{knowledgeCtx}";
 
       // Round 1: Initial Positions
-      var r1 = await CollectResponsesAsync(members, baseSystemPrompt, enrichedPrompt, temperature, ct);
-      var r1Op = await ProcessOperatorRequestsAsync(@operator, r1, ct);
+       var r1 = await CollectResponsesAsync(members, baseSystemPrompt, enrichedPrompt, temperature, ct);
+       var r1Op = await ProcessOperatorRequestsAsync(@operator, r1, executionOptions, ct);
       var round1 = CreateRound(1, "Initial Positions", "Each model states their initial position.", r1, knowledgeInteractions: r1Ki, operatorInteractions: r1Op);
       builder.AddRound(round1);
       onRoundCompleted?.Invoke(round1);
@@ -89,8 +106,8 @@ public sealed class CritiqueDebate : DebateScenario
                       {(string.IsNullOrWhiteSpace(r1OpText) ? "" : $"\n{r1OpText}")}
                       For each response: 1) Weakest argument 2) Logical fallacies 3) Counter-example 4) Quality (1-10)
                       """;
-      var r2 = await CollectResponsesAsync(members, r2Sys, r2Prompt, temperature, ct);
-      var r2Op = await ProcessOperatorRequestsAsync(@operator, r2, ct);
+       var r2 = await CollectResponsesAsync(members, r2Sys, r2Prompt, temperature, ct);
+       var r2Op = await ProcessOperatorRequestsAsync(@operator, r2, executionOptions, ct);
       var round2 = CreateRound(2, "Directed Critique", "Models attack weaknesses in each other's positions.", r2, knowledgeInteractions: r2Ki, operatorInteractions: r2Op);
       builder.AddRound(round2);
       onRoundCompleted?.Invoke(round2);
@@ -119,8 +136,8 @@ public sealed class CritiqueDebate : DebateScenario
                       {(string.IsNullOrWhiteSpace(r1OpText) && string.IsNullOrWhiteSpace(r2OpText) ? "" : $"\n{r1OpText}\n{r2OpText}")}
                       Defend your position: 1) Address each criticism 2) Strengthen weak points 3) Concede where right 4) Final answer
                       """;
-      var r3 = await CollectResponsesAsync(members, r3Sys, r3Prompt, temperature, ct);
-      var r3Op = await ProcessOperatorRequestsAsync(@operator, r3, ct);
+       var r3 = await CollectResponsesAsync(members, r3Sys, r3Prompt, temperature, ct);
+       var r3Op = await ProcessOperatorRequestsAsync(@operator, r3, executionOptions, ct);
       var round3 = CreateRound(3, "Defence & Counter-Arguments", "Models defend their positions.", r3, knowledgeInteractions: r3Ki, operatorInteractions: r3Op);
       builder.AddRound(round3);
       onRoundCompleted?.Invoke(round3);

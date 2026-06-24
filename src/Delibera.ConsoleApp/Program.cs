@@ -26,6 +26,30 @@ public static class Program
       Console.OutputEncoding = Encoding.UTF8;
       PrintBanner();
 
+      // Top-level crash guard: any unhandled exception is printed in full and the
+      // console is kept open so the user can read the diagnostic before it closes.
+      // `alreadyReported` prevents double-printing when RunAsync prints its own
+      // debate-specific diagnostic (with tips) before re-throwing.
+      var alreadyReported = false;
+      try
+      {
+         await RunAsync(args, () => alreadyReported = true).ConfigureAwait(false);
+      }
+      catch (Exception ex)
+      {
+         if (!alreadyReported)
+            PrintFatalError(ex);
+
+         WaitForKeyOnExit("Press any key to exit…", isError: true);
+         return;
+      }
+
+      WaitForKeyOnExit("\n🏁 Delibera session complete. Press any key to exit…", isError: false);
+   }
+
+   private static async Task RunAsync(string[] args, Action onDebateFailed)
+   {
+
       // ═══════════════════════════════════════════════
       // 🆕 v3.1: DI & Separate Files Examples
       // ═══════════════════════════════════════════════
@@ -316,22 +340,26 @@ public static class Program
       var maxRounds = debateCfg.GetValue<int?>("MaxRounds") ?? 4;
       var temperature = debateCfg.GetValue<float?>("Temperature") ?? 0.7f;
 
-      var systemPrompt = cfg["Prompts:SystemPrompt"] ?? "You are a helpful AI assistant participating in a council debate.";
-      var userPrompt = cfg["Prompts:UserPrompt"] ?? "What is the different between Microservices vs Monolith?";
+       var systemPrompt = cfg["Prompts:SystemPrompt"] ?? "You are a helpful AI assistant participating in a council debate.";
+       var userPrompt = cfg["Prompts:UserPrompt"] ?? "What is the different between Microservices vs Monolith?";
+       var responseLanguage = debateCfg["ResponseLanguage"];
+       var maxDegreeOfParallelism = debateCfg.GetValue<int?>("MaxDegreeOfParallelism") ?? 0;
 
-      IDebateStrategy strategy = stratName.ToLowerInvariant() switch
-      {
-         "critique" => new CritiqueDebate(),
-         "consensus" => new ConsensusDebate(),
-         _ => new StandardDebate()
-      };
+       IDebateStrategy strategy = stratName.ToLowerInvariant() switch
+       {
+          "critique" => new CritiqueDebate(),
+          "consensus" => new ConsensusDebate(),
+          _ => new StandardDebate()
+       };
 
-      var builder = new CouncilBuilder()
-         .WithStrategy(strategy)
-         .WithSystemPrompt(systemPrompt)
-         .WithUserPrompt(userPrompt)
-         .WithMaxRounds(maxRounds)
-         .WithTemperature(temperature);
+       var builder = new CouncilBuilder()
+          .WithStrategy(strategy)
+          .WithSystemPrompt(systemPrompt)
+          .WithUserPrompt(userPrompt)
+          .WithMaxRounds(maxRounds)
+          .WithTemperature(temperature)
+          .WithResponseLanguage(responseLanguage)
+          .WithMaxDegreeOfParallelism(maxDegreeOfParallelism);
 
       // Add members
       foreach (var mc in cfg.GetSection("Models").GetChildren())
@@ -399,6 +427,21 @@ public static class Program
       // ═══════════════════════════════════════════════
       Console.WriteLine("🎯 Starting debate...\n");
       Console.WriteLine(new string('═', 60));
+
+      // Stream every ExecutionLog entry live so the user can watch progress in real time.
+      // Stored separately so we can also dump the full transcript at the end.
+      var liveLogs = new List<ExecutionLog>();
+      executor.OnLog += entry =>
+      {
+         liveLogs.Add(entry);
+         WriteLogEntry(entry);
+      };
+
+      // Surface non-fatal internal errors (e.g. failed MCP tool call) without aborting the debate.
+      executor.OnError += (ex, context) =>
+      {
+         WriteErrorEntry(ex, context);
+      };
 
       executor.OnRoundCompleted += round =>
       {
@@ -497,22 +540,21 @@ public static class Program
          if (result.ExecutionLogs.Count > 0)
          {
             Console.WriteLine($"\n  📋 Execution Logs ({result.ExecutionLogs.Count} entries):");
-            foreach (var log in result.ExecutionLogs.Where(l => l.Level >= LogLevel.Info))
+            foreach (var log in result.ExecutionLogs.Where(l => l.Level >= ExecutionLogLevel.Info))
                Console.WriteLine($"    {log}");
          }
       }
       catch (Exception ex)
       {
-         Console.WriteLine($"\n❌ Debate failed: {ex.Message}");
+         PrintFatalError(ex, header: "❌ Debate failed");
          Console.WriteLine("\n💡 Tips:");
          Console.WriteLine("   • Ensure Ollama Cloud API key is set in appsettings.json");
          Console.WriteLine("   • Or run a local Ollama server: ollama serve");
          Console.WriteLine("   • For Qdrant RAG: docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant");
          Console.WriteLine("   • For pgvector RAG: PostgreSQL 15+ with CREATE EXTENSION vector;");
-         Console.WriteLine($"\n{ex.StackTrace}");
+         onDebateFailed();
+         throw;
       }
-
-      Console.WriteLine("\n🏁 Delibera session complete.");
    }
 
    private static void PrintBanner()
@@ -520,19 +562,132 @@ public static class Program
       Console.ForegroundColor = ConsoleColor.Green;
       Console.WriteLine("""
 
-                           ██████╗ ███████╗██╗     ██╗██████╗ ███████╗██████╗  █████╗
-                           ██╔══██╗██╔════╝██║     ██║██╔══██╗██╔════╝██╔══██╗██╔══██╗
-                           ██║  ██║█████╗  ██║     ██║██████╔╝█████╗  ██████╔╝███████║
-                           ██║  ██║██╔══╝  ██║     ██║██╔══██╗██╔══╝  ██╔══██╗██╔══██║
-                           ██████╔╝███████╗███████╗██║██████╔╝███████╗██║  ██║██║  ██║
-                           ╚═════╝ ╚══════╝╚══════╝╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
+                         ██████╗ ███████╗██╗     ██╗██████╗ ███████╗██████╗  █████╗
+                         ██╔══██╗██╔════╝██║     ██║██╔══██╗██╔════╝██╔══██╗██╔══██╗
+                         ██║  ██║█████╗  ██║     ██║██████╔╝█████╗  ██████╔╝███████║
+                         ██║  ██║██╔══╝  ██║     ██║██╔══██╗██╔══╝  ██╔══██╗██╔══██║
+                         ██████╔╝███████╗███████╗██║██████╔╝███████╗██║  ██║██║  ██║
+                         ╚═════╝ ╚══════╝╚══════╝╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
 
-                              ⚖️   Thoughtful AI Decisions   ·   v3.1
+                            ⚖️   Thoughtful AI Decisions   ·   v3.1
 
-                           RAG • pgvector • Knowledge Keeper • Chairman
-                           Context Compression • DI • Execution Logging
+                         RAG • pgvector • Knowledge Keeper • Chairman
+                         Context Compression • DI • Execution Logging
 
-                        """);
+                      """);
       Console.ResetColor();
+   }
+
+   // ─── Console observability helpers ─────────────────────────────────────────────
+
+   /// <summary>
+   ///    Writes a single <see cref="ExecutionLog" /> entry to the console in a
+   ///    colour-coded, single-line format. Safe to call from the executor's
+   ///    streaming events.
+   /// </summary>
+   private static void WriteLogEntry(ExecutionLog entry)
+   {
+      var prev = Console.ForegroundColor;
+       Console.ForegroundColor = entry.Level switch
+       {
+          ExecutionLogLevel.Trace => ConsoleColor.DarkGray,
+          ExecutionLogLevel.Info => ConsoleColor.Cyan,
+          ExecutionLogLevel.Warning => ConsoleColor.Yellow,
+          ExecutionLogLevel.Error => ConsoleColor.Red,
+          _ => prev
+       };
+
+      Console.WriteLine($"  ┊ {entry}");
+      Console.ForegroundColor = prev;
+   }
+
+   /// <summary>
+   ///    Writes a non-fatal internal error to the console with a small stack-trace
+   ///    excerpt. The debate continues; this is purely informational.
+   /// </summary>
+   private static void WriteErrorEntry(Exception ex, string context)
+   {
+      var prev = Console.ForegroundColor;
+      Console.ForegroundColor = ConsoleColor.Red;
+      Console.WriteLine($"  ┊ ⚠ {context} error: {ex.Message}");
+      if (ex.StackTrace is not null)
+      {
+         var firstFrame = ex.StackTrace
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+         if (firstLineIsMeaningful(firstFrame))
+            Console.WriteLine($"  ┊   at {firstFrame.Trim()}");
+      }
+
+      Console.ForegroundColor = prev;
+   }
+
+   /// <summary>
+   ///    Prints a full diagnostic panel for a fatal exception: type, message,
+   ///    full stack trace and the live log transcript captured so far.
+   /// </summary>
+   /// <param name="ex">The exception that aborted the run.</param>
+   /// <param name="header">Optional header line; defaults to a generic label.</param>
+   private static void PrintFatalError(Exception ex, string header = "❌ Unhandled exception")
+   {
+      var prev = Console.ForegroundColor;
+      Console.ForegroundColor = ConsoleColor.Red;
+      Console.WriteLine();
+      Console.WriteLine(new string('═', 60));
+      Console.WriteLine($"  {header}");
+      Console.WriteLine(new string('═', 60));
+      Console.WriteLine($"  Type:    {ex.GetType().FullName}");
+      Console.WriteLine($"  Message: {ex.Message}");
+      Console.WriteLine();
+      Console.WriteLine("  ── Stack trace ──");
+      Console.WriteLine(ex.StackTrace);
+      if (ex.InnerException is not null)
+      {
+         Console.WriteLine();
+         Console.WriteLine("  ── Inner exception ──");
+         Console.WriteLine($"  Type:    {ex.InnerException.GetType().FullName}");
+         Console.WriteLine($"  Message: {ex.InnerException.Message}");
+         Console.WriteLine(ex.InnerException.StackTrace);
+      }
+
+      Console.ForegroundColor = prev;
+   }
+
+   /// <summary>
+   ///    Pauses the console so the user can read output before the window closes.
+   ///    Honoured in both normal and error paths. When <paramref name="isError" />
+   ///    is <c>true</c> the prompt is shown in red and the exit code is set to 1.
+   /// </summary>
+   private static void WaitForKeyOnExit(string prompt, bool isError)
+   {
+      if (isError)
+         Console.ForegroundColor = ConsoleColor.Red;
+
+      Console.WriteLine();
+      Console.WriteLine(prompt);
+      Console.ResetColor();
+
+      try
+      {
+         Console.ReadKey(intercept: true);
+      }
+      catch (InvalidOperationException)
+      {
+         // No interactive console (e.g. redirected stdin in CI) — fall back gracefully.
+         Console.WriteLine("(no interactive console available; exiting.)");
+      }
+
+      Environment.ExitCode = isError ? 1 : 0;
+   }
+
+   private static bool firstLineIsMeaningful(string? frame)
+   {
+      if (string.IsNullOrWhiteSpace(frame))
+         return false;
+
+      var trimmed = frame.Trim();
+      // Filter out noise from runtime/compiler-emitted frames.
+      return !trimmed.StartsWith("at System.", StringComparison.Ordinal)
+          || trimmed.Contains("Delibera", StringComparison.Ordinal);
    }
 }

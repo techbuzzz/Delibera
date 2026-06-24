@@ -1,4 +1,5 @@
 using Delibera.Core.Compression;
+using Microsoft.Extensions.Logging;
 
 namespace Delibera.Core.Council;
 
@@ -27,7 +28,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
       IContextCompressor? compressor = null,
       CompressionOptions? compressionOptions = null,
       CompressionCache? compressionCache = null,
-      Operator? @operator = null)
+      Operator? @operator = null,
+      DebateExecutionOptions? executionOptions = null)
    {
       Members = members;
       Chairman = chairman;
@@ -41,6 +43,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
       Compressor = compressor;
       _compressionOptions = compressionOptions;
       CompressionCache = compressionCache;
+      ExecutionOptions = executionOptions ?? DebateExecutionOptions.Default;
    }
 
    /// <summary>Compression cache (may be <c>null</c>).</summary>
@@ -64,79 +67,108 @@ public sealed class CouncilExecutor : ICouncilExecutor
    /// <summary>Context compressor (may be <c>null</c> if compression is disabled).</summary>
    public IContextCompressor? Compressor { get; }
 
+   /// <summary>
+   ///    Per-execution options (response language, parallelism budget, logger).
+   ///    Populated from <see cref="CouncilBuilder" />.
+   /// </summary>
+   public DebateExecutionOptions ExecutionOptions { get; }
+
+   /// <inheritdoc />
+   public ILogger? Logger => ExecutionOptions.Logger;
+
    /// <inheritdoc />
    public IReadOnlyList<ExecutionLog> ExecutionLogs => _executionLogs.AsReadOnly();
 
    /// <summary>Invoked after each round completes.</summary>
    public event Action<DebateRound>? OnRoundCompleted;
 
-   /// <summary>
-   ///    Runs the debate and returns the full result.
-   /// </summary>
-   public async Task<DebateResult> ExecuteAsync(CancellationToken ct = default)
-   {
-      _executionLogs.Clear();
+   /// <inheritdoc />
+   public event Action<ExecutionLog>? OnLog;
 
-      Log(ExecutionLog.Info("Council", $"Starting debate — strategy: {Strategy.StrategyName}, members: {Members.Count}, maxRounds: {_maxRounds}"));
+   /// <inheritdoc />
+   public event Action<Exception, string>? OnError;
 
-      if (Chairman is not null)
-         Log(ExecutionLog.Info("Chairman", $"Chairman assigned: {Chairman.DisplayName}"));
+    /// <summary>
+    ///    Runs the debate and returns the full result.
+    /// </summary>
+    public async Task<DebateResult> ExecuteAsync(CancellationToken ct = default)
+    {
+       _executionLogs.Clear();
 
-      if (KnowledgeKeeper is not null)
-         Log(ExecutionLog.Info("KnowledgeKeeper", $"Knowledge Keeper ready: {KnowledgeKeeper.DisplayName} (collection: {KnowledgeKeeper.CollectionName})"));
+       Log(ExecutionLog.Info("Council", $"Starting debate — strategy: {Strategy.StrategyName}, members: {Members.Count}, maxRounds: {_maxRounds}"));
 
-      // Initialise the Operator (connect to MCP servers, discover tools) before the debate begins.
-      if (Operator is not null)
-      {
-         if (!Operator.IsInitialized)
-         {
-            Log(ExecutionLog.Info("Operator", $"Initialising Operator: {Operator.DisplayName}…"));
-            try
-            {
-               await Operator.InitializeAsync(ct);
-            }
-            catch (Exception ex)
-            {
-               Log(ExecutionLog.Error("Operator", $"Operator initialisation failed: {ex.Message}"));
-            }
-         }
+       if (ExecutionOptions.HasResponseLanguage)
+          Log(ExecutionLog.Info("Council", $"Response language enforced: {ExecutionOptions.ResponseLanguage}"));
 
-         Log(ExecutionLog.Info("Operator", $"Operator ready: {Operator.DisplayName} ({Operator.AvailableTools.Count} tool(s) available)"));
-      }
+       if (ExecutionOptions.MaxDegreeOfParallelism > 0)
+          Log(ExecutionLog.Info("Council", $"Parallelism cap: {ExecutionOptions.MaxDegreeOfParallelism}"));
 
-      if (Compressor is not null)
-         Log(ExecutionLog.Info("Compression", $"Compression enabled: {Compressor.StrategyName}"));
+       if (Chairman is not null)
+          Log(ExecutionLog.Info("Chairman", $"Chairman assigned: {Chairman.DisplayName}"));
 
-      foreach (var m in Members)
-         Log(ExecutionLog.Trace("Council", $"Participant registered: {m.DisplayName} [{m.Role}]"));
+       if (KnowledgeKeeper is not null)
+          Log(ExecutionLog.Info("KnowledgeKeeper", $"Knowledge Keeper ready: {KnowledgeKeeper.DisplayName} (collection: {KnowledgeKeeper.CollectionName})"));
 
-      var result = await Strategy.ExecuteAsync(
-         Members,
-         _context,
-         Chairman,
-         KnowledgeKeeper,
-         Operator,
-         _maxRounds,
-         _temperature,
-         round =>
-         {
-            Log(ExecutionLog.Info("Council", $"Round {round.RoundNumber} completed: {round.RoundName} ({round.Duration.TotalSeconds:F1}s, {round.Responses.Count} responses)"));
+       // Initialise the Operator (connect to MCP servers, discover tools) before the debate begins.
+       if (Operator is not null)
+       {
+          if (!Operator.IsInitialized)
+          {
+             Log(ExecutionLog.Info("Operator", $"Initialising Operator: {Operator.DisplayName}…"));
+             try
+             {
+                await Operator.InitializeAsync(ct);
+             }
+             catch (Exception ex)
+             {
+                ReportError(ex, "Operator");
+             }
+          }
 
-            // Log knowledge interactions
-            foreach (var ki in round.KnowledgeInteractions)
-               Log(ExecutionLog.Info("KnowledgeKeeper", $"Query: \"{Truncate(ki.Query, 100)}\" → {ki.SourceChunks} chunks"));
+          Log(ExecutionLog.Info("Operator", $"Operator ready: {Operator.DisplayName} ({Operator.AvailableTools.Count} tool(s) available)"));
+       }
 
-            // Log operator interactions
-            foreach (var oi in round.OperatorInteractions)
-               Log(ExecutionLog.Info("Operator", $"{oi.RequesterName} → \"{Truncate(oi.Task, 100)}\" ({oi.ToolCallCount} tool call(s))"));
+       if (Compressor is not null)
+          Log(ExecutionLog.Info("Compression", $"Compression enabled: {Compressor.StrategyName}"));
 
-            // Log participant responses
-            foreach (var (member, response) in round.Responses)
-               Log(ExecutionLog.Trace("Participant", $"{member} responded ({response.Length} chars)"));
+       foreach (var m in Members)
+          Log(ExecutionLog.Trace("Council", $"Participant registered: {m.DisplayName} [{m.Role}]"));
 
-            OnRoundCompleted?.Invoke(round);
-         },
-         ct);
+       // Inject the response-language directive into the system prompt so every downstream
+       // call (participants, Chairman.OpenDebateAsync / SynthesizeVerdictAsync, Knowledge Keeper,
+       // Operator) inherits it.
+       var effectiveContext = ExecutionOptions.HasResponseLanguage
+          ? _context with { SystemPrompt = _context.SystemPrompt + ExecutionOptions.BuildLanguageDirective() }
+          : _context;
+
+       var result = await Strategy.ExecuteAsync(
+          Members,
+          effectiveContext,
+          Chairman,
+          KnowledgeKeeper,
+          Operator,
+          ExecutionOptions,
+          _maxRounds,
+          _temperature,
+          round =>
+          {
+             Log(ExecutionLog.Info("Council", $"Round {round.RoundNumber} completed: {round.RoundName} ({round.Duration.TotalSeconds:F1}s, {round.Responses.Count} responses)"));
+
+             // Log knowledge interactions
+             foreach (var ki in round.KnowledgeInteractions)
+                Log(ExecutionLog.Info("KnowledgeKeeper", $"Query: \"{Truncate(ki.Query, 100)}\" → {ki.SourceChunks} chunks"));
+
+             // Log operator interactions
+             foreach (var oi in round.OperatorInteractions)
+                Log(ExecutionLog.Info("Operator", $"{oi.RequesterName} → \"{Truncate(oi.Task, 100)}\" ({oi.ToolCallCount} tool call(s))"));
+
+             // Log participant responses
+             foreach (var (member, response) in round.Responses)
+                Log(ExecutionLog.Trace("Participant", $"{member} responded ({response.Length} chars)"));
+
+             OnRoundCompleted?.Invoke(round);
+          },
+          ct);
 
       Log(ExecutionLog.Info("Council", $"Debate completed — {result.Rounds.Count} rounds, duration: {result.TotalDuration.TotalSeconds:F1}s"));
 
@@ -193,10 +225,16 @@ public sealed class CouncilExecutor : ICouncilExecutor
       sb.AppendLine("║       LLM COUNCIL v3.1 CONFIGURATION     ║");
       sb.AppendLine("╚══════════════════════════════════════════╝");
       sb.AppendLine();
-      sb.AppendLine($"  Strategy:    {Strategy.StrategyName}");
-      sb.AppendLine($"  Max Rounds:  {_maxRounds}");
-      sb.AppendLine($"  Temperature: {_temperature:F2}");
-      sb.AppendLine();
+       sb.AppendLine($"  Strategy:    {Strategy.StrategyName}");
+       sb.AppendLine($"  Max Rounds:  {_maxRounds}");
+       sb.AppendLine($"  Temperature: {_temperature:F2}");
+       if (ExecutionOptions.HasResponseLanguage)
+          sb.AppendLine($"  Language:    {ExecutionOptions.ResponseLanguage}");
+       if (ExecutionOptions.MaxDegreeOfParallelism > 0)
+          sb.AppendLine($"  Parallelism: {ExecutionOptions.MaxDegreeOfParallelism}");
+       if (ExecutionOptions.Logger is not null)
+          sb.AppendLine($"  Logger:      {ExecutionOptions.Logger.GetType().Name}");
+       sb.AppendLine();
       sb.AppendLine("  ── Members ──");
       foreach (var m in Members)
          sb.AppendLine($"    • {m.DisplayName} [{m.Role}]");
@@ -252,8 +290,18 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
    private void Log(ExecutionLog entry)
    {
-      _executionLogs.Add(entry);
+      _executionLogs.Add(ExecutionLogSink.Emit(ExecutionOptions.Logger, entry));
+      OnLog?.Invoke(entry);
    }
+
+    private void ReportError(Exception ex, string context)
+    {
+       var entry = ExecutionLog.Error(context, ex.Message);
+       _executionLogs.Add(ExecutionLogSink.Emit(ExecutionOptions.Logger, entry));
+       OnError?.Invoke(ex, context);
+
+       ExecutionOptions.Logger?.LogError(ex, "[{Source}] {Message}", context, ex.Message);
+    }
 
    private static string Truncate(string text, int max)
    {

@@ -232,10 +232,10 @@ public sealed record DebateResult
          {
             var icon = log.Level switch
             {
-               LogLevel.Trace => "🔍",
-               LogLevel.Info => "ℹ️",
-               LogLevel.Warning => "⚠️",
-               LogLevel.Error => "❌",
+               ExecutionLogLevel.Trace => "🔍",
+               ExecutionLogLevel.Info => "ℹ️",
+               ExecutionLogLevel.Warning => "⚠️",
+               ExecutionLogLevel.Error => "❌",
                _ => "•"
             };
             sb.AppendLine($"| {log.Timestamp:HH:mm:ss.fff} | {icon} {log.Level} | {log.Source} | {log.Message} |");
@@ -247,7 +247,7 @@ public sealed record DebateResult
          sb.AppendLine("## Summary by Source");
          sb.AppendLine();
          foreach (var group in ExecutionLogs.GroupBy(l => l.Source).OrderBy(g => g.Key))
-            sb.AppendLine($"- **{group.Key}**: {group.Count()} entries ({group.Count(l => l.Level == LogLevel.Error)} errors, {group.Count(l => l.Level == LogLevel.Warning)} warnings)");
+            sb.AppendLine($"- **{group.Key}**: {group.Count()} entries ({group.Count(l => l.Level == ExecutionLogLevel.Error)} errors, {group.Count(l => l.Level == ExecutionLogLevel.Warning)} warnings)");
          sb.AppendLine();
       }
       else

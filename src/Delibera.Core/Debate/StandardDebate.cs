@@ -24,26 +24,43 @@ public sealed class StandardDebate : DebateScenario
    /// <inheritdoc />
    public override string Description => "4-round debate: Initial → Critique → Improved → Chairman Verdict";
 
-   /// <inheritdoc />
-   public override async Task<DebateResult> ExecuteAsync(
-      IReadOnlyList<CouncilMember> members,
-      PromptContext context,
-      CouncilMember? chairman,
-      KnowledgeKeeper? knowledgeKeeper,
-      Operator? @operator,
-      int maxRounds = 4,
-      float temperature = 0.7f,
-      Action<DebateRound>? onRoundCompleted = null,
-      CancellationToken ct = default)
-   {
-      ArgumentNullException.ThrowIfNull(members);
-      ArgumentNullException.ThrowIfNull(context);
-      var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper, @operator);
-      var fullUserPrompt = context.GetFullUserPrompt();
+    /// <inheritdoc />
+    public override async Task<DebateResult> ExecuteAsync(
+       IReadOnlyList<CouncilMember> members,
+       PromptContext context,
+       CouncilMember? chairman,
+       KnowledgeKeeper? knowledgeKeeper,
+       Operator? @operator,
+       int maxRounds = 4,
+       float temperature = 0.7f,
+       Action<DebateRound>? onRoundCompleted = null,
+       CancellationToken ct = default)
+    {
+       return await ExecuteAsync(members, context, chairman, knowledgeKeeper, @operator,
+          DebateExecutionOptions.Default, maxRounds, temperature, onRoundCompleted, ct);
+    }
 
-      // Operator briefing is appended to participant system prompts so they know what tools exist.
-      var operatorBriefing = BuildOperatorBriefing(@operator);
-      var baseSystemPrompt = context.SystemPrompt + operatorBriefing;
+    /// <inheritdoc />
+    public override async Task<DebateResult> ExecuteAsync(
+       IReadOnlyList<CouncilMember> members,
+       PromptContext context,
+       CouncilMember? chairman,
+       KnowledgeKeeper? knowledgeKeeper,
+       Operator? @operator,
+       DebateExecutionOptions executionOptions,
+       int maxRounds = 4,
+       float temperature = 0.7f,
+       Action<DebateRound>? onRoundCompleted = null,
+       CancellationToken ct = default)
+    {
+       ArgumentNullException.ThrowIfNull(members);
+       ArgumentNullException.ThrowIfNull(context);
+       var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper, @operator);
+       var fullUserPrompt = context.GetFullUserPrompt();
+
+       // Operator briefing is appended to participant system prompts so they know what tools exist.
+       var operatorBriefing = BuildOperatorBriefing(@operator);
+       var baseSystemPrompt = context.SystemPrompt + operatorBriefing;
 
       // ── Chairman opening ──
       if (chairman is not null)
@@ -65,9 +82,9 @@ public sealed class StandardDebate : DebateScenario
          ? fullUserPrompt
          : $"{fullUserPrompt}\n\n📚 Knowledge Keeper context:\n{knowledgeContext}";
 
-      var r1Responses = await CollectResponsesAsync(members, baseSystemPrompt, r1Prompt, temperature, ct);
-      // Operator: fulfil any [[OPERATOR: ...]] requests raised in round 1.
-      var r1Op = await ProcessOperatorRequestsAsync(@operator, r1Responses, ct);
+       var r1Responses = await CollectResponsesAsync(members, baseSystemPrompt, r1Prompt, temperature, ct);
+       // Operator: fulfil any [[OPERATOR: ...]] requests raised in round 1 (parallel, bounded).
+       var r1Op = await ProcessOperatorRequestsAsync(@operator, r1Responses, executionOptions, ct);
       var round1 = CreateRound(1, "Initial Responses",
          "All models provide their initial answers.", r1Responses, r1Prompt, r1Ki, r1Op);
       builder.AddRound(round1);
@@ -103,8 +120,8 @@ public sealed class StandardDebate : DebateScenario
                       Provide your detailed critique of each response.
                       """;
 
-      var r2Responses = await CollectResponsesAsync(members, r2System, r2Prompt, temperature, ct);
-      var r2Op = await ProcessOperatorRequestsAsync(@operator, r2Responses, ct);
+       var r2Responses = await CollectResponsesAsync(members, r2System, r2Prompt, temperature, ct);
+       var r2Op = await ProcessOperatorRequestsAsync(@operator, r2Responses, executionOptions, ct);
       var round2 = CreateRound(2, "Critique",
          "Models critically analyse each other's responses.", r2Responses, r2Prompt, r2Ki, r2Op);
       builder.AddRound(round2);
@@ -143,8 +160,8 @@ public sealed class StandardDebate : DebateScenario
                       Provide your final, improved answer.
                       """;
 
-      var r3Responses = await CollectResponsesAsync(members, r3System, r3Prompt, temperature, ct);
-      var r3Op = await ProcessOperatorRequestsAsync(@operator, r3Responses, ct);
+       var r3Responses = await CollectResponsesAsync(members, r3System, r3Prompt, temperature, ct);
+       var r3Op = await ProcessOperatorRequestsAsync(@operator, r3Responses, executionOptions, ct);
       var round3 = CreateRound(3, "Final Improved Responses",
          "Models provide refined answers incorporating critiques.", r3Responses, r3Prompt, r3Ki, r3Op);
       builder.AddRound(round3);

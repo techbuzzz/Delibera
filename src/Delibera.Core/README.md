@@ -34,7 +34,10 @@ outcomes** rather than single-model guesses.
 - 🛠️ **Operator (MCP Tools)** — a micro-agent that delegates tasks to MCP servers (web search, file system, Notion, PostgreSQL…) on demand during the debate
 - 🗜️ **Context Compression** — 4 strategies (Semantic, Deduplication, Summarization, Hybrid) save 30–70% of tokens
 - 💉 **Dependency Injection** — `AddDelibera()` extension for `IServiceCollection` with full options binding
-- 📋 **Execution Logging** — `ExecutionLog` model with `LogLevel` for Chairman, KK, Compression & participants
+- 📋 **Execution Logging** — `ExecutionLog` model with `ExecutionLogLevel` for Chairman, KK, Compression & participants
+- 📝 **Microsoft.Extensions.Logging** — inject your own `ILogger`/`ILoggerFactory`; every debate event is forwarded to the host's logging pipeline (in addition to the in-memory `ExecutionLog` collection)
+- 🌐 **Response Language Enforcement** — force every model (participants, Chairman, Knowledge Keeper, Operator) to answer in a specific language, regardless of the prompt or retrieved context
+- ⚡ **Parallel Operator Requests** — `[[OPERATOR: …]]` tasks delegated within a round run in parallel, bounded by `MaxDegreeOfParallelism`
 - 📁 **Separate File Output** — export `result.md`, `statistics.md`, `logs.md` independently
 - 🤝 **Microsoft.Extensions.AI** — first-class `IChatClient` / `IEmbeddingGenerator` interop with logging & function-invocation middleware
 - 🔌 **Interface-First** — clean abstractions for providers, factories, builders and executors
@@ -330,6 +333,110 @@ var council = new CouncilBuilder()
 Each strategy is implemented as an `IDebateStrategy` — combine with `Builder`, `Template Method`
 (`DebateScenario`) and `Factory` patterns (`ProviderFactory`, `RagProviderFactory`, `CompressionFactory`,
 `Chairman`) to compose custom flows.
+
+---
+
+## 📝 Logging (Microsoft.Extensions.Logging)
+
+Delibera integrates with the standard .NET logging framework. Every debate event — Chairman
+opening, Knowledge Keeper queries, compression operations, Operator interactions, participant
+responses, errors — is forwarded to an injected `ILogger` (category `Delibera.Core.Council`)
+**in addition to** being recorded in the in-memory `ExecutionLog` collection and the `OnLog` event.
+
+### Inject your logger via the builder
+
+```csharp
+using Microsoft.Extensions.Logging;
+
+var loggerFactory = LoggerFactory.Create(builder =>
+{
+   builder.AddConsole();
+   builder.SetMinimumLevel(LogLevel.Information);
+});
+
+var result = await new CouncilBuilder()
+   .AddMember("llama3.2:3b", ollama, "Analyst")
+   .SetChairman(Chairman.CreateStandard("qwen2.5:7b", ollama))
+   .WithStandardDebate()
+   .WithUserPrompt("…")
+   .WithLogger(loggerFactory.CreateLogger("Delibera"))
+   .Build()
+   .ExecuteAsync();
+```
+
+### Inject your logger factory via DI
+
+```csharp
+services.AddDelibera(configuration, loggerFactory, "Delibera");
+// Any ICouncilBuilder resolved from the container is automatically decorated with a logger.
+```
+
+When no `ILogger` is configured, Delibera falls back to the legacy behaviour: events are only
+captured in the `DebateResult.ExecutionLogs` collection and the `OnLog`/`OnError` events.
+
+---
+
+## 🌐 Response Language Enforcement
+
+Force **every** model response (participants, Chairman, Knowledge Keeper, Operator) to be in a
+specific language, regardless of the language used in the prompt or retrieved RAG context.
+
+```csharp
+var result = await new CouncilBuilder()
+   .AddMember("llama3.2:3b", ollama, "Analyst")
+   .AddMember("qwen2.5:7b", ollama, "Strategist")
+   .SetChairman(Chairman.CreateStandard("qwen2.5:7b", ollama))
+   .WithStandardDebate()
+   .WithUserPrompt("Microservices vs Monolith for a 5-person startup?")
+   .WithResponseLanguage("Russian")   // ← force Russian answers
+   .Build()
+   .ExecuteAsync();
+```
+
+Or via configuration:
+
+```json
+{
+  "Delibera": {
+    "ResponseLanguage": "Russian"
+  }
+}
+```
+
+Delibera injects a strict directive into every system prompt:
+> *IMPORTANT: You MUST answer exclusively in {language}. Never use any other language, regardless
+> of the language used in the question, retrieved context, or other participants' messages.*
+
+Leave empty/null to let the model pick a language from context (legacy behaviour).
+
+---
+
+## ⚡ Performance — Parallel Operator Requests
+
+When participants delegate multiple tasks to the Operator within a round (via `[[OPERATOR: …]]`
+markers), Delibera now executes them **in parallel** using `Parallel.ForEachAsync`, bounded by
+`MaxDegreeOfParallelism`.
+
+```csharp
+var result = await new CouncilBuilder()
+   .AddMember("llama3.2:3b", ollama, "Analyst")
+   .WithOperator("llama3.2:3b", ollama, servers)
+   .WithMaxDegreeOfParallelism(4)   // ← cap at 4 concurrent Operator tasks
+   .Build()
+   .ExecuteAsync();
+```
+
+Or via configuration:
+
+```json
+{
+  "Delibera": {
+    "MaxDegreeOfParallelism": 4
+  }
+}
+```
+
+Set `0` (default) for unbounded parallelism — all delegated tasks in a round run concurrently.
 
 ---
 
