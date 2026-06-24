@@ -58,6 +58,10 @@ public sealed class ConsensusDebate : DebateScenario
        var operatorBriefing = BuildOperatorBriefing(@operator);
        var baseSystemPrompt = context.SystemPrompt + operatorBriefing;
 
+      // Operator briefing appended to participant system prompts.
+      var operatorBriefing = BuildOperatorBriefing(@operator);
+      var baseSystemPrompt = context.SystemPrompt + operatorBriefing;
+
       if (chairman is not null)
          builder.SetOpeningStatement(await Chairman.OpenDebateAsync(chairman, context, members, StrategyName, maxRounds, temperature, ct));
 

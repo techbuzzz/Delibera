@@ -253,6 +253,40 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
+   /// <inheritdoc />
+   ICouncilExecutor ICouncilBuilder.Build()
+   {
+      return Build();
+   }
+
+   /// <summary>Backward-compatible alias for <see cref="SetChairman(CouncilMember)" />.</summary>
+   [Obsolete("Use SetChairman instead.")]
+   public ICouncilBuilder SetModerator(CouncilMember moderator)
+   {
+      return SetChairman(moderator);
+   }
+
+   /// <summary>Backward-compatible alias for <see cref="SetChairman(string, ILLMProvider, string?)" />.</summary>
+   [Obsolete("Use SetChairman instead.")]
+   public ICouncilBuilder SetModerator(string modelName, ILLMProvider provider, string? persona = null)
+   {
+      return SetChairman(modelName, provider, persona);
+   }
+
+   /// <summary>Creates and attaches a Knowledge Keeper from a RAG provider, model and collection.</summary>
+   public ICouncilBuilder WithKnowledgeKeeper(
+      IRagProvider ragProvider,
+      string modelName,
+      ILLMProvider llmProvider,
+      string collectionName = "council_knowledge")
+   {
+      ArgumentNullException.ThrowIfNull(ragProvider);
+      ArgumentNullException.ThrowIfNull(llmProvider);
+      var member = new CouncilMember(modelName, llmProvider, "Knowledge Keeper");
+      _knowledgeKeeper = new KnowledgeKeeper(ragProvider, member, collectionName);
+      return this;
+   }
+
    // ── Build ──
 
    /// <summary>
