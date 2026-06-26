@@ -10,7 +10,7 @@ namespace Delibera.ConsoleApp.Examples;
 ///    Demonstrates Delibera usage with Dependency Injection.
 ///    Shows how to register services, resolve interfaces, and build a council via DI.
 /// </summary>
-public static class DIExample
+public static class DependencyInjectionExample
 {
    /// <summary>
    ///    Runs the DI example — builds a service provider, resolves council services,

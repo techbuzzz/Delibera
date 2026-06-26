@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 
+#pragma warning disable IDE1006 // 'LLM' acronym kept all-caps by convention; renaming is a breaking API change
+
 namespace Delibera.Core.Providers.LLM;
 
 /// <summary>
@@ -44,10 +46,10 @@ public sealed class ChatClientLLMProvider : ILLMProvider
       _ownsClient = ownsClient;
 
       var metadata = chatClient.GetService(typeof(ChatClientMetadata)) as ChatClientMetadata;
-      ProviderName = providerName ??
-                     (string.IsNullOrWhiteSpace(metadata?.ProviderName)
-                        ? "ChatClient"
-                        : metadata!.ProviderName!);
+      var metadataName = !string.IsNullOrWhiteSpace(metadata?.ProviderName)
+         ? metadata.ProviderName
+         : "ChatClient";
+      ProviderName = providerName ?? metadataName;
       DefaultModelId = metadata?.DefaultModelId;
    }
 
@@ -97,7 +99,7 @@ public sealed class ChatClientLLMProvider : ILLMProvider
       try
       {
          var response = await ChatClient.GetResponseAsync(messages, options, ct);
-         var text = response.Text?.Trim() ?? string.Empty;
+         var text = response.Text.Trim();
          if (string.IsNullOrWhiteSpace(text))
             throw new InvalidOperationException($"Empty response from model '{model}' ({ProviderName}).");
          return text;
@@ -135,13 +137,12 @@ public sealed class ChatClientLLMProvider : ILLMProvider
    }
 
    /// <inheritdoc />
-   public void Dispose()
-   {
-      if (_disposed) return;
-      _disposed = true;
-      if (_ownsClient) ChatClient.Dispose();
-      GC.SuppressFinalize(this);
-   }
+    public void Dispose()
+    {
+       if (_disposed) return;
+       _disposed = true;
+       if (_ownsClient) ChatClient.Dispose();
+    }
 
    private static List<ChatMessage> BuildMessages(string systemPrompt, string userPrompt)
    {

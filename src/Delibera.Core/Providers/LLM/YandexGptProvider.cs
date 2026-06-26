@@ -30,7 +30,6 @@ public sealed class YandexGptProvider : ILLMProvider
    private readonly HttpClient _http;
    private readonly string _legacyEndpoint;
    private readonly int _maxOutputTokens;
-   private readonly float _temperature;
    private bool _disposed;
 
    /// <summary>
@@ -56,8 +55,8 @@ public sealed class YandexGptProvider : ILLMProvider
       _folderId = folderId ?? string.Empty;
       _endpoint = endpoint.TrimEnd('/');
       _legacyEndpoint = legacyEndpoint.TrimEnd('/');
-      _temperature = temperature;
       _maxOutputTokens = maxOutputTokens;
+      _ = temperature; // accepted for API compatibility; per-call temperature is passed to ChatAsync
 
       _http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
 
@@ -143,13 +142,21 @@ public sealed class YandexGptProvider : ILLMProvider
       }
       else
       {
-         requestBody = new YandexCompletionRequest(
-            model,
-            new CompletionOptions(false, temperature, _maxOutputTokens),
-            [
-               new Message("system", systemPrompt),
-               new Message("user", userPrompt)
-            ]);
+         requestBody = new Dictionary<string, object?>
+         {
+            ["modelUri"] = model,
+            ["completionOptions"] = new Dictionary<string, object?>
+            {
+               ["stream"] = false,
+               ["temperature"] = temperature,
+               ["maxTokens"] = _maxOutputTokens
+            },
+            ["messages"] = new[]
+            {
+               new Dictionary<string, object?> { ["role"] = "system", ["text"] = systemPrompt },
+               new Dictionary<string, object?> { ["role"] = "user", ["text"] = userPrompt }
+            }
+         };
          endpoint = _legacyEndpoint;
          headers = BuildLegacyAuthHeaders();
       }
@@ -201,13 +208,12 @@ public sealed class YandexGptProvider : ILLMProvider
    }
 
    /// <inheritdoc />
-   public void Dispose()
-   {
-      if (_disposed) return;
-      _disposed = true;
-      _http.Dispose();
-      GC.SuppressFinalize(this);
-   }
+    public void Dispose()
+    {
+       if (_disposed) return;
+       _disposed = true;
+       _http.Dispose();
+    }
 
    private void AddAuthHeaders(HttpRequestHeaders headers)
    {
@@ -260,25 +266,4 @@ public sealed class YandexGptProvider : ILLMProvider
              "{}";
    }
 
-   private record YandexCompletionRequest(
-      [property: JsonPropertyName("modelUri")]
-      string ModelUri,
-      [property: JsonPropertyName("completionOptions")]
-      CompletionOptions CompletionOptions,
-      [property: JsonPropertyName("messages")]
-      Message[] Messages
-   );
-
-   private record CompletionOptions(
-      [property: JsonPropertyName("stream")] bool Stream,
-      [property: JsonPropertyName("temperature")]
-      float Temperature,
-      [property: JsonPropertyName("maxTokens")]
-      int MaxTokens
-   );
-
-   private record Message(
-      [property: JsonPropertyName("role")] string Role,
-      [property: JsonPropertyName("text")] string Text
-   );
 }

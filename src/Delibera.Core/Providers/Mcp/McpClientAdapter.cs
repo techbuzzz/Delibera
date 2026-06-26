@@ -47,7 +47,7 @@ public sealed class McpClientAdapter : IMcpClient
          .Select(t => new OperatorTool(
             ServerName,
             t.Name,
-            t.Description ?? string.Empty,
+            t.Description,
             SchemaToJson(t)))
          .ToList()
          .AsReadOnly();

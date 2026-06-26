@@ -7,8 +7,6 @@ public sealed class CouncilMember(string modelName, ILLMProvider provider, strin
 {
    private readonly string? _personaPrompt = personaPrompt;
 
-   private string _role = role ?? "Expert";
-
    /// <summary>Unique participant identifier.</summary>
    public string Id { get; } = $"{provider.ProviderName}:{modelName}:{Guid.NewGuid():N}".ToLowerInvariant();
 
@@ -22,11 +20,7 @@ public sealed class CouncilMember(string modelName, ILLMProvider provider, strin
    public ILLMProvider Provider { get; } = provider ?? throw new ArgumentNullException(nameof(provider));
 
    /// <summary>Role in the debate (Expert, Critic, Chairman, etc.).</summary>
-   public string Role
-   {
-      get => field ?? "Expert";
-      set => field = value ?? "Expert";
-   }
+   public string Role { get; set; } = role ?? "Expert";
 
    /// <summary>Optional persona system-prompt that personalises the model's behaviour.</summary>
    public string? PersonaPrompt { get; set; }

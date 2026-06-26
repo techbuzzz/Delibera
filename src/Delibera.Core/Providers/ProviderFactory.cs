@@ -31,13 +31,13 @@ public abstract class CachingFactory<TBuilder, TInstance>
    }
 
    /// <summary>All currently cached provider instances.</summary>
-   public IReadOnlyDictionary<string, TInstance> GetAllInstances()
+   protected IReadOnlyDictionary<string, TInstance> GetAllInstances()
    {
       return _instances;
    }
 
    /// <summary>Returns a cached instance by name, or <c>null</c>.</summary>
-   public TInstance? GetInstance(string name)
+   protected TInstance? GetInstance(string name)
    {
       return _instances.TryGetValue(name, out var p)
          ? p
@@ -45,7 +45,7 @@ public abstract class CachingFactory<TBuilder, TInstance>
    }
 
    /// <summary>Registers a builder for a new provider type (e.g., "OpenAI", "YandexGPT").</summary>
-   public CachingFactory<TBuilder, TInstance> RegisterBuilder(string providerType, TBuilder builder)
+   protected CachingFactory<TBuilder, TInstance> RegisterBuilder(string providerType, TBuilder builder)
    {
       ArgumentNullException.ThrowIfNull(builder);
       _builders[providerType] = builder;
@@ -138,13 +138,41 @@ public sealed class ProviderFactory : CachingFactory<Func<IConfigurationSection,
       return GetAllInstances();
    }
 
-   /// <summary>Creates an Ollama provider with direct parameters.</summary>
+   /// <summary>
+   ///    Creates an Ollama provider with direct parameters. The connection mode (local vs
+   ///    cloud) is inferred from <paramref name="apiKey" />: non-empty selects cloud,
+   ///    empty selects local. Prefer <see cref="CreateLocalOllama" /> /
+   ///    <see cref="CreateCloudOllama" /> for explicit control.
+   /// </summary>
    public OllamaProvider CreateOllama(string endpoint, string apiKey = "")
    {
-      var key = $"ollama:{endpoint}";
+      var key = $"ollama:{endpoint}:{(string.IsNullOrWhiteSpace(apiKey) ? "local" : "cloud")}";
       if (GetInstance(key) is OllamaProvider existing) return existing;
 
       var provider = new OllamaProvider(endpoint, apiKey);
+      CacheInstance(key, provider);
+      return provider;
+   }
+
+   /// <summary>Creates a provider for a local Ollama server (e.g. <c>http://localhost:11434</c>).</summary>
+   public OllamaProvider CreateLocalOllama(string endpoint, TimeSpan? timeout = null)
+   {
+      var key = $"ollama:{endpoint}:local";
+      if (GetInstance(key) is OllamaProvider existing) return existing;
+
+      var provider = OllamaProvider.ForLocal(endpoint, timeout);
+      CacheInstance(key, provider);
+      return provider;
+   }
+
+   /// <summary>Creates a provider for Ollama Cloud (e.g. <c>https://api.ollama.com</c>).</summary>
+   public OllamaProvider CreateCloudOllama(string endpoint, string apiKey, TimeSpan? timeout = null)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
+      var key = $"ollama:{endpoint}:cloud";
+      if (GetInstance(key) is OllamaProvider existing) return existing;
+
+      var provider = OllamaProvider.ForCloud(endpoint, apiKey, timeout);
       CacheInstance(key, provider);
       return provider;
    }

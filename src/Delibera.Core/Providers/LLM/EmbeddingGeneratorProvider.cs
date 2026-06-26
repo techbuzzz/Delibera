@@ -42,10 +42,10 @@ public sealed class EmbeddingGeneratorProvider : IEmbeddingProvider, IDisposable
       _ownsGenerator = ownsGenerator;
 
       var metadata = generator.GetService(typeof(EmbeddingGeneratorMetadata)) as EmbeddingGeneratorMetadata;
-      EmbeddingModelName = modelName ??
-                           (string.IsNullOrWhiteSpace(metadata?.DefaultModelId)
-                              ? "embedding"
-                              : metadata!.DefaultModelId!);
+      var metadataName = !string.IsNullOrWhiteSpace(metadata?.DefaultModelId)
+         ? metadata.DefaultModelId
+         : "embedding";
+      EmbeddingModelName = modelName ?? metadataName;
       _cachedVectorSize = vectorSize ?? metadata?.DefaultModelDimensions;
    }
 
@@ -53,13 +53,12 @@ public sealed class EmbeddingGeneratorProvider : IEmbeddingProvider, IDisposable
    public IEmbeddingGenerator<string, Embedding<float>> Generator { get; }
 
    /// <inheritdoc />
-   public void Dispose()
-   {
-      if (_disposed) return;
-      _disposed = true;
-      if (_ownsGenerator) Generator.Dispose();
-      GC.SuppressFinalize(this);
-   }
+    public void Dispose()
+    {
+       if (_disposed) return;
+       _disposed = true;
+       if (_ownsGenerator) Generator.Dispose();
+    }
 
    /// <inheritdoc />
    public string EmbeddingModelName { get; }

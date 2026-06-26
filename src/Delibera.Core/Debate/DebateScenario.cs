@@ -42,18 +42,18 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
       Action<DebateRound>? onRoundCompleted = null,
       CancellationToken ct = default);
 
-   /// <inheritdoc />
-   public abstract Task<DebateResult> ExecuteAsync(
-      IReadOnlyList<CouncilMember> members,
-      PromptContext context,
-      CouncilMember? chairman,
-      KnowledgeKeeper? knowledgeKeeper,
-      Operator? @operator,
-      DebateExecutionOptions executionOptions,
-      int maxRounds = 4,
-      float temperature = 0.7f,
-      Action<DebateRound>? onRoundCompleted = null,
-      CancellationToken ct = default);
+    /// <inheritdoc cref="IDebateStrategyWithOptions.ExecuteAsync(IReadOnlyList{CouncilMember}, PromptContext, CouncilMember?, KnowledgeKeeper?, Operator?, DebateExecutionOptions, int, float, Action{DebateRound}?, CancellationToken)" />
+    public abstract Task<DebateResult> ExecuteAsync(
+       IReadOnlyList<CouncilMember> members,
+       PromptContext context,
+       CouncilMember? chairman,
+       KnowledgeKeeper? knowledgeKeeper,
+       Operator? @operator,
+       DebateExecutionOptions executionOptions,
+       int maxRounds = 4,
+       float temperature = 0.7f,
+       Action<DebateRound>? onRoundCompleted = null,
+       CancellationToken ct = default);
 
    // ──────────────────────────────────────────────
    // Shared helpers

@@ -6,7 +6,7 @@ namespace Delibera.Core.Providers.RAG;
 ///    Factory for creating <see cref="IRagProvider" /> instances from configuration.
 ///    Register custom builders to support additional vector databases.
 /// </summary>
-public sealed class RagProviderFactory : CachingFactory<Func<IConfigurationSection, IEmbeddingProvider, IRagProvider>, IRagProvider>, IRagProviderFactory, IAsyncDisposable
+public sealed class RagProviderFactory : CachingFactory<Func<IConfigurationSection, IEmbeddingProvider, IRagProvider>, IRagProvider>, IRagProviderFactory
 {
    /// <summary>
    ///    Creates a new factory with the built-in Qdrant and PgVector builders registered.

@@ -54,7 +54,7 @@ public static class Program
       // ═══════════════════════════════════════════════
       if (args.Contains("--di"))
       {
-         await DIExample.RunAsync();
+         await DependencyInjectionExample.RunAsync();
          return;
       }
 
@@ -426,13 +426,7 @@ public static class Program
       Console.WriteLine(new string('═', 60));
 
       // Stream every ExecutionLog entry live so the user can watch progress in real time.
-      // Stored separately so we can also dump the full transcript at the end.
-      var liveLogs = new List<ExecutionLog>();
-      executor.OnLog += entry =>
-      {
-         liveLogs.Add(entry);
-         WriteLogEntry(entry);
-      };
+      executor.OnLog += entry => WriteLogEntry(entry);
 
       // Surface non-fatal internal errors (e.g. failed MCP tool call) without aborting the debate.
       executor.OnError += (ex, context) => { WriteErrorEntry(ex, context); };
@@ -609,8 +603,8 @@ public static class Program
          var firstFrame = ex.StackTrace
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .FirstOrDefault();
-         if (firstLineIsMeaningful(firstFrame))
-            Console.WriteLine($"  ┊   at {firstFrame.Trim()}");
+         if (firstFrame is { Length: > 0 } line && FirstLineIsMeaningful(line))
+            Console.WriteLine($"  ┊   at {line.Trim()}");
       }
 
       Console.ForegroundColor = prev;
@@ -676,7 +670,7 @@ public static class Program
          : 0;
    }
 
-   private static bool firstLineIsMeaningful(string? frame)
+    private static bool FirstLineIsMeaningful(string? frame)
    {
       if (string.IsNullOrWhiteSpace(frame))
          return false;

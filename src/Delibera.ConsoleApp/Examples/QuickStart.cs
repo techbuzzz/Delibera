@@ -1,5 +1,4 @@
 using Delibera.Core.Council;
-using Delibera.Core.Knowledge;
 using Delibera.Core.Providers;
 
 namespace Delibera.ConsoleApp.Examples;
@@ -16,7 +15,7 @@ public static class QuickStart
       var ollama = factory.CreateOllama("https://api.ollama.com", "YOUR_API_KEY");
 
       // 2. Load knowledge (optional)
-      var kb = new MarkdownKnowledgeBase();
+      // var kb = new MarkdownKnowledgeBase();
       // await kb.LoadAsync("./knowledge/context.md");
 
       // 3. Build council via fluent API
