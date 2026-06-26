@@ -36,6 +36,7 @@ outcomes** rather than single-model guesses.
 - 💉 **Dependency Injection** — `AddDelibera()` extension for `IServiceCollection` with full options binding
 - 📋 **Execution Logging** — `ExecutionLog` model with `ExecutionLogLevel` for Chairman, KK, Compression & participants
 - 📝 **Microsoft.Extensions.Logging** — inject your own `ILogger`/`ILoggerFactory`; every debate event is forwarded to the host's logging pipeline (in addition to the in-memory `ExecutionLog` collection)
+- 🛡️ **Polly v8 Resilience** — `IHttpClientFactory` + named `Microsoft.Extensions.Http.Resilience` retry pipelines (`Delibera.Local`, `Delibera.Cloud`, `Delibera.Default`) for transient HTTP failures (connection drops, 408/429/5xx, Cloudflare 524). Configure via `CouncilOptions.Resilience`. Custom pipelines registerable through `AddDeliberaResiliencePipeline(name, build)`.
 - 🌐 **Response Language Enforcement** — force every model (participants, Chairman, Knowledge Keeper, Operator) to answer in a specific language, regardless of the prompt or retrieved context
 - ⚡ **Parallel Operator Requests** — `[[OPERATOR: …]]` tasks delegated within a round run in parallel, bounded by `MaxDegreeOfParallelism`
 - 📁 **Separate File Output** — export `result.md`, `statistics.md`, `logs.md` independently

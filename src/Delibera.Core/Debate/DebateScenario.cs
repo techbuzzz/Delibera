@@ -124,7 +124,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
       return string.Join("\n\n", rounds.Select(FormatRoundResponses));
    }
 
-   /// <summary>Creates a completed debate round.</summary>
+   /// <summary>Creates a completed debate round with an explicit start time.</summary>
    protected static DebateRound CreateRound(
       int number,
       string name,
@@ -132,7 +132,8 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
       Dictionary<string, string> responses,
       string? prompt = null,
       IReadOnlyList<KnowledgeInteraction>? knowledgeInteractions = null,
-      IReadOnlyList<OperatorInteraction>? operatorInteractions = null)
+      IReadOnlyList<OperatorInteraction>? operatorInteractions = null,
+      DateTime? startedAt = null)
    {
       return new DebateRound
       {
@@ -143,6 +144,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
          RoundPrompt = prompt,
          KnowledgeInteractions = knowledgeInteractions ?? [],
          OperatorInteractions = operatorInteractions ?? [],
+         StartedAt = startedAt ?? DateTime.UtcNow,
          CompletedAt = DateTime.UtcNow
       };
    }

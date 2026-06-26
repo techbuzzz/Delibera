@@ -7,7 +7,7 @@ namespace Delibera.Core.Tests.Fakes;
 ///    In-memory <see cref="IChatClient" /> used to test the Microsoft.Extensions.AI integration
 ///    without any network access.
 /// </summary>
-public sealed class FakeChatClient(string reply = "fake-reply", string providerName = "Fake", string? defaultModel = "fake-model")
+public sealed class FakeChatClient(string reply = "fake-reply", string providerName = "Fake", string? defaultModel = "fake-model", int delayMs = 0)
    : IChatClient
 {
    private readonly ChatClientMetadata _metadata = new(providerName, defaultModelId: defaultModel);
@@ -20,14 +20,16 @@ public sealed class FakeChatClient(string reply = "fake-reply", string providerN
    /// <summary>Records the messages of the most recent request for assertions.</summary>
    public IList<ChatMessage>? LastMessages { get; private set; }
 
-   public Task<ChatResponse> GetResponseAsync(
+   public async Task<ChatResponse> GetResponseAsync(
       IEnumerable<ChatMessage> messages,
       ChatOptions? options = null,
       CancellationToken cancellationToken = default)
    {
       LastMessages = messages.ToList();
       LastOptions = options;
-      return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, reply)));
+      if (delayMs > 0)
+         await Task.Delay(delayMs, cancellationToken);
+      return new ChatResponse(new ChatMessage(ChatRole.Assistant, reply));
    }
 
    public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
@@ -37,6 +39,8 @@ public sealed class FakeChatClient(string reply = "fake-reply", string providerN
    {
       LastMessages = messages.ToList();
       LastOptions = options;
+      if (delayMs > 0)
+         await Task.Delay(delayMs, cancellationToken);
       // Emit one update per word to simulate token streaming.
       foreach (var word in reply.Split(' '))
       {

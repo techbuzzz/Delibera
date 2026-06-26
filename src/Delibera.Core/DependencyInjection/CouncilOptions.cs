@@ -64,6 +64,83 @@ public sealed class CouncilOptions
 
    /// <summary>Output configuration options.</summary>
    public OutputOptions Output { get; set; } = new();
+
+   /// <summary>
+   ///    Polly v8 resilience options applied to every HTTP-backed provider
+   ///    (Ollama, YandexGPT, MCP HTTP transport) through the named pipelines
+   ///    registered by <c>AddDelibera</c>.
+   /// </summary>
+   public ResilienceOptions Resilience { get; set; } = new();
+}
+
+/// <summary>
+///    Configuration options for the Polly v8 resilience pipelines consumed by
+///    Delibera's HTTP-backed providers. Bound from the
+///    <c>Delibera:Resilience</c> configuration section.
+/// </summary>
+/// <remarks>
+///    <para>
+///       Delibera registers three named pipelines out of the box:
+///       <c>"Delibera.Local"</c>, <c>"Delibera.Cloud"</c>, and
+///       <c>"Delibera.Default"</c>. Each one is a Polly v8
+///       <c>ResiliencePipeline&lt;HttpResponseMessage&gt;</c> built from
+///       <c>HttpRetryStrategyOptions</c>.
+///       The Local pipeline retries only connection-level failures (no status
+///       code); the Cloud pipeline retries transient HTTP responses (429, 524,
+///       5xx) plus timeouts; the Default pipeline is an alias for whichever
+///       of the two is more permissive.
+///    </para>
+///    <para>
+///       Register custom pipelines with
+///       <c>services.AddDeliberaResiliencePipeline("MyKey", builder =&gt; ...)</c>
+///       and reference them from a provider by passing the same name to its
+///       constructor.
+///    </para>
+/// </remarks>
+public sealed class ResilienceOptions
+{
+   /// <summary>Default pipeline name used when a provider is constructed without an explicit name.</summary>
+   public const string DefaultPipelineName = "Delibera.Default";
+
+   /// <summary>Pipeline name used for Ollama-local / direct-on-host endpoints.</summary>
+   public const string LocalPipelineName = "Delibera.Local";
+
+   /// <summary>Pipeline name used for cloud-hosted LLM gateways (Ollama Cloud, Yandex Cloud, MCP HTTP).</summary>
+   public const string CloudPipelineName = "Delibera.Cloud";
+
+   /// <summary>Master switch — when <c>false</c> no retry pipeline is attached and HttpClients behave as plain <see cref="HttpClient" />.</summary>
+   public bool Enabled { get; set; } = true;
+
+   /// <summary>Maximum number of retry attempts (the initial call counts as the first attempt).</summary>
+   public int MaxRetryAttempts { get; set; } = 3;
+
+   /// <summary>Base delay used by the exponential back-off generator.</summary>
+   public TimeSpan BaseDelay { get; set; } = TimeSpan.FromSeconds(2);
+
+   /// <summary>Upper bound on the back-off delay produced by the exponential generator.</summary>
+   public TimeSpan MaxDelay { get; set; } = TimeSpan.FromSeconds(30);
+
+   /// <summary>Whether to apply random jitter to the back-off delay.</summary>
+   public bool UseJitter { get; set; } = true;
+
+   /// <summary>
+   ///    Back-off style — either <c>"Exponential"</c> (default),
+   ///    <c>"Linear"</c>, or <c>"Constant"</c>. Case-insensitive.
+   /// </summary>
+   public string BackoffType { get; set; } = "Exponential";
+
+   /// <summary>
+   ///    HTTP status codes (e.g. <c>429</c>, <c>500</c>, <c>524</c>) that should be retried on the
+   ///    cloud pipeline. The local pipeline always retries only when the request has no status code
+   ///    (i.e. connection-level failure). Defaults to <c>{ 408, 429, 500, 502, 503, 504, 524 }</c>.
+   /// </summary>
+   public int[] RetryableStatusCodes { get; set; } = [408, 429, 500, 502, 503, 504, 524];
+
+   /// <summary>
+   ///    Per-attempt timeout applied inside the pipeline (in addition to the outer HttpClient
+   ///    timeout). Set to <see cref="Timeout.InfiniteTimeSpan" /> (or <c>TimeSpan.Zero</c>) to disable.
+   /// </summary>
+   public TimeSpan AttemptTimeout { get; set; } = TimeSpan.Zero;
 }
 
 /// <summary>

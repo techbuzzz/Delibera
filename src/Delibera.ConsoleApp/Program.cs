@@ -106,6 +106,12 @@ public static class Program
          return;
       }
 
+      if (args.Contains("--resilience"))
+      {
+         await ResilienceExample.RunAsync();
+         return;
+      }
+
       // Quick DI showcase before main demo
       Console.WriteLine("🆕 v3.1 DI Quick Demo:");
       Console.WriteLine("   Run with --di for full DI example");

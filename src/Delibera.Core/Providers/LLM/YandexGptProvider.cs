@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Delibera.Core.Resilience;
 
 namespace Delibera.Core.Providers.LLM;
 
@@ -10,10 +11,20 @@ namespace Delibera.Core.Providers.LLM;
 ///    as a council member or chairman alongside Ollama / OpenAI models.
 /// </summary>
 /// <remarks>
-///    Supports both the OpenAI Responses-compatible gateway
-///    (<c>https://ai.api.cloud.yandex.net/v1/responses</c>) and the legacy
-///    Foundation Models endpoint. The gateway is selected automatically
-///    when <c>FolderId</c> is non-empty.
+///    <para>
+///       Supports both the OpenAI Responses-compatible gateway
+///       (<c>https://ai.api.cloud.yandex.net/v1/responses</c>) and the legacy
+///       Foundation Models endpoint. The gateway is selected automatically
+///       when <c>FolderId</c> is non-empty.
+///    </para>
+///    <para>
+///       Transient failures (connection drops, 429/5xx, Cloudflare 524) are
+///       retried by a Polly v8 resilience pipeline obtained from the
+///       <see cref="IDeliberaResiliencePipelineProvider" /> registered in DI
+///       (default pipeline: <c>Delibera.Cloud</c>).
+///       When the provider is constructed without DI the pipeline is a no-op
+///       — the same behavior as the previous manual-error path.
+///    </para>
 /// </remarks>
 public sealed class YandexGptProvider : ILLMProvider
 {
@@ -28,12 +39,16 @@ public sealed class YandexGptProvider : ILLMProvider
    private readonly string _endpoint;
    private readonly string _folderId;
    private readonly HttpClient _http;
+   private readonly Polly.ResiliencePipeline<HttpResponseMessage>? _pipeline;
+   private readonly IHttpClientFactory? _httpClientFactory;
+   private readonly string? _httpClientName;
    private readonly string _legacyEndpoint;
    private readonly int _maxOutputTokens;
    private bool _disposed;
 
    /// <summary>
-   ///    Creates a YandexGPT provider.
+   ///    Creates a YandexGPT provider with no resilience pipeline. Errors
+   ///    propagate directly to the caller — backward-compatible with v10.2.
    /// </summary>
    /// <param name="apiKey">Yandex Cloud API key.</param>
    /// <param name="folderId">Yandex Cloud folder id (empty for legacy Bearer endpoint).</param>
@@ -48,6 +63,48 @@ public sealed class YandexGptProvider : ILLMProvider
       string legacyEndpoint = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
       float temperature = 0.3f,
       int maxOutputTokens = 4000)
+      : this(apiKey, folderId, endpoint, legacyEndpoint, temperature, maxOutputTokens,
+         httpClientFactory: null, resilienceProvider: null, httpClientName: null, pipelineName: null)
+   {
+   }
+
+   /// <summary>
+   ///    Creates a YandexGPT provider wired to an <see cref="IHttpClientFactory" /> and a Polly v8
+   ///    <see cref="Polly.ResiliencePipeline{TResult}" />. Transient failures are retried automatically.
+   /// </summary>
+   /// <param name="apiKey">Yandex Cloud API key.</param>
+   /// <param name="folderId">Yandex Cloud folder id (empty for legacy Bearer endpoint).</param>
+   /// <param name="endpoint">OpenAI-compatible responses endpoint.</param>
+   /// <param name="legacyEndpoint">Legacy Foundation Models completion endpoint.</param>
+   /// <param name="temperature">Default sampling temperature.</param>
+   /// <param name="maxOutputTokens">Maximum output tokens per request.</param>
+   /// <param name="httpClientFactory">
+   ///    Optional factory that produces the configured <see cref="HttpClient" />.
+   ///    When <c>null</c> the provider creates its own HttpClient (no factory reuse, no resilience).
+   /// </param>
+   /// <param name="resilienceProvider">
+   ///    Optional pipeline registry. When <c>null</c> the provider falls back to a no-op pipeline
+   ///    (errors propagate without retries).
+   /// </param>
+   /// <param name="httpClientName">
+   ///    Logical name used with <paramref name="httpClientFactory" />. When <c>null</c> defaults to
+   ///    <c>"Delibera.YandexGPT"</c>.
+   /// </param>
+   /// <param name="pipelineName">
+   ///    Pipeline key looked up from <paramref name="resilienceProvider" />.
+   ///    When <c>null</c> defaults to <c>Delibera.Cloud</c>.
+   /// </param>
+   public YandexGptProvider(
+      string apiKey,
+      string? folderId,
+      string endpoint,
+      string legacyEndpoint,
+      float temperature,
+      int maxOutputTokens,
+      IHttpClientFactory? httpClientFactory,
+      IDeliberaResiliencePipelineProvider? resilienceProvider,
+      string? httpClientName = null,
+      string? pipelineName = null)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
 
@@ -57,6 +114,26 @@ public sealed class YandexGptProvider : ILLMProvider
       _legacyEndpoint = legacyEndpoint.TrimEnd('/');
       _maxOutputTokens = maxOutputTokens;
       _ = temperature; // accepted for API compatibility; per-call temperature is passed to ChatAsync
+
+      var name = string.IsNullOrWhiteSpace(httpClientName) ? "Delibera.YandexGPT" : httpClientName;
+      var pipeline = resilienceProvider?.GetPipeline(pipelineName) ?? Polly.ResiliencePipeline<HttpResponseMessage>.Empty;
+
+      if (httpClientFactory is not null)
+      {
+         _httpClientFactory = httpClientFactory;
+         _httpClientName = name;
+         _pipeline = pipeline;
+         // Lazily resolved through HttpClientFactory inside ChatAsync so the
+         // factory owns the handler/timeout/lifetime. We still hold a local
+         // "anchor" HttpClient for IsAvailableAsync (liveness probe) and as
+         // fallback when no factory is registered.
+      }
+      else
+      {
+         _httpClientFactory = null;
+         _httpClientName = null;
+         _pipeline = null;
+      }
 
       _http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
 
@@ -89,7 +166,7 @@ public sealed class YandexGptProvider : ILLMProvider
          using var request = new HttpRequestMessage(HttpMethod.Get, UseNewEndpoint
             ? _endpoint
             : _legacyEndpoint);
-         using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
+         using var response = await SendAsync(request, ct).ConfigureAwait(false);
          return response.IsSuccessStatusCode;
       }
       catch
@@ -172,7 +249,7 @@ public sealed class YandexGptProvider : ILLMProvider
          foreach (var h in headers)
             request.Headers.TryAddWithoutValidation(h.Key, h.Value);
 
-      using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
+      using var response = await SendAsync(request, ct).ConfigureAwait(false);
       var content = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
       if (!response.IsSuccessStatusCode)
@@ -209,11 +286,28 @@ public sealed class YandexGptProvider : ILLMProvider
 
    /// <inheritdoc />
     public void Dispose()
-    {
-       if (_disposed) return;
-       _disposed = true;
-       _http.Dispose();
-    }
+   {
+      if (_disposed) return;
+      _disposed = true;
+      if (_httpClientFactory is null)
+         _http.Dispose();
+   }
+
+   /// <summary>
+   ///    Issues the request through either the DI-managed HttpClient (when configured) or the
+   ///    locally-owned <see cref="HttpClient" />. Retries are applied only when the DI path is active.
+   /// </summary>
+   private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+   {
+      if (_httpClientFactory is not null && _pipeline is not null)
+      {
+         var client = _httpClientFactory.CreateClient(_httpClientName!);
+         return await client.SendAsync(_pipeline, request, HttpCompletionOption.ResponseContentRead, ct)
+            .ConfigureAwait(false);
+      }
+
+      return await _http.SendAsync(request, ct).ConfigureAwait(false);
+   }
 
    private void AddAuthHeaders(HttpRequestHeaders headers)
    {

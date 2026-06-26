@@ -76,12 +76,13 @@ public sealed class ConsensusDebate : DebateScenario
          : $"{fullUserPrompt}\n\n📚 Knowledge:\n{knowledgeCtx}";
 
       // Round 1: Initial Perspectives
+      var round1StartedAt = DateTime.UtcNow;
       var r1 = await CollectResponsesAsync(members, baseSystemPrompt, enrichedPrompt, temperature, ct);
       var r1Op = await ProcessOperatorRequestsAsync(@operator, r1, executionOptions, ct);
-      var round1 = CreateRound(1, "Initial Perspectives", "Each model shares their perspective.", r1, knowledgeInteractions: r1Ki, operatorInteractions: r1Op);
+      var round1 = CreateRound(1, "Initial Perspectives", "Each model shares their perspective.", r1, knowledgeInteractions: r1Ki, operatorInteractions: r1Op, startedAt: round1StartedAt);
       builder.AddRound(round1);
       onRoundCompleted?.Invoke(round1);
-      if (maxRounds < 2) return BuildAndComplete(builder);
+      if (maxRounds < 2) return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct);
 
       // Round 2: KK update
       var r2Ki = new List<KnowledgeInteraction>();
@@ -106,12 +107,13 @@ public sealed class ConsensusDebate : DebateScenario
                       {(string.IsNullOrWhiteSpace(r1OpText) ? "" : $"\n{r1OpText}")}
                       Identify: 1) Points of Agreement 2) Points of Disagreement 3) Bridge Proposals 4) Your Updated Position
                       """;
+      var round2StartedAt = DateTime.UtcNow;
       var r2 = await CollectResponsesAsync(members, r2Sys, r2Prompt, temperature, ct);
       var r2Op = await ProcessOperatorRequestsAsync(@operator, r2, executionOptions, ct);
-      var round2 = CreateRound(2, "Finding Common Ground", "Models identify agreements and disagreements.", r2, knowledgeInteractions: r2Ki, operatorInteractions: r2Op);
+      var round2 = CreateRound(2, "Finding Common Ground", "Models identify agreements and disagreements.", r2, knowledgeInteractions: r2Ki, operatorInteractions: r2Op, startedAt: round2StartedAt);
       builder.AddRound(round2);
       onRoundCompleted?.Invoke(round2);
-      if (maxRounds < 3) return BuildAndComplete(builder);
+      if (maxRounds < 3) return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct);
 
       // Round 3: KK update
       var r3Ki = new List<KnowledgeInteraction>();
@@ -136,21 +138,35 @@ public sealed class ConsensusDebate : DebateScenario
                       {(string.IsNullOrWhiteSpace(r1OpText) && string.IsNullOrWhiteSpace(r2OpText) ? "" : $"\n{r1OpText}\n{r2OpText}")}
                       Formulate: 1) Agreed points 2) Proposed unified answer 3) Remaining disagreements 4) Confidence (Low/Medium/High)
                       """;
+      var round3StartedAt = DateTime.UtcNow;
       var r3 = await CollectResponsesAsync(members, r3Sys, r3Prompt, temperature, ct);
       var r3Op = await ProcessOperatorRequestsAsync(@operator, r3, executionOptions, ct);
-      var round3 = CreateRound(3, "Consensus Building", "Models attempt a unified answer.", r3, knowledgeInteractions: r3Ki, operatorInteractions: r3Op);
+      var round3 = CreateRound(3, "Consensus Building", "Models attempt a unified answer.", r3, knowledgeInteractions: r3Ki, operatorInteractions: r3Op, startedAt: round3StartedAt);
       builder.AddRound(round3);
       onRoundCompleted?.Invoke(round3);
 
+      return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct);
+   }
+
+   private static async Task<DebateResult> FinalizeAsync(
+      DebateResultBuilder builder,
+      CouncilMember? chairman,
+      KnowledgeKeeper? knowledgeKeeper,
+      float temperature,
+      Action<DebateRound>? onRoundCompleted,
+      CancellationToken ct)
+   {
       // Round 4: Chairman Facilitator
-      if (maxRounds >= 4 && chairman is not null)
+      if (chairman is not null)
          try
          {
-            var verdict = await Chairman.SynthesizeVerdictAsync(chairman, context, builder.Rounds, knowledgeKeeper, temperature, ct);
+            var round4StartedAt = DateTime.UtcNow;
+            var verdict = await Chairman.SynthesizeVerdictAsync(chairman, builder.Context, builder.Rounds, knowledgeKeeper, temperature, ct);
             builder.SetFinalVerdict(verdict);
 
             var round4 = CreateRound(4, "Consensus Facilitator", "The Chairman documents the consensus outcome.",
-               new Dictionary<string, string> { [chairman.DisplayName] = verdict });
+               new Dictionary<string, string> { [chairman.DisplayName] = verdict },
+               startedAt: round4StartedAt);
             builder.AddRound(round4);
             onRoundCompleted?.Invoke(round4);
          }
@@ -159,11 +175,6 @@ public sealed class ConsensusDebate : DebateScenario
             builder.SetFinalVerdict($"[FACILITATOR ERROR: {ex.Message}]");
          }
 
-      return BuildAndComplete(builder);
-   }
-
-   private static DebateResult BuildAndComplete(DebateResultBuilder builder)
-   {
       builder.MarkCompleted();
       return builder.Build();
    }
