@@ -21,6 +21,7 @@ internal sealed class DebateResultBuilder(
    private string? _openingStatement;
 
    public string StrategyName => strategy.StrategyName;
+   public PromptContext Context => context;
    public IReadOnlyList<DebateRound> Rounds => _rounds;
 
    public void SetOpeningStatement(string? statement)

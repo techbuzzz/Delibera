@@ -1,0 +1,20 @@
+root = true
+
+[*]
+indent_style = space
+indent_size = 3
+end_of_line = crlf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.{cs,vb}]
+# Delibera's public API uses domain acronyms such as "LLM" in their conventional
+# all-caps form (ILLMProvider, ChatClientLLMProvider, AsLLMProvider,
+# LLMProviderChatClient). The .NET naming analyzers (IDE1006) want these
+# lowercased after the first letter (IllmProvider, ChatClientLlmProvider, ...),
+# which is a breaking API change for the published NuGet package *and* reads
+# worse. There is no built-in capitalisation mode that permits all-caps acronyms
+# mixed with PascalCase, so we disable the naming rules that fire on these
+# identifiers while keeping the rest of the naming convention enforcement.
+dotnet_diagnostic.IDE1006.severity = none

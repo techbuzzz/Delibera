@@ -10,39 +10,39 @@ namespace Delibera.Core.Debate;
 /// </summary>
 public abstract class DebateScenario : IDebateStrategyWithOptions
 {
-    // ──────────────────────────────────────────────
-    // Operator helpers
-    // ──────────────────────────────────────────────
+   // ──────────────────────────────────────────────
+   // Operator helpers
+   // ──────────────────────────────────────────────
 
-    /// <summary>
-    ///    Marker participants use to delegate a task to the Operator, e.g.:
-    ///    <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
-    /// </summary>
-    private static readonly Regex OperatorRequestRegex =
-       new(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]",
-          RegexOptions.Singleline |
-          RegexOptions.IgnoreCase |
-          RegexOptions.Compiled);
+   /// <summary>
+   ///    Marker participants use to delegate a task to the Operator, e.g.:
+   ///    <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
+   /// </summary>
+   private static readonly Regex OperatorRequestRegex =
+      new(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]",
+         RegexOptions.Singleline |
+         RegexOptions.IgnoreCase |
+         RegexOptions.Compiled);
 
-    /// <inheritdoc />
-    public abstract string StrategyName { get; }
+   /// <inheritdoc />
+   public abstract string StrategyName { get; }
 
-    /// <inheritdoc />
-    public abstract string Description { get; }
+   /// <inheritdoc />
+   public abstract string Description { get; }
 
-    /// <inheritdoc />
-    public abstract Task<DebateResult> ExecuteAsync(
-       IReadOnlyList<CouncilMember> members,
-       PromptContext context,
-       CouncilMember? chairman,
-       KnowledgeKeeper? knowledgeKeeper,
-       Operator? @operator,
-       int maxRounds = 4,
-       float temperature = 0.7f,
-       Action<DebateRound>? onRoundCompleted = null,
-       CancellationToken ct = default);
+   /// <inheritdoc />
+   public abstract Task<DebateResult> ExecuteAsync(
+      IReadOnlyList<CouncilMember> members,
+      PromptContext context,
+      CouncilMember? chairman,
+      KnowledgeKeeper? knowledgeKeeper,
+      Operator? @operator,
+      int maxRounds = 4,
+      float temperature = 0.7f,
+      Action<DebateRound>? onRoundCompleted = null,
+      CancellationToken ct = default);
 
-    /// <inheritdoc />
+    /// <inheritdoc cref="IDebateStrategyWithOptions.ExecuteAsync(IReadOnlyList{CouncilMember}, PromptContext, CouncilMember?, KnowledgeKeeper?, Operator?, DebateExecutionOptions, int, float, Action{DebateRound}?, CancellationToken)" />
     public abstract Task<DebateResult> ExecuteAsync(
        IReadOnlyList<CouncilMember> members,
        PromptContext context,
@@ -99,7 +99,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
 
          responses[key] = response;
       }
-      
+
       return responses;
    }
 
@@ -124,7 +124,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
       return string.Join("\n\n", rounds.Select(FormatRoundResponses));
    }
 
-   /// <summary>Creates a completed debate round.</summary>
+   /// <summary>Creates a completed debate round with an explicit start time.</summary>
    protected static DebateRound CreateRound(
       int number,
       string name,
@@ -132,7 +132,8 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
       Dictionary<string, string> responses,
       string? prompt = null,
       IReadOnlyList<KnowledgeInteraction>? knowledgeInteractions = null,
-      IReadOnlyList<OperatorInteraction>? operatorInteractions = null)
+      IReadOnlyList<OperatorInteraction>? operatorInteractions = null,
+      DateTime? startedAt = null)
    {
       return new DebateRound
       {
@@ -143,6 +144,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
          RoundPrompt = prompt,
          KnowledgeInteractions = knowledgeInteractions ?? [],
          OperatorInteractions = operatorInteractions ?? [],
+         StartedAt = startedAt ?? DateTime.UtcNow,
          CompletedAt = DateTime.UtcNow
       };
    }
@@ -233,77 +235,83 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
               """;
    }
 
-    /// <summary>
-    ///    Scans participant responses for Operator request markers, executes each delegated
-    ///    task via the Operator, and returns the recorded interactions.
-    /// </summary>
-    /// <param name="operator">Operator instance (may be <c>null</c>).</param>
-    /// <param name="responses">Participant responses keyed by display name.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>Operator interactions produced during this round.</returns>
-    protected static async Task<IReadOnlyList<OperatorInteraction>> ProcessOperatorRequestsAsync(
-       Operator? @operator,
-       IReadOnlyDictionary<string, string> responses,
-       CancellationToken ct = default)
-    {
-       return await ProcessOperatorRequestsAsync(@operator, responses, DebateExecutionOptions.Default, ct);
-    }
+   /// <summary>
+   ///    Scans participant responses for Operator request markers, executes each delegated
+   ///    task via the Operator, and returns the recorded interactions.
+   /// </summary>
+   /// <param name="operator">Operator instance (may be <c>null</c>).</param>
+   /// <param name="responses">Participant responses keyed by display name.</param>
+   /// <param name="ct">Cancellation token.</param>
+   /// <returns>Operator interactions produced during this round.</returns>
+   protected static async Task<IReadOnlyList<OperatorInteraction>> ProcessOperatorRequestsAsync(
+      Operator? @operator,
+      IReadOnlyDictionary<string, string> responses,
+      CancellationToken ct = default)
+   {
+      return await ProcessOperatorRequestsAsync(@operator, responses, DebateExecutionOptions.Default, ct);
+   }
 
-    /// <summary>
-    ///    Scans participant responses for Operator request markers, executes each delegated
-    ///    task via the Operator (in parallel, bounded by
-    ///    <see cref="DebateExecutionOptions.MaxDegreeOfParallelism" />), and returns the
-    ///    recorded interactions.
-    /// </summary>
-    protected static async Task<IReadOnlyList<OperatorInteraction>> ProcessOperatorRequestsAsync(
-       Operator? @operator,
-       IReadOnlyDictionary<string, string> responses,
-       DebateExecutionOptions executionOptions,
-       CancellationToken ct = default)
-    {
-       if (@operator is null || responses.Count == 0) return [];
+   /// <summary>
+   ///    Scans participant responses for Operator request markers, executes each delegated
+   ///    task via the Operator (in parallel, bounded by
+   ///    <see cref="DebateExecutionOptions.MaxDegreeOfParallelism" />), and returns the
+   ///    recorded interactions.
+   /// </summary>
+   protected static async Task<IReadOnlyList<OperatorInteraction>> ProcessOperatorRequestsAsync(
+      Operator? @operator,
+      IReadOnlyDictionary<string, string> responses,
+      DebateExecutionOptions executionOptions,
+      CancellationToken ct = default)
+   {
+      if (@operator is null || responses.Count == 0) return [];
 
-       // Collect every (member, task) pair across all responses first.
-       var pending = new List<(string Member, string Task)>();
-       foreach (var (member, response) in responses)
-       {
-          if (string.IsNullOrWhiteSpace(response)) continue;
+      // Collect every (member, task) pair across all responses first.
+      var pending = new List<(string Member, string Task)>();
+      foreach (var (member, response) in responses)
+      {
+         if (string.IsNullOrWhiteSpace(response)) continue;
 
-          foreach (Match match in OperatorRequestRegex.Matches(response))
-          {
-             var task = match.Groups["task"].Value.Trim();
-             if (string.IsNullOrWhiteSpace(task)) continue;
-             pending.Add((member, task));
-          }
-       }
+         foreach (Match match in OperatorRequestRegex.Matches(response))
+         {
+            var task = match.Groups["task"].Value.Trim();
+            if (string.IsNullOrWhiteSpace(task)) continue;
+            pending.Add((member, task));
+         }
+      }
 
-       if (pending.Count == 0) return [];
+      if (pending.Count == 0) return [];
 
-       var interactions = new List<OperatorInteraction>(pending.Count);
-       var parallelOpts = executionOptions.ToParallelOptions(ct);
+      var interactions = new List<OperatorInteraction>(pending.Count);
+      var parallelOpts = executionOptions.ToParallelOptions(ct);
 
-       // Parallel.ForEachAsync gives us a concurrent, optionally-bounded execution of the
-       // delegated Operator tasks. Results are collected in a thread-safe list.
-       await Parallel.ForEachAsync(
-          pending,
-          parallelOpts,
-          async (item, token) =>
-          {
-             try
-             {
-                var result = await @operator.ExecuteTaskAsync(item.Member, item.Task, token);
-                var interaction = result.ToInteraction();
-                lock (interactions) interactions.Add(interaction);
-             }
-             catch (Exception ex)
-             {
-                lock (interactions) interactions.Add(new OperatorInteraction(
-                   item.Member, item.Task, $"[Operator error: {ex.Message}]", [], false, DateTime.UtcNow));
-             }
-          });
+      // Parallel.ForEachAsync gives us a concurrent, optionally-bounded execution of the
+      // delegated Operator tasks. Results are collected in a thread-safe list.
+      await Parallel.ForEachAsync(
+         pending,
+         parallelOpts,
+         async (item, token) =>
+         {
+            try
+            {
+               var result = await @operator.ExecuteTaskAsync(item.Member, item.Task, token);
+               var interaction = result.ToInteraction();
+               lock (interactions)
+               {
+                  interactions.Add(interaction);
+               }
+            }
+            catch (Exception ex)
+            {
+               lock (interactions)
+               {
+                  interactions.Add(new OperatorInteraction(
+                     item.Member, item.Task, $"[Operator error: {ex.Message}]", [], false, DateTime.UtcNow));
+               }
+            }
+         });
 
-       return interactions;
-    }
+      return interactions;
+   }
 
    /// <summary>
    ///    Formats Operator interactions into a context block that can be injected into the

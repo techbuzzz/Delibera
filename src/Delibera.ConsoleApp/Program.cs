@@ -40,22 +40,21 @@ public static class Program
          if (!alreadyReported)
             PrintFatalError(ex);
 
-         WaitForKeyOnExit("Press any key to exit…", isError: true);
+         WaitForKeyOnExit("Press any key to exit…", true);
          return;
       }
 
-      WaitForKeyOnExit("\n🏁 Delibera session complete. Press any key to exit…", isError: false);
+      WaitForKeyOnExit("\n🏁 Delibera session complete. Press any key to exit…", false);
    }
 
    private static async Task RunAsync(string[] args, Action onDebateFailed)
    {
-
       // ═══════════════════════════════════════════════
       // 🆕 v3.1: DI & Separate Files Examples
       // ═══════════════════════════════════════════════
       if (args.Contains("--di"))
       {
-         await DIExample.RunAsync();
+         await DependencyInjectionExample.RunAsync();
          return;
       }
 
@@ -107,6 +106,12 @@ public static class Program
          return;
       }
 
+      if (args.Contains("--resilience"))
+      {
+         await ResilienceExample.RunAsync();
+         return;
+      }
+
       // Quick DI showcase before main demo
       Console.WriteLine("🆕 v3.1 DI Quick Demo:");
       Console.WriteLine("   Run with --di for full DI example");
@@ -151,11 +156,9 @@ public static class Program
          {
             var ok = await prov.IsAvailableAsync();
             Console.WriteLine($"  {name}: {(ok ? "✅ Available" : "❌ Unavailable")}");
-            if (ok)
-            {
-               var models = await prov.ListModelsAsync();
-               Console.WriteLine($"    Models: {string.Join(", ", models.Take(10))}");
-            }
+            if (!ok) continue;
+            var models = await prov.ListModelsAsync();
+            Console.WriteLine($"    Models: {string.Join(", ", models.Take(10))}");
          }
          catch (Exception ex)
          {
@@ -340,26 +343,26 @@ public static class Program
       var maxRounds = debateCfg.GetValue<int?>("MaxRounds") ?? 4;
       var temperature = debateCfg.GetValue<float?>("Temperature") ?? 0.7f;
 
-       var systemPrompt = cfg["Prompts:SystemPrompt"] ?? "You are a helpful AI assistant participating in a council debate.";
-       var userPrompt = cfg["Prompts:UserPrompt"] ?? "What is the different between Microservices vs Monolith?";
-       var responseLanguage = debateCfg["ResponseLanguage"];
-       var maxDegreeOfParallelism = debateCfg.GetValue<int?>("MaxDegreeOfParallelism") ?? 0;
+      var systemPrompt = cfg["Prompts:SystemPrompt"] ?? "You are a helpful AI assistant participating in a council debate.";
+      var userPrompt = cfg["Prompts:UserPrompt"] ?? "What is the different between Microservices vs Monolith?";
+      var responseLanguage = debateCfg["ResponseLanguage"];
+      var maxDegreeOfParallelism = debateCfg.GetValue<int?>("MaxDegreeOfParallelism") ?? 0;
 
-       IDebateStrategy strategy = stratName.ToLowerInvariant() switch
-       {
-          "critique" => new CritiqueDebate(),
-          "consensus" => new ConsensusDebate(),
-          _ => new StandardDebate()
-       };
+      IDebateStrategy strategy = stratName.ToLowerInvariant() switch
+      {
+         "critique" => new CritiqueDebate(),
+         "consensus" => new ConsensusDebate(),
+         _ => new StandardDebate()
+      };
 
-       var builder = new CouncilBuilder()
-          .WithStrategy(strategy)
-          .WithSystemPrompt(systemPrompt)
-          .WithUserPrompt(userPrompt)
-          .WithMaxRounds(maxRounds)
-          .WithTemperature(temperature)
-          .WithResponseLanguage(responseLanguage)
-          .WithMaxDegreeOfParallelism(maxDegreeOfParallelism);
+      var builder = new CouncilBuilder()
+         .WithStrategy(strategy)
+         .WithSystemPrompt(systemPrompt)
+         .WithUserPrompt(userPrompt)
+         .WithMaxRounds(maxRounds)
+         .WithTemperature(temperature)
+         .WithResponseLanguage(responseLanguage)
+         .WithMaxDegreeOfParallelism(maxDegreeOfParallelism);
 
       // Add members
       foreach (var mc in cfg.GetSection("Models").GetChildren())
@@ -429,19 +432,10 @@ public static class Program
       Console.WriteLine(new string('═', 60));
 
       // Stream every ExecutionLog entry live so the user can watch progress in real time.
-      // Stored separately so we can also dump the full transcript at the end.
-      var liveLogs = new List<ExecutionLog>();
-      executor.OnLog += entry =>
-      {
-         liveLogs.Add(entry);
-         WriteLogEntry(entry);
-      };
+      executor.OnLog += entry => WriteLogEntry(entry);
 
       // Surface non-fatal internal errors (e.g. failed MCP tool call) without aborting the debate.
-      executor.OnError += (ex, context) =>
-      {
-         WriteErrorEntry(ex, context);
-      };
+      executor.OnError += (ex, context) => { WriteErrorEntry(ex, context); };
 
       executor.OnRoundCompleted += round =>
       {
@@ -546,7 +540,7 @@ public static class Program
       }
       catch (Exception ex)
       {
-         PrintFatalError(ex, header: "❌ Debate failed");
+         PrintFatalError(ex, "❌ Debate failed");
          Console.WriteLine("\n💡 Tips:");
          Console.WriteLine("   • Ensure Ollama Cloud API key is set in appsettings.json");
          Console.WriteLine("   • Or run a local Ollama server: ollama serve");
@@ -562,19 +556,19 @@ public static class Program
       Console.ForegroundColor = ConsoleColor.Green;
       Console.WriteLine("""
 
-                         ██████╗ ███████╗██╗     ██╗██████╗ ███████╗██████╗  █████╗
-                         ██╔══██╗██╔════╝██║     ██║██╔══██╗██╔════╝██╔══██╗██╔══██╗
-                         ██║  ██║█████╗  ██║     ██║██████╔╝█████╗  ██████╔╝███████║
-                         ██║  ██║██╔══╝  ██║     ██║██╔══██╗██╔══╝  ██╔══██╗██╔══██║
-                         ██████╔╝███████╗███████╗██║██████╔╝███████╗██║  ██║██║  ██║
-                         ╚═════╝ ╚══════╝╚══════╝╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
+                           ██████╗ ███████╗██╗     ██╗██████╗ ███████╗██████╗  █████╗
+                           ██╔══██╗██╔════╝██║     ██║██╔══██╗██╔════╝██╔══██╗██╔══██╗
+                           ██║  ██║█████╗  ██║     ██║██████╔╝█████╗  ██████╔╝███████║
+                           ██║  ██║██╔══╝  ██║     ██║██╔══██╗██╔══╝  ██╔══██╗██╔══██║
+                           ██████╔╝███████╗███████╗██║██████╔╝███████╗██║  ██║██║  ██║
+                           ╚═════╝ ╚══════╝╚══════╝╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
 
-                            ⚖️   Thoughtful AI Decisions   ·   v3.1
+                              ⚖️   Thoughtful AI Decisions   ·   v3.1
 
-                         RAG • pgvector • Knowledge Keeper • Chairman
-                         Context Compression • DI • Execution Logging
+                           RAG • pgvector • Knowledge Keeper • Chairman
+                           Context Compression • DI • Execution Logging
 
-                      """);
+                        """);
       Console.ResetColor();
    }
 
@@ -588,14 +582,14 @@ public static class Program
    private static void WriteLogEntry(ExecutionLog entry)
    {
       var prev = Console.ForegroundColor;
-       Console.ForegroundColor = entry.Level switch
-       {
-          ExecutionLogLevel.Trace => ConsoleColor.DarkGray,
-          ExecutionLogLevel.Info => ConsoleColor.Cyan,
-          ExecutionLogLevel.Warning => ConsoleColor.Yellow,
-          ExecutionLogLevel.Error => ConsoleColor.Red,
-          _ => prev
-       };
+      Console.ForegroundColor = entry.Level switch
+      {
+         ExecutionLogLevel.Trace => ConsoleColor.DarkGray,
+         ExecutionLogLevel.Info => ConsoleColor.Cyan,
+         ExecutionLogLevel.Warning => ConsoleColor.Yellow,
+         ExecutionLogLevel.Error => ConsoleColor.Red,
+         _ => prev
+      };
 
       Console.WriteLine($"  ┊ {entry}");
       Console.ForegroundColor = prev;
@@ -615,8 +609,8 @@ public static class Program
          var firstFrame = ex.StackTrace
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .FirstOrDefault();
-         if (firstLineIsMeaningful(firstFrame))
-            Console.WriteLine($"  ┊   at {firstFrame.Trim()}");
+         if (firstFrame is { Length: > 0 } line && FirstLineIsMeaningful(line))
+            Console.WriteLine($"  ┊   at {line.Trim()}");
       }
 
       Console.ForegroundColor = prev;
@@ -669,7 +663,7 @@ public static class Program
 
       try
       {
-         Console.ReadKey(intercept: true);
+         Console.ReadKey(true);
       }
       catch (InvalidOperationException)
       {
@@ -677,17 +671,18 @@ public static class Program
          Console.WriteLine("(no interactive console available; exiting.)");
       }
 
-      Environment.ExitCode = isError ? 1 : 0;
+      Environment.ExitCode = isError
+         ? 1
+         : 0;
    }
 
-   private static bool firstLineIsMeaningful(string? frame)
+    private static bool FirstLineIsMeaningful(string? frame)
    {
       if (string.IsNullOrWhiteSpace(frame))
          return false;
 
       var trimmed = frame.Trim();
       // Filter out noise from runtime/compiler-emitted frames.
-      return !trimmed.StartsWith("at System.", StringComparison.Ordinal)
-          || trimmed.Contains("Delibera", StringComparison.Ordinal);
+      return !trimmed.StartsWith("at System.", StringComparison.Ordinal) || trimmed.Contains("Delibera", StringComparison.Ordinal);
    }
 }

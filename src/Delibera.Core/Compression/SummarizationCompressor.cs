@@ -38,7 +38,7 @@ public sealed class SummarizationCompressor(ILLMProvider llmProvider, string mod
 
       var targetTokens = options.MaxOutputTokens ?? (int)(originalTokens * options.TargetRatio);
 
-      const string SystemPrompt = """
+      const string systemPrompt = """
                                   You are a precision text compressor. Your task is to compress the given text
                                   while preserving ALL key facts, arguments, data points, and conclusions.
 
@@ -64,7 +64,7 @@ public sealed class SummarizationCompressor(ILLMProvider llmProvider, string mod
                         """;
 
       var summary = await _llmProvider.ChatAsync(
-         _modelName, SystemPrompt, userPrompt,
+         _modelName, systemPrompt, userPrompt,
          options.SummarizationTemperature, ct);
 
       var compressedTokens = counter.EstimateTokens(summary);
@@ -85,7 +85,7 @@ public sealed class SummarizationCompressor(ILLMProvider llmProvider, string mod
       var originalTokens = counter.EstimateTokens(merged);
       var targetTokens = options.MaxOutputTokens ?? (int)(originalTokens * options.TargetRatio);
 
-      const string SystemPrompt = """
+      const string systemPrompt = """
                                   You are a precision text compressor. You are given multiple text sections
                                   separated by '---'. Merge and compress them into a single coherent summary.
 
@@ -106,7 +106,7 @@ public sealed class SummarizationCompressor(ILLMProvider llmProvider, string mod
                         """;
 
       var summary = await _llmProvider.ChatAsync(
-         _modelName, SystemPrompt, userPrompt,
+         _modelName, systemPrompt, userPrompt,
          options.SummarizationTemperature, ct);
 
       var compressedTokens = counter.EstimateTokens(summary);

@@ -1,7 +1,8 @@
 using System.Runtime.CompilerServices;
 using Delibera.Core.Providers.LLM;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
+
+#pragma warning disable IDE1006 // 'LLM' acronym kept all-caps by convention; renaming is a breaking API change
 
 namespace Delibera.Core.Extensions;
 

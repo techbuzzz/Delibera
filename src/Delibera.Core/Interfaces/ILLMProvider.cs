@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
 
+#pragma warning disable IDE1006 // 'LLM' acronym kept all-caps by convention; renaming is a breaking API change
+
 namespace Delibera.Core.Interfaces;
 
 /// <summary>

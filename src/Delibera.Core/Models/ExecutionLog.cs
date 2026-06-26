@@ -78,15 +78,15 @@ public sealed record ExecutionLog(
    ///    Maps this execution-log level to the equivalent
    ///    <see cref="Microsoft.Extensions.Logging.LogLevel" /> used by <see cref="Microsoft.Extensions.Logging.ILogger" />.
    /// </summary>
-   public Microsoft.Extensions.Logging.LogLevel ToMicrosoftLogLevel()
+   public LogLevel ToMicrosoftLogLevel()
    {
       return Level switch
       {
-         ExecutionLogLevel.Trace => Microsoft.Extensions.Logging.LogLevel.Trace,
-         ExecutionLogLevel.Info => Microsoft.Extensions.Logging.LogLevel.Information,
-         ExecutionLogLevel.Warning => Microsoft.Extensions.Logging.LogLevel.Warning,
-         ExecutionLogLevel.Error => Microsoft.Extensions.Logging.LogLevel.Error,
-         _ => Microsoft.Extensions.Logging.LogLevel.None
+         ExecutionLogLevel.Trace => LogLevel.Trace,
+         ExecutionLogLevel.Info => LogLevel.Information,
+         ExecutionLogLevel.Warning => LogLevel.Warning,
+         ExecutionLogLevel.Error => LogLevel.Error,
+         _ => LogLevel.None
       };
    }
 

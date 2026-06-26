@@ -17,11 +17,22 @@ namespace Delibera.Core.Compression;
 ///       The cache has a configurable maximum size and uses LRU-style eviction
 ///       when the limit is reached.
 ///    </para>
+///    <para>
+///       Internally, entries are stored in a <see cref="ConcurrentDictionary{TKey,TValue}" />
+///       for lock-free reads and a linked list for fast LRU ordering. Eviction scans
+///       only when the capacity is exceeded and removes entries in batches of 16 to
+///       reduce contention compared to the previous <c>OrderBy</c> implementation.
+///    </para>
 /// </remarks>
 public sealed class CompressionCache(int maxEntries = 256)
 {
-   private readonly ConcurrentDictionary<string, CacheEntry> _cache = new();
+   // Keep one slot free so we can add first, then evict, avoiding a write lock on reads.
    private readonly int _maxEntries = Math.Max(1, maxEntries);
+   private readonly int _evictionTarget = Math.Max(1, (int)Math.Ceiling(Math.Max(1, maxEntries) * 0.0625)); // ~6.25% each time
+   private readonly ConcurrentDictionary<string, LruNode> _cache = new();
+   private readonly ReaderWriterLockSlim _lruLock = new();
+   private LruNode? _head; // most recently used
+   private LruNode? _tail; // least recently used
    private long _hitCount;
    private long _missCount;
 
@@ -58,11 +69,11 @@ public sealed class CompressionCache(int maxEntries = 256)
    public bool TryGet(string text, string strategyName, out CompressedContext? result)
    {
       var key = ComputeKey(text, strategyName);
-      if (_cache.TryGetValue(key, out var entry))
+      if (_cache.TryGetValue(key, out var node))
       {
-         entry.LastAccessed = DateTime.UtcNow;
+         Touch(node);
          Interlocked.Increment(ref _hitCount);
-         result = entry.Context;
+         result = node.Context;
          return true;
       }
 
@@ -81,23 +92,54 @@ public sealed class CompressionCache(int maxEntries = 256)
    {
       var key = ComputeKey(text, strategyName);
 
-      // Evict oldest entries if at capacity
-      while (_cache.Count >= _maxEntries)
+      _lruLock.EnterUpgradeableReadLock();
+      try
       {
-         var oldest = _cache.OrderBy(kv => kv.Value.LastAccessed).FirstOrDefault();
-         if (oldest.Key is not null)
-            _cache.TryRemove(oldest.Key, out _);
-         else
-            break;
-      }
+         if (_cache.TryGetValue(key, out var existing))
+         {
+            existing.Context = context;
+            Touch(existing);
+            return;
+         }
 
-      _cache[key] = new CacheEntry { Context = context, LastAccessed = DateTime.UtcNow };
+         // Add first, then evict if over capacity. This keeps reads lock-free.
+         var node = new LruNode(key, context);
+         _cache.TryAdd(key, node);
+
+         _lruLock.EnterWriteLock();
+         try
+         {
+            AddToHead(node);
+
+            if (_cache.Count > _maxEntries)
+               EvictOldest(_evictionTarget);
+         }
+         finally
+         {
+            _lruLock.ExitWriteLock();
+         }
+      }
+      finally
+      {
+         _lruLock.ExitUpgradeableReadLock();
+      }
    }
 
    /// <summary>Clears all cached entries and resets counters.</summary>
    public void Clear()
    {
-      _cache.Clear();
+      _lruLock.EnterWriteLock();
+      try
+      {
+         _cache.Clear();
+         _head = null;
+         _tail = null;
+      }
+      finally
+      {
+         _lruLock.ExitWriteLock();
+      }
+
       Interlocked.Exchange(ref _hitCount, 0);
       Interlocked.Exchange(ref _missCount, 0);
    }
@@ -143,9 +185,85 @@ public sealed class CompressionCache(int maxEntries = 256)
       }
    }
 
-   private sealed class CacheEntry
+   private void Touch(LruNode node)
    {
-      public required CompressedContext Context { get; init; }
-      public DateTime LastAccessed { get; set; }
+      // If already at the head, nothing to do.
+      if (_head == node)
+         return;
+
+      _lruLock.EnterWriteLock();
+      try
+      {
+         if (_head == node || node.ListVersion != Volatile.Read(ref _listVersion))
+            return; // node has been evicted since read
+
+         RemoveNode(node);
+         AddToHead(node);
+      }
+      finally
+      {
+         _lruLock.ExitWriteLock();
+      }
+   }
+
+   private long _listVersion;
+
+   private void AddToHead(LruNode node)
+   {
+      node.Next = _head;
+      node.Previous = null;
+      if (_head is not null)
+         _head.Previous = node;
+
+      _head = node;
+      _tail ??= node;
+      node.ListVersion = Interlocked.Increment(ref _listVersion);
+   }
+
+   private void RemoveNode(LruNode node)
+   {
+      if (node.Previous is not null)
+         node.Previous.Next = node.Next;
+      else
+         _head = node.Next;
+
+      if (node.Next is not null)
+         node.Next.Previous = node.Previous;
+      else
+         _tail = node.Previous;
+
+      node.Next = null;
+      node.Previous = null;
+   }
+
+   private void EvictOldest(int count)
+   {
+      var removed = 0;
+      while (_tail is not null && removed < count)
+      {
+         var key = _tail.Key;
+         var previous = _tail.Previous;
+
+         RemoveNode(_tail);
+         _cache.TryRemove(key, out _);
+
+         _tail = previous;
+         removed++;
+      }
+   }
+
+   private sealed class LruNode
+   {
+      public LruNode(string key, CompressedContext context)
+      {
+         Key = key;
+         Context = context;
+      }
+
+      public string Key { get; }
+      public CompressedContext Context { get; set; }
+      public long ListVersion { get; set; }
+      public LruNode? Next { get; set; }
+      public LruNode? Previous { get; set; }
    }
 }

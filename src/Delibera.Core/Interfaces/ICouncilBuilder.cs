@@ -146,40 +146,40 @@ public interface ICouncilBuilder
    /// <returns>This builder for fluent chaining.</returns>
    ICouncilBuilder WithTemperature(float temperature);
 
-    /// <summary>Sets the output path for saving the debate result as Markdown.</summary>
-    /// <param name="outputPath">File path for Markdown output.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder SaveResultTo(string outputPath);
+   /// <summary>Sets the output path for saving the debate result as Markdown.</summary>
+   /// <param name="outputPath">File path for Markdown output.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder SaveResultTo(string outputPath);
 
-    /// <summary>
-    ///    Forces every model response (participants, Chairman, Knowledge Keeper, Operator)
-    ///    to be in the specified language. Pass <c>null</c> or empty to disable language
-    ///    enforcement and let the model pick a language from context.
-    /// </summary>
-    /// <param name="language">
-    ///    Language name the model recognises (e.g. "Russian", "English", "Spanish").
-    /// </param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithResponseLanguage(string? language);
+   /// <summary>
+   ///    Forces every model response (participants, Chairman, Knowledge Keeper, Operator)
+   ///    to be in the specified language. Pass <c>null</c> or empty to disable language
+   ///    enforcement and let the model pick a language from context.
+   /// </summary>
+   /// <param name="language">
+   ///    Language name the model recognises (e.g. "Russian", "English", "Spanish").
+   /// </param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithResponseLanguage(string? language);
 
-    /// <summary>
-    ///    Sets the maximum degree of parallelism for operations that can run concurrently
-    ///    within a debate round (Operator task delegation, parallel Knowledge Keeper
-    ///    queries). Pass <c>0</c> for unbounded parallelism (default).
-    /// </summary>
-    /// <param name="maxDegreeOfParallelism">Max concurrent operations per round (0 = unbounded).</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithMaxDegreeOfParallelism(int maxDegreeOfParallelism);
+   /// <summary>
+   ///    Sets the maximum degree of parallelism for operations that can run concurrently
+   ///    within a debate round (Operator task delegation, parallel Knowledge Keeper
+   ///    queries). Pass <c>0</c> for unbounded parallelism (default).
+   /// </summary>
+   /// <param name="maxDegreeOfParallelism">Max concurrent operations per round (0 = unbounded).</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithMaxDegreeOfParallelism(int maxDegreeOfParallelism);
 
-    /// <summary>
-    ///    Attaches an <see cref="ILogger" /> used by the executor to surface progress
-    ///    (Chairman actions, rounds, compression, errors, …) to a host's logging pipeline.
-    ///    Pass <c>null</c> to disable structured logging (legacy behaviour — only the
-    ///    <c>OnLog</c> event and the <see cref="ExecutionLog" /> collection are populated).
-    /// </summary>
-    /// <param name="logger">Logger instance, or <c>null</c> to clear.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithLogger(ILogger? logger);
+   /// <summary>
+   ///    Attaches an <see cref="ILogger" /> used by the executor to surface progress
+   ///    (Chairman actions, rounds, compression, errors, …) to a host's logging pipeline.
+   ///    Pass <c>null</c> to disable structured logging (legacy behaviour — only the
+   ///    <c>OnLog</c> event and the <see cref="ExecutionLog" /> collection are populated).
+   /// </summary>
+   /// <param name="logger">Logger instance, or <c>null</c> to clear.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithLogger(ILogger? logger);
 
    /// <summary>
    ///    Validates configuration and builds an <see cref="ICouncilExecutor" />.

@@ -84,8 +84,7 @@ public static class PgVectorExample
          collectionName,
          sampleDocument,
          new Dictionary<string, string> { ["source"] = "architecture_guide.md" },
-         300,
-         50);
+         300);
 
       Console.WriteLine($"  ✅ Indexed {chunks} chunks into '{collectionName}'\n");
 
