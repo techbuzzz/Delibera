@@ -150,11 +150,9 @@ public static class Program
          {
             var ok = await prov.IsAvailableAsync();
             Console.WriteLine($"  {name}: {(ok ? "✅ Available" : "❌ Unavailable")}");
-            if (ok)
-            {
-               var models = await prov.ListModelsAsync();
-               Console.WriteLine($"    Models: {string.Join(", ", models.Take(10))}");
-            }
+            if (!ok) continue;
+            var models = await prov.ListModelsAsync();
+            Console.WriteLine($"    Models: {string.Join(", ", models.Take(10))}");
          }
          catch (Exception ex)
          {
