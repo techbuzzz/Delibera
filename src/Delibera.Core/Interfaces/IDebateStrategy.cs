@@ -1,5 +1,4 @@
 using Delibera.Core.Council;
-using Microsoft.Extensions.Logging;
 
 namespace Delibera.Core.Interfaces;
 
@@ -9,11 +8,11 @@ namespace Delibera.Core.Interfaces;
 /// </summary>
 public interface IDebateStrategy
 {
-    /// <summary>Unique strategy name.</summary>
-    string StrategyName { get; }
+   /// <summary>Unique strategy name.</summary>
+   string StrategyName { get; }
 
-    /// <summary>Human-readable strategy description.</summary>
-    string Description { get; }
+   /// <summary>Human-readable strategy description.</summary>
+   string Description { get; }
 
    /// <summary>
    ///    Executes the full debate cycle according to this strategy.

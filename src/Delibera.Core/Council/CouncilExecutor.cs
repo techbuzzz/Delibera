@@ -1,5 +1,4 @@
 using Delibera.Core.Compression;
-using Microsoft.Extensions.Logging;
 
 namespace Delibera.Core.Council;
 
@@ -89,8 +88,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
    public event Action<Exception, string>? OnError;
 
    /// <summary>
-   ///    Per-execution options (response language, parallelism budget, logger).
-   ///    Populated from <see cref="CouncilBuilder" />.
+   ///    Runs the debate and returns the full result.
    /// </summary>
    public async Task<DebateResult> ExecuteAsync(CancellationToken ct = default)
    {
@@ -155,99 +153,21 @@ public sealed class CouncilExecutor : ICouncilExecutor
          {
             Log(ExecutionLog.Info("Council", $"Round {round.RoundNumber} completed: {round.RoundName} ({round.Duration.TotalSeconds:F1}s, {round.Responses.Count} responses)"));
 
-   /// <inheritdoc />
-   public IReadOnlyList<ExecutionLog> ExecutionLogs => _executionLogs.AsReadOnly();
+            // Log knowledge interactions
+            foreach (var ki in round.KnowledgeInteractions)
+               Log(ExecutionLog.Info("KnowledgeKeeper", $"Query: \"{Truncate(ki.Query, 100)}\" → {ki.SourceChunks} chunks"));
 
-   /// <summary>Invoked after each round completes.</summary>
-   public event Action<DebateRound>? OnRoundCompleted;
+            // Log operator interactions
+            foreach (var oi in round.OperatorInteractions)
+               Log(ExecutionLog.Info("Operator", $"{oi.RequesterName} → \"{Truncate(oi.Task, 100)}\" ({oi.ToolCallCount} tool call(s))"));
 
-   /// <inheritdoc />
-   public event Action<ExecutionLog>? OnLog;
+            // Log participant responses
+            foreach (var (member, response) in round.Responses)
+               Log(ExecutionLog.Trace("Participant", $"{member} responded ({response.Length} chars)"));
 
-   /// <inheritdoc />
-   public event Action<Exception, string>? OnError;
-
-    /// <summary>
-    ///    Runs the debate and returns the full result.
-    /// </summary>
-    public async Task<DebateResult> ExecuteAsync(CancellationToken ct = default)
-    {
-       _executionLogs.Clear();
-
-       Log(ExecutionLog.Info("Council", $"Starting debate — strategy: {Strategy.StrategyName}, members: {Members.Count}, maxRounds: {_maxRounds}"));
-
-       if (ExecutionOptions.HasResponseLanguage)
-          Log(ExecutionLog.Info("Council", $"Response language enforced: {ExecutionOptions.ResponseLanguage}"));
-
-       if (ExecutionOptions.MaxDegreeOfParallelism > 0)
-          Log(ExecutionLog.Info("Council", $"Parallelism cap: {ExecutionOptions.MaxDegreeOfParallelism}"));
-
-       if (Chairman is not null)
-          Log(ExecutionLog.Info("Chairman", $"Chairman assigned: {Chairman.DisplayName}"));
-
-       if (KnowledgeKeeper is not null)
-          Log(ExecutionLog.Info("KnowledgeKeeper", $"Knowledge Keeper ready: {KnowledgeKeeper.DisplayName} (collection: {KnowledgeKeeper.CollectionName})"));
-
-       // Initialise the Operator (connect to MCP servers, discover tools) before the debate begins.
-       if (Operator is not null)
-       {
-          if (!Operator.IsInitialized)
-          {
-             Log(ExecutionLog.Info("Operator", $"Initialising Operator: {Operator.DisplayName}…"));
-             try
-             {
-                await Operator.InitializeAsync(ct);
-             }
-             catch (Exception ex)
-             {
-                ReportError(ex, "Operator");
-             }
-          }
-
-          Log(ExecutionLog.Info("Operator", $"Operator ready: {Operator.DisplayName} ({Operator.AvailableTools.Count} tool(s) available)"));
-       }
-
-       if (Compressor is not null)
-          Log(ExecutionLog.Info("Compression", $"Compression enabled: {Compressor.StrategyName}"));
-
-       foreach (var m in Members)
-          Log(ExecutionLog.Trace("Council", $"Participant registered: {m.DisplayName} [{m.Role}]"));
-
-       // Inject the response-language directive into the system prompt so every downstream
-       // call (participants, Chairman.OpenDebateAsync / SynthesizeVerdictAsync, Knowledge Keeper,
-       // Operator) inherits it.
-       var effectiveContext = ExecutionOptions.HasResponseLanguage
-          ? _context with { SystemPrompt = _context.SystemPrompt + ExecutionOptions.BuildLanguageDirective() }
-          : _context;
-
-       var result = await Strategy.ExecuteAsync(
-          Members,
-          effectiveContext,
-          Chairman,
-          KnowledgeKeeper,
-          Operator,
-          ExecutionOptions,
-          _maxRounds,
-          _temperature,
-          round =>
-          {
-             Log(ExecutionLog.Info("Council", $"Round {round.RoundNumber} completed: {round.RoundName} ({round.Duration.TotalSeconds:F1}s, {round.Responses.Count} responses)"));
-
-             // Log knowledge interactions
-             foreach (var ki in round.KnowledgeInteractions)
-                Log(ExecutionLog.Info("KnowledgeKeeper", $"Query: \"{Truncate(ki.Query, 100)}\" → {ki.SourceChunks} chunks"));
-
-             // Log operator interactions
-             foreach (var oi in round.OperatorInteractions)
-                Log(ExecutionLog.Info("Operator", $"{oi.RequesterName} → \"{Truncate(oi.Task, 100)}\" ({oi.ToolCallCount} tool call(s))"));
-
-             // Log participant responses
-             foreach (var (member, response) in round.Responses)
-                Log(ExecutionLog.Trace("Participant", $"{member} responded ({response.Length} chars)"));
-
-             OnRoundCompleted?.Invoke(round);
-          },
-          ct);
+            OnRoundCompleted?.Invoke(round);
+         },
+         ct);
 
       Log(ExecutionLog.Info("Council", $"Debate completed — {result.Rounds.Count} rounds, duration: {result.TotalDuration.TotalSeconds:F1}s"));
 
@@ -381,15 +301,6 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
       ExecutionOptions.Logger?.LogError(ex, "[{Source}] {Message}", context, ex.Message);
    }
-
-    private void ReportError(Exception ex, string context)
-    {
-       var entry = ExecutionLog.Error(context, ex.Message);
-       _executionLogs.Add(ExecutionLogSink.Emit(ExecutionOptions.Logger, entry));
-       OnError?.Invoke(ex, context);
-
-       ExecutionOptions.Logger?.LogError(ex, "[{Source}] {Message}", context, ex.Message);
-    }
 
    private static string Truncate(string text, int max)
    {

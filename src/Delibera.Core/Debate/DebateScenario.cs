@@ -10,50 +10,37 @@ namespace Delibera.Core.Debate;
 /// </summary>
 public abstract class DebateScenario : IDebateStrategyWithOptions
 {
-    // ──────────────────────────────────────────────
-    // Operator helpers
-    // ──────────────────────────────────────────────
+   // ──────────────────────────────────────────────
+   // Operator helpers
+   // ──────────────────────────────────────────────
 
-    /// <summary>
-    ///    Marker participants use to delegate a task to the Operator, e.g.:
-    ///    <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
-    /// </summary>
-    private static readonly Regex OperatorRequestRegex =
-       new(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]",
-          RegexOptions.Singleline |
-          RegexOptions.IgnoreCase |
-          RegexOptions.Compiled);
+   /// <summary>
+   ///    Marker participants use to delegate a task to the Operator, e.g.:
+   ///    <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
+   /// </summary>
+   private static readonly Regex OperatorRequestRegex =
+      new(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]",
+         RegexOptions.Singleline |
+         RegexOptions.IgnoreCase |
+         RegexOptions.Compiled);
 
-    /// <inheritdoc />
-    public abstract string StrategyName { get; }
+   /// <inheritdoc />
+   public abstract string StrategyName { get; }
 
-    /// <inheritdoc />
-    public abstract string Description { get; }
+   /// <inheritdoc />
+   public abstract string Description { get; }
 
-    /// <inheritdoc />
-    public abstract Task<DebateResult> ExecuteAsync(
-       IReadOnlyList<CouncilMember> members,
-       PromptContext context,
-       CouncilMember? chairman,
-       KnowledgeKeeper? knowledgeKeeper,
-       Operator? @operator,
-       int maxRounds = 4,
-       float temperature = 0.7f,
-       Action<DebateRound>? onRoundCompleted = null,
-       CancellationToken ct = default);
-
-    /// <inheritdoc />
-    public abstract Task<DebateResult> ExecuteAsync(
-       IReadOnlyList<CouncilMember> members,
-       PromptContext context,
-       CouncilMember? chairman,
-       KnowledgeKeeper? knowledgeKeeper,
-       Operator? @operator,
-       DebateExecutionOptions executionOptions,
-       int maxRounds = 4,
-       float temperature = 0.7f,
-       Action<DebateRound>? onRoundCompleted = null,
-       CancellationToken ct = default);
+   /// <inheritdoc />
+   public abstract Task<DebateResult> ExecuteAsync(
+      IReadOnlyList<CouncilMember> members,
+      PromptContext context,
+      CouncilMember? chairman,
+      KnowledgeKeeper? knowledgeKeeper,
+      Operator? @operator,
+      int maxRounds = 4,
+      float temperature = 0.7f,
+      Action<DebateRound>? onRoundCompleted = null,
+      CancellationToken ct = default);
 
     /// <inheritdoc cref="IDebateStrategyWithOptions.ExecuteAsync(IReadOnlyList{CouncilMember}, PromptContext, CouncilMember?, KnowledgeKeeper?, Operator?, DebateExecutionOptions, int, float, Action{DebateRound}?, CancellationToken)" />
     public abstract Task<DebateResult> ExecuteAsync(
@@ -112,7 +99,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
 
          responses[key] = response;
       }
-      
+
       return responses;
    }
 
@@ -323,33 +310,8 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
             }
          });
 
-       if (pending.Count == 0) return [];
-
-       var interactions = new List<OperatorInteraction>(pending.Count);
-       var parallelOpts = executionOptions.ToParallelOptions(ct);
-
-       // Parallel.ForEachAsync gives us a concurrent, optionally-bounded execution of the
-       // delegated Operator tasks. Results are collected in a thread-safe list.
-       await Parallel.ForEachAsync(
-          pending,
-          parallelOpts,
-          async (item, token) =>
-          {
-             try
-             {
-                var result = await @operator.ExecuteTaskAsync(item.Member, item.Task, token);
-                var interaction = result.ToInteraction();
-                lock (interactions) interactions.Add(interaction);
-             }
-             catch (Exception ex)
-             {
-                lock (interactions) interactions.Add(new OperatorInteraction(
-                   item.Member, item.Task, $"[Operator error: {ex.Message}]", [], false, DateTime.UtcNow));
-             }
-          });
-
-       return interactions;
-    }
+      return interactions;
+   }
 
    /// <summary>
    ///    Formats Operator interactions into a context block that can be injected into the

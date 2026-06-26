@@ -556,133 +556,20 @@ public static class Program
       Console.ForegroundColor = ConsoleColor.Green;
       Console.WriteLine("""
 
-                         ██████╗ ███████╗██╗     ██╗██████╗ ███████╗██████╗  █████╗
-                         ██╔══██╗██╔════╝██║     ██║██╔══██╗██╔════╝██╔══██╗██╔══██╗
-                         ██║  ██║█████╗  ██║     ██║██████╔╝█████╗  ██████╔╝███████║
-                         ██║  ██║██╔══╝  ██║     ██║██╔══██╗██╔══╝  ██╔══██╗██╔══██║
-                         ██████╔╝███████╗███████╗██║██████╔╝███████╗██║  ██║██║  ██║
-                         ╚═════╝ ╚══════╝╚══════╝╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
+                           ██████╗ ███████╗██╗     ██╗██████╗ ███████╗██████╗  █████╗
+                           ██╔══██╗██╔════╝██║     ██║██╔══██╗██╔════╝██╔══██╗██╔══██╗
+                           ██║  ██║█████╗  ██║     ██║██████╔╝█████╗  ██████╔╝███████║
+                           ██║  ██║██╔══╝  ██║     ██║██╔══██╗██╔══╝  ██╔══██╗██╔══██║
+                           ██████╔╝███████╗███████╗██║██████╔╝███████╗██║  ██║██║  ██║
+                           ╚═════╝ ╚══════╝╚══════╝╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
 
-                            ⚖️   Thoughtful AI Decisions   ·   v3.1
+                              ⚖️   Thoughtful AI Decisions   ·   v3.1
 
-                         RAG • pgvector • Knowledge Keeper • Chairman
-                         Context Compression • DI • Execution Logging
+                           RAG • pgvector • Knowledge Keeper • Chairman
+                           Context Compression • DI • Execution Logging
 
-                      """);
+                        """);
       Console.ResetColor();
-   }
-
-   // ─── Console observability helpers ─────────────────────────────────────────────
-
-   /// <summary>
-   ///    Writes a single <see cref="ExecutionLog" /> entry to the console in a
-   ///    colour-coded, single-line format. Safe to call from the executor's
-   ///    streaming events.
-   /// </summary>
-   private static void WriteLogEntry(ExecutionLog entry)
-   {
-      var prev = Console.ForegroundColor;
-       Console.ForegroundColor = entry.Level switch
-       {
-          ExecutionLogLevel.Trace => ConsoleColor.DarkGray,
-          ExecutionLogLevel.Info => ConsoleColor.Cyan,
-          ExecutionLogLevel.Warning => ConsoleColor.Yellow,
-          ExecutionLogLevel.Error => ConsoleColor.Red,
-          _ => prev
-       };
-
-      Console.WriteLine($"  ┊ {entry}");
-      Console.ForegroundColor = prev;
-   }
-
-   /// <summary>
-   ///    Writes a non-fatal internal error to the console with a small stack-trace
-   ///    excerpt. The debate continues; this is purely informational.
-   /// </summary>
-   private static void WriteErrorEntry(Exception ex, string context)
-   {
-      var prev = Console.ForegroundColor;
-      Console.ForegroundColor = ConsoleColor.Red;
-      Console.WriteLine($"  ┊ ⚠ {context} error: {ex.Message}");
-      if (ex.StackTrace is not null)
-      {
-         var firstFrame = ex.StackTrace
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .FirstOrDefault();
-         if (firstLineIsMeaningful(firstFrame))
-            Console.WriteLine($"  ┊   at {firstFrame.Trim()}");
-      }
-
-      Console.ForegroundColor = prev;
-   }
-
-   /// <summary>
-   ///    Prints a full diagnostic panel for a fatal exception: type, message,
-   ///    full stack trace and the live log transcript captured so far.
-   /// </summary>
-   /// <param name="ex">The exception that aborted the run.</param>
-   /// <param name="header">Optional header line; defaults to a generic label.</param>
-   private static void PrintFatalError(Exception ex, string header = "❌ Unhandled exception")
-   {
-      var prev = Console.ForegroundColor;
-      Console.ForegroundColor = ConsoleColor.Red;
-      Console.WriteLine();
-      Console.WriteLine(new string('═', 60));
-      Console.WriteLine($"  {header}");
-      Console.WriteLine(new string('═', 60));
-      Console.WriteLine($"  Type:    {ex.GetType().FullName}");
-      Console.WriteLine($"  Message: {ex.Message}");
-      Console.WriteLine();
-      Console.WriteLine("  ── Stack trace ──");
-      Console.WriteLine(ex.StackTrace);
-      if (ex.InnerException is not null)
-      {
-         Console.WriteLine();
-         Console.WriteLine("  ── Inner exception ──");
-         Console.WriteLine($"  Type:    {ex.InnerException.GetType().FullName}");
-         Console.WriteLine($"  Message: {ex.InnerException.Message}");
-         Console.WriteLine(ex.InnerException.StackTrace);
-      }
-
-      Console.ForegroundColor = prev;
-   }
-
-   /// <summary>
-   ///    Pauses the console so the user can read output before the window closes.
-   ///    Honoured in both normal and error paths. When <paramref name="isError" />
-   ///    is <c>true</c> the prompt is shown in red and the exit code is set to 1.
-   /// </summary>
-   private static void WaitForKeyOnExit(string prompt, bool isError)
-   {
-      if (isError)
-         Console.ForegroundColor = ConsoleColor.Red;
-
-      Console.WriteLine();
-      Console.WriteLine(prompt);
-      Console.ResetColor();
-
-      try
-      {
-         Console.ReadKey(intercept: true);
-      }
-      catch (InvalidOperationException)
-      {
-         // No interactive console (e.g. redirected stdin in CI) — fall back gracefully.
-         Console.WriteLine("(no interactive console available; exiting.)");
-      }
-
-      Environment.ExitCode = isError ? 1 : 0;
-   }
-
-   private static bool firstLineIsMeaningful(string? frame)
-   {
-      if (string.IsNullOrWhiteSpace(frame))
-         return false;
-
-      var trimmed = frame.Trim();
-      // Filter out noise from runtime/compiler-emitted frames.
-      return !trimmed.StartsWith("at System.", StringComparison.Ordinal)
-          || trimmed.Contains("Delibera", StringComparison.Ordinal);
    }
 
    // ─── Console observability helpers ─────────────────────────────────────────────

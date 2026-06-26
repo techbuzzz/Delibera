@@ -41,8 +41,8 @@ public static class ServiceCollectionExtensions
       services.TryAddSingleton<ICompressionFactory, CompressionService>();
       services.TryAddTransient<ICouncilBuilder, CouncilBuilder>();
 
-       return services;
-    }
+      return services;
+   }
 
    /// <summary>
    ///    Registers core Delibera services and binds <see cref="CouncilOptions" /> from configuration.
@@ -54,8 +54,8 @@ public static class ServiceCollectionExtensions
    {
       services.AddDelibera();
 
-       var section = configuration.GetSection(sectionName);
-       if (section.Exists()) services.Configure<CouncilOptions>(section);
+      var section = configuration.GetSection(sectionName);
+      if (section.Exists()) services.Configure<CouncilOptions>(section);
 
       // ResilienceOptions is a sub-section; bind it independently so
       // IOptionsMonitor<ResilienceOptions> gets a typed configuration that
@@ -78,45 +78,8 @@ public static class ServiceCollectionExtensions
       services.AddDelibera();
       services.Configure(configureOptions);
 
-       return services;
-    }
-
-    /// <summary>
-    ///    Registers core Delibera services and wires the framework into the host's
-    ///    <see cref="ILoggerFactory" />. A <see cref="CouncilBuilder" /> resolved from the
-    ///    container is automatically decorated with a logger, so any debate started via DI
-    ///    logs to the host's pipeline (console, file, OpenTelemetry, …) in addition to the
-    ///    in-memory <see cref="ExecutionLog" /> collection.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="configuration">Configuration root or section.</param>
-    /// <param name="loggerFactory">Host logger factory.</param>
-    /// <param name="sectionName">Configuration section name (default: "Delibera").</param>
-    /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddDelibera(
-       this IServiceCollection services,
-       IConfiguration configuration,
-       ILoggerFactory loggerFactory,
-       string sectionName = CouncilOptions.SectionName)
-    {
-       ArgumentNullException.ThrowIfNull(loggerFactory);
-       services.AddDelibera(configuration, sectionName);
-       services.TryAddSingleton(loggerFactory);
-
-       // Replace the transient builder registration so every resolved ICouncilBuilder
-       // gets a logger injected automatically. Consumers who build the executor themselves
-       // can still call WithLogger(...) explicitly to override.
-       services.Replace(ServiceDescriptor.Transient<ICouncilBuilder>(sp =>
-       {
-          var builder = new CouncilBuilder();
-          var lf = sp.GetService<ILoggerFactory>();
-          if (lf is not null)
-             builder.WithLogger(lf.CreateLogger("Delibera.Core.Council"));
-          return builder;
-       }));
-
-       return services;
-    }
+      return services;
+   }
 
    /// <summary>
    ///    Registers core Delibera services and wires the framework into the host's
