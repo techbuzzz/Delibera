@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Delibera.Core.Council;
 
@@ -17,12 +18,21 @@ namespace Delibera.Core.Council;
 /// </remarks>
 public sealed class Operator : IOperator
 {
+   private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+   {
+      PropertyNameCaseInsensitive = true,
+      ReadCommentHandling = JsonCommentHandling.Skip,
+      NumberHandling = JsonNumberHandling.AllowReadingFromString,
+      MaxDepth = 32
+   };
+
    private readonly CompressionOptions? _compressionOptions;
    private readonly IContextCompressor? _compressor;
    private readonly List<OperatorInteraction> _interactions = [];
    private readonly Dictionary<string, IMcpClient> _mcpClients;
    private readonly CouncilMember _model;
    private readonly List<OperatorTool> _tools = [];
+   private string? _cachedToolCatalog;
 
    /// <summary>
    ///    Creates an Operator.
@@ -66,6 +76,7 @@ public sealed class Operator : IOperator
       if (IsInitialized) return;
 
       _tools.Clear();
+      _cachedToolCatalog = null;
       foreach (var client in _mcpClients.Values)
          try
          {
@@ -91,8 +102,11 @@ public sealed class Operator : IOperator
    /// <inheritdoc />
    public string GetToolCatalog()
    {
+      if (_cachedToolCatalog is not null)
+         return _cachedToolCatalog;
+
       if (_tools.Count == 0)
-         return "The Operator currently has no tools available.";
+         return _cachedToolCatalog = "The Operator currently has no tools available.";
 
       var sb = new StringBuilder();
       sb.AppendLine("The Operator can perform the following actions via connected MCP servers:");
@@ -108,7 +122,7 @@ public sealed class Operator : IOperator
          }
       }
 
-      return sb.ToString();
+      return _cachedToolCatalog = sb.ToString();
    }
 
    /// <inheritdoc />
@@ -128,20 +142,38 @@ public sealed class Operator : IOperator
          ? []
          : await PlanToolCallsAsync(task, ct);
 
-      // 2. Execute the planned tool calls.
+      // 2. Execute the planned tool calls in parallel when independent.
       var executed = new List<OperatorToolCall>();
-      foreach (var plan in plannedCalls)
+      if (plannedCalls.Count > 1)
       {
-         if (!_mcpClients.TryGetValue(plan.ServerName, out var client))
+         var callTasks = plannedCalls.Select(async plan =>
          {
-            executed.Add(new OperatorToolCall(plan.ServerName, plan.ToolName, plan.Arguments,
-               $"[Unknown MCP server '{plan.ServerName}']", true));
-            continue;
-         }
+            if (!_mcpClients.TryGetValue(plan.ServerName, out var client))
+               return new OperatorToolCall(plan.ServerName, plan.ToolName, plan.Arguments,
+                  $"[Unknown MCP server '{plan.ServerName}']", true);
 
-         var toolResult = await client.CallToolAsync(plan.ToolName, plan.Arguments, ct);
-         executed.Add(new OperatorToolCall(plan.ServerName, plan.ToolName, plan.Arguments,
-            toolResult.Text, toolResult.IsError));
+            var toolResult = await client.CallToolAsync(plan.ToolName, plan.Arguments, ct);
+            return new OperatorToolCall(plan.ServerName, plan.ToolName, plan.Arguments,
+               toolResult.Text, toolResult.IsError);
+         });
+
+         executed.AddRange(await Task.WhenAll(callTasks));
+      }
+      else
+      {
+         foreach (var plan in plannedCalls)
+         {
+            if (!_mcpClients.TryGetValue(plan.ServerName, out var client))
+            {
+               executed.Add(new OperatorToolCall(plan.ServerName, plan.ToolName, plan.Arguments,
+                  $"[Unknown MCP server '{plan.ServerName}']", true));
+               continue;
+            }
+
+            var toolResult = await client.CallToolAsync(plan.ToolName, plan.Arguments, ct);
+            executed.Add(new OperatorToolCall(plan.ServerName, plan.ToolName, plan.Arguments,
+               toolResult.Text, toolResult.IsError));
+         }
       }
 
       // 3. Interpret the results (or answer directly if no tools were used).
@@ -187,20 +219,20 @@ public sealed class Operator : IOperator
    // Micro-agent internals
    // ──────────────────────────────────────────────
 
+   private static readonly string PlannerSystemPrompt = """
+                                                        You are the Operator's planner — a tool-routing micro-agent.
+                                                        Given a task and a list of available MCP tools, decide which tools to call.
+                                                        Respond with STRICT JSON only, no prose, in exactly this shape:
+                                                        {"tool_calls":[{"server":"<server>","tool":"<tool>","arguments":{ ... }}]}
+                                                        Rules:
+                                                        - Use only tools from the provided list (match server and tool names exactly).
+                                                        - Provide arguments that satisfy each tool's input schema.
+                                                        - If no tool is appropriate, return {"tool_calls":[]}.
+                                                        - Do not wrap the JSON in markdown fences.
+                                                        """;
+
    private async Task<IReadOnlyList<OperatorToolCall>> PlanToolCallsAsync(string task, CancellationToken ct)
    {
-      const string systemPrompt = """
-                                  You are the Operator's planner — a tool-routing micro-agent.
-                                  Given a task and a list of available MCP tools, decide which tools to call.
-                                  Respond with STRICT JSON only, no prose, in exactly this shape:
-                                  {"tool_calls":[{"server":"<server>","tool":"<tool>","arguments":{ ... }}]}
-                                  Rules:
-                                  - Use only tools from the provided list (match server and tool names exactly).
-                                  - Provide arguments that satisfy each tool's input schema.
-                                  - If no tool is appropriate, return {"tool_calls":[]}.
-                                  - Do not wrap the JSON in markdown fences.
-                                  """;
-
       var toolsText = new StringBuilder();
       foreach (var tool in _tools)
          toolsText.AppendLine($"- server=\"{tool.ServerName}\" tool=\"{tool.Name}\" description=\"{tool.Description}\" input_schema={tool.InputSchemaJson}");
@@ -218,7 +250,7 @@ public sealed class Operator : IOperator
       string raw;
       try
       {
-         raw = await _model.AskAsync(systemPrompt, userPrompt, 0.1f, ct);
+         raw = await _model.AskAsync(PlannerSystemPrompt, userPrompt, 0.1f, ct);
       }
       catch
       {
@@ -235,7 +267,7 @@ public sealed class Operator : IOperator
 
       try
       {
-         using var doc = JsonDocument.Parse(json);
+         using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 32 });
          if (!doc.RootElement.TryGetProperty("tool_calls", out var callsEl) ||
              callsEl.ValueKind != JsonValueKind.Array)
             return [];

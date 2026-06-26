@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace Delibera.Core.Compression;
 
 /// <summary>
@@ -10,6 +12,11 @@ namespace Delibera.Core.Compression;
 ///       For Llama-family models, the ratio is closer to 3.5 characters per token.
 ///    </para>
 ///    <para>For precise counts, provide a custom <see cref="TokenizerFunc" />.</para>
+///    <para>
+///       The default instance memoizes short (≤ 8 000 character) string estimates in a small
+///       LRU cache to avoid recomputing the heuristic on the same prompt fragments, which are
+///       frequently reused across debate rounds.
+///    </para>
 /// </remarks>
 public sealed class TokenCounter
 {
@@ -33,6 +40,19 @@ public sealed class TokenCounter
    public double CharsPerToken { get; init; } = 4.0;
 
    /// <summary>
+   ///    Maximum length of strings that will be memoized by the default instance.
+   ///    Longer strings bypass the cache because cache lookups can cost more than the estimate.
+   ///    Default is 8 000 characters.
+   /// </summary>
+   public int MaxMemoizedLength { get; init; } = 8000;
+
+   /// <summary>
+   ///    Maximum number of memoized estimates retained by the default instance.
+   ///    Default is 1 024 entries. Set to 0 to disable memoization.
+   /// </summary>
+   public int MaxMemoizedEntries { get; init; } = 1024;
+
+   /// <summary>
    ///    Estimates the token count for the given text.
    /// </summary>
    /// <param name="text">Input text.</param>
@@ -44,12 +64,27 @@ public sealed class TokenCounter
       if (TokenizerFunc is not null)
          return TokenizerFunc(text);
 
+      if (text.Length <= MaxMemoizedLength && MaxMemoizedEntries > 0)
+      {
+         if (_memo.TryGetValue(text, out var cached))
+            return cached;
+
+         var value = EstimateTokens(text.AsSpan());
+
+         // Only memoize when the cache is not under pressure to keep memory bounded.
+         if (_memo.Count < MaxMemoizedEntries)
+            _memo.TryAdd(text, value);
+
+         return value;
+      }
+
       return EstimateTokens(text.AsSpan());
    }
 
    /// <summary>
    ///    Estimates the token count for the given text span without allocating.
-   ///    Note: a custom <see cref="TokenizerFunc" /> is ignored on this allocation-free path.
+   ///    Note: a custom <see cref="TokenizerFunc" /> is ignored on this allocation-free path
+   ///    and memoization is not available for spans.
    /// </summary>
    /// <param name="text">Input text span.</param>
    /// <returns>Estimated token count.</returns>
@@ -110,6 +145,8 @@ public sealed class TokenCounter
    }
 
    // ──────────────────────────────────────────────
+
+   private readonly ConcurrentDictionary<string, int> _memo = new();
 
    private static int CountWords(ReadOnlySpan<char> text)
    {
