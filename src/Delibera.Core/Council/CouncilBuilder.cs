@@ -1,6 +1,7 @@
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
 using Delibera.Core.Providers.Mcp;
+using Microsoft.Extensions.Logging;
 
 namespace Delibera.Core.Council;
 
@@ -190,12 +191,33 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
-   /// <inheritdoc />
-   public ICouncilBuilder SaveResultTo(string outputPath)
-   {
-      _outputPath = outputPath;
-      return this;
-   }
+    /// <inheritdoc />
+    public ICouncilBuilder SaveResultTo(string outputPath)
+    {
+       _outputPath = outputPath;
+       return this;
+    }
+
+    /// <inheritdoc />
+    public ICouncilBuilder WithResponseLanguage(string? language)
+    {
+       _responseLanguage = string.IsNullOrWhiteSpace(language) ? null : language.Trim();
+       return this;
+    }
+
+    /// <inheritdoc />
+    public ICouncilBuilder WithMaxDegreeOfParallelism(int maxDegreeOfParallelism)
+    {
+       _maxDegreeOfParallelism = Math.Max(0, maxDegreeOfParallelism);
+       return this;
+    }
+
+    /// <inheritdoc />
+    public ICouncilBuilder WithLogger(ILogger? logger)
+    {
+       _logger = logger;
+       return this;
+    }
 
    /// <inheritdoc />
    public ICouncilBuilder WithResponseLanguage(string? language)
