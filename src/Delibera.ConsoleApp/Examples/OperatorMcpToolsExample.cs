@@ -1,3 +1,4 @@
+using System.Text;
 using Delibera.Core.Council;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
@@ -31,15 +32,19 @@ namespace Delibera.ConsoleApp.Examples;
 ///       Пример показывает <b>оба</b> способа использования Operator:
 ///    </para>
 ///    <list type="number">
-///       <item><description>Прямой вызов <see cref="Operator.ExecuteTaskAsync" /> (раздел A).</description></item>
-///       <item><description>Делегирование внутри совета через маркер <c>[[OPERATOR: ...]]</c> (раздел B).</description></item>
+///       <item>
+///          <description>Прямой вызов <see cref="Operator.ExecuteTaskAsync" /> (раздел A).</description>
+///       </item>
+///       <item>
+///          <description>Делегирование внутри совета через маркер <c>[[OPERATOR: ...]]</c> (раздел B).</description>
+///       </item>
 ///    </list>
 /// </summary>
 public static class OperatorMcpToolsExample
 {
    public static async Task RunAsync()
    {
-      Console.OutputEncoding = System.Text.Encoding.UTF8;
+      Console.OutputEncoding = Encoding.UTF8;
       Console.WriteLine("🛠️  Operator + MCP-инструменты (браузер · Marp-презентации)\n");
 
       // ── LLM-провайдер ──
@@ -56,9 +61,9 @@ public static class OperatorMcpToolsExample
       //     Предоставляет инструменты управления реальным браузером.
       //     Запускается как дочерний процесс через npx (нужен Node.js).
       var browserServer = McpServerConfig.Stdio(
-         name: "browser",
-         command: "npx",
-         arguments: ["-y", "@playwright/mcp@latest", "--headless"]);
+         "browser",
+         "npx",
+         ["-y", "@playwright/mcp@latest", "--headless"]);
 
       // (2) 🎯 Marp — генерация презентаций из Markdown.
       //     Каталог вывода монтируется через рабочую директорию; готовые файлы
@@ -67,9 +72,9 @@ public static class OperatorMcpToolsExample
       Directory.CreateDirectory(presentationsDir);
 
       var marpServer = McpServerConfig.Stdio(
-         name: "marp",
-         command: "npx",
-         arguments: ["-y", "@marp-team/marp-cli", "--server", presentationsDir],
+         "marp",
+         "npx",
+         ["-y", "@marp-team/marp-cli", "--server", presentationsDir],
          workingDirectory: presentationsDir);
 
       // (3) 🌐 HTTP-вариант (закомментирован): удалённый MCP-сервер браузера/поиска.
@@ -120,15 +125,15 @@ public static class OperatorMcpToolsExample
          // A.1 🌐 Браузерная задача — Operator сам выберет browser_navigate + browser_snapshot.
          Console.WriteLine("\n▶ Задача 1 (браузер): прочитать заголовок и краткое содержание страницы.");
          var browseResult = await @operator.ExecuteTaskAsync(
-            requesterName: "Аналитик",
-            task: "Открой https://modelcontextprotocol.io и кратко перескажи, что такое MCP, в 3 предложениях.");
+            "Аналитик",
+            "Открой https://modelcontextprotocol.io и кратко перескажи, что такое MCP, в 3 предложениях.");
          PrintResult(browseResult);
 
          // A.2 🎯 Marp-задача — Operator сформирует Markdown и соберёт презентацию.
          Console.WriteLine("\n▶ Задача 2 (Marp): сгенерировать презентацию из Markdown.");
          var deckResult = await @operator.ExecuteTaskAsync(
-            requesterName: "Докладчик",
-            task: "Создай Marp-презентацию из 3 слайдов о преимуществах .NET 10 и сохрани её как deck.html.");
+            "Докладчик",
+            "Создай Marp-презентацию из 3 слайдов о преимуществах .NET 10 и сохрани её как deck.html.");
          PrintResult(deckResult);
       }
       catch (Exception ex)
@@ -151,9 +156,9 @@ public static class OperatorMcpToolsExample
          .AddMember("llama2", ollama, "Архитектор")
          .SetChairman(Chairman.CreateStandard("qwen2.5", ollama))
          .WithOperator(
-            modelName: "llama3.2",          // дешёвая модель для оркестрации инструментов
-            provider: ollama,
-            servers: servers)
+            "llama3.2", // дешёвая модель для оркестрации инструментов
+            ollama,
+            servers)
          .WithStandardDebate()
          .WithSystemPrompt(
             "Вы — совет по технологической стратегии. Когда нужны свежие факты из интернета " +
@@ -206,15 +211,22 @@ public static class OperatorMcpToolsExample
    // ──────────────────────────────────────────────────────────────────
 
    /// <summary>Создаёт MCP-клиент для конфигурации сервера.</summary>
-   private static IMcpClient IMcpClientFor(McpServerConfig config) => new McpClientAdapter(config);
+   private static IMcpClient IMcpClientFor(McpServerConfig config)
+   {
+      return new McpClientAdapter(config);
+   }
 
    private static void PrintResult(OperatorResult result)
    {
       Console.WriteLine($"   Вызвано инструментов: {result.ToolCalls.Count}" +
-                        (result.Compressed ? " (ответ сжат)" : string.Empty));
+                        (result.Compressed
+                           ? " (ответ сжат)"
+                           : string.Empty));
       foreach (var call in result.ToolCalls)
       {
-         var status = call.IsError ? "❌" : "✓";
+         var status = call.IsError
+            ? "❌"
+            : "✓";
          Console.WriteLine($"   {status} [{call.ServerName}] {call.ToolName}");
       }
 
@@ -231,7 +243,9 @@ public static class OperatorMcpToolsExample
       Console.WriteLine("   • Свои MCP-серверы подключаются через McpServerConfig.Stdio / .Http.");
    }
 
-   private static string Preview(string? text, int max) =>
-      string.IsNullOrEmpty(text) ? "(пусто)" :
-      text.Length <= max ? text : text[..max] + "…";
+   private static string Preview(string? text, int max)
+   {
+      return string.IsNullOrEmpty(text) ? "(пусто)" :
+         text.Length <= max ? text : text[..max] + "…";
+   }
 }

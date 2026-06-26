@@ -18,34 +18,37 @@ public sealed class CouncilOptions
    /// <summary>Default generation temperature (0.0–2.0).</summary>
    public float Temperature { get; set; } = 0.7f;
 
-    /// <summary>Default system prompt for all participants.</summary>
-    public string SystemPrompt { get; set; } = "You are a helpful AI assistant participating in a council debate.";
+   /// <summary>Default system prompt for all participants.</summary>
+   public string SystemPrompt { get; set; } = "You are a helpful AI assistant participating in a council debate.";
 
-    /// <summary>
-    ///    Forces every model response (participants, Chairman, Knowledge Keeper, Operator)
-    ///    to be written in the specified human language, regardless of the language used
-    ///    in the prompt or retrieved RAG context.
-    /// </summary>
-    /// <remarks>
-    ///    <para>
-    ///       Set to a language name the model recognises (e.g. "Russian", "English",
-    ///       "Spanish", "中文"). When non-empty, Delibera injects a strict directive into
-    ///       every system and user prompt: <c>"You MUST answer exclusively in {language}.
-    ///       Never use any other language."</c>
-    ///    </para>
-    ///    <para>
-    ///       Leave <c>null</c> or empty to let the model pick a language from context (legacy
-    ///       behaviour).
-    ///    </para>
-    /// </remarks>
-    public string? ResponseLanguage { get; set; }
+   /// <summary>
+   ///    Forces every model response (participants, Chairman, Knowledge Keeper, Operator)
+   ///    to be written in the specified human language, regardless of the language used
+   ///    in the prompt or retrieved RAG context.
+   /// </summary>
+   /// <remarks>
+   ///    <para>
+   ///       Set to a language name the model recognises (e.g. "Russian", "English",
+   ///       "Spanish", "中文"). When non-empty, Delibera injects a strict directive into
+   ///       every system and user prompt:
+   ///       <c>
+   ///          "You MUST answer exclusively in {language}.
+   ///          Never use any other language."
+   ///       </c>
+   ///    </para>
+   ///    <para>
+   ///       Leave <c>null</c> or empty to let the model pick a language from context (legacy
+   ///       behaviour).
+   ///    </para>
+   /// </remarks>
+   public string? ResponseLanguage { get; set; }
 
-    /// <summary>
-    ///    Optional maximum degree of parallelism for operations that can run concurrently
-    ///    within a debate round (e.g. Operator task delegation, parallel Knowledge Keeper
-    ///    queries). <c>0</c> means "unbounded" (default).
-    /// </summary>
-    public int MaxDegreeOfParallelism { get; set; }
+   /// <summary>
+   ///    Optional maximum degree of parallelism for operations that can run concurrently
+   ///    within a debate round (e.g. Operator task delegation, parallel Knowledge Keeper
+   ///    queries). <c>0</c> means "unbounded" (default).
+   /// </summary>
+   public int MaxDegreeOfParallelism { get; set; }
 
    /// <summary>Provider configuration options.</summary>
    public ProviderOptions Providers { get; set; } = new();

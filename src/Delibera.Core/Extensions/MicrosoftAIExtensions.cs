@@ -1,7 +1,6 @@
 using System.Runtime.CompilerServices;
 using Delibera.Core.Providers.LLM;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
 
 namespace Delibera.Core.Extensions;
 

@@ -7,7 +7,6 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging;
 
 namespace Delibera.Core.DependencyInjection;
 
@@ -16,103 +15,103 @@ namespace Delibera.Core.DependencyInjection;
 /// </summary>
 public static class ServiceCollectionExtensions
 {
-    /// <summary>
-    ///    Registers core Delibera services with default options.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <returns>The service collection for chaining.</returns>
-    /// <remarks>
-    ///    Registers:
-    ///    <list type="bullet">
-    ///       <item><see cref="ILLMProviderFactory" /> → <see cref="ProviderFactory" /> (singleton)</item>
-    ///       <item><see cref="IRagProviderFactory" /> → <see cref="RagProviderFactory" /> (singleton)</item>
-    ///       <item><see cref="ICompressionFactory" /> → <see cref="CompressionService" /> (singleton)</item>
-    ///       <item><see cref="ICouncilBuilder" /> → <see cref="CouncilBuilder" /> (transient)</item>
-    ///    </list>
-    /// </remarks>
-    public static IServiceCollection AddDelibera(this IServiceCollection services)
-    {
-       services.TryAddSingleton<ILLMProviderFactory, ProviderFactory>();
-       services.TryAddSingleton<IRagProviderFactory, RagProviderFactory>();
-       services.TryAddSingleton<ICompressionFactory, CompressionService>();
-       services.TryAddTransient<ICouncilBuilder, CouncilBuilder>();
+   /// <summary>
+   ///    Registers core Delibera services with default options.
+   /// </summary>
+   /// <param name="services">The service collection.</param>
+   /// <returns>The service collection for chaining.</returns>
+   /// <remarks>
+   ///    Registers:
+   ///    <list type="bullet">
+   ///       <item><see cref="ILLMProviderFactory" /> → <see cref="ProviderFactory" /> (singleton)</item>
+   ///       <item><see cref="IRagProviderFactory" /> → <see cref="RagProviderFactory" /> (singleton)</item>
+   ///       <item><see cref="ICompressionFactory" /> → <see cref="CompressionService" /> (singleton)</item>
+   ///       <item><see cref="ICouncilBuilder" /> → <see cref="CouncilBuilder" /> (transient)</item>
+   ///    </list>
+   /// </remarks>
+   public static IServiceCollection AddDelibera(this IServiceCollection services)
+   {
+      services.TryAddSingleton<ILLMProviderFactory, ProviderFactory>();
+      services.TryAddSingleton<IRagProviderFactory, RagProviderFactory>();
+      services.TryAddSingleton<ICompressionFactory, CompressionService>();
+      services.TryAddTransient<ICouncilBuilder, CouncilBuilder>();
 
-       return services;
-    }
+      return services;
+   }
 
-    /// <summary>
-    ///    Registers core Delibera services and binds <see cref="CouncilOptions" /> from configuration.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="configuration">Configuration root or section containing council settings.</param>
-    /// <param name="sectionName">Configuration section name (default: "Delibera").</param>
-    /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddDelibera(
-       this IServiceCollection services,
-       IConfiguration configuration,
-       string sectionName = CouncilOptions.SectionName)
-    {
-       services.AddDelibera();
+   /// <summary>
+   ///    Registers core Delibera services and binds <see cref="CouncilOptions" /> from configuration.
+   /// </summary>
+   /// <param name="services">The service collection.</param>
+   /// <param name="configuration">Configuration root or section containing council settings.</param>
+   /// <param name="sectionName">Configuration section name (default: "Delibera").</param>
+   /// <returns>The service collection for chaining.</returns>
+   public static IServiceCollection AddDelibera(
+      this IServiceCollection services,
+      IConfiguration configuration,
+      string sectionName = CouncilOptions.SectionName)
+   {
+      services.AddDelibera();
 
-       var section = configuration.GetSection(sectionName);
-       if (section.Exists()) services.Configure<CouncilOptions>(section);
+      var section = configuration.GetSection(sectionName);
+      if (section.Exists()) services.Configure<CouncilOptions>(section);
 
-       return services;
-    }
+      return services;
+   }
 
-    /// <summary>
-    ///    Registers core Delibera services with a custom options configuration delegate.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="configureOptions">Delegate to configure <see cref="CouncilOptions" />.</param>
-    /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddDelibera(
-       this IServiceCollection services,
-       Action<CouncilOptions> configureOptions)
-    {
-       ArgumentNullException.ThrowIfNull(configureOptions);
-       services.AddDelibera();
-       services.Configure(configureOptions);
+   /// <summary>
+   ///    Registers core Delibera services with a custom options configuration delegate.
+   /// </summary>
+   /// <param name="services">The service collection.</param>
+   /// <param name="configureOptions">Delegate to configure <see cref="CouncilOptions" />.</param>
+   /// <returns>The service collection for chaining.</returns>
+   public static IServiceCollection AddDelibera(
+      this IServiceCollection services,
+      Action<CouncilOptions> configureOptions)
+   {
+      ArgumentNullException.ThrowIfNull(configureOptions);
+      services.AddDelibera();
+      services.Configure(configureOptions);
 
-       return services;
-    }
+      return services;
+   }
 
-    /// <summary>
-    ///    Registers core Delibera services and wires the framework into the host's
-    ///    <see cref="ILoggerFactory" />. A <see cref="CouncilBuilder" /> resolved from the
-    ///    container is automatically decorated with a logger, so any debate started via DI
-    ///    logs to the host's pipeline (console, file, OpenTelemetry, …) in addition to the
-    ///    in-memory <see cref="ExecutionLog" /> collection.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="configuration">Configuration root or section.</param>
-    /// <param name="loggerFactory">Host logger factory.</param>
-    /// <param name="sectionName">Configuration section name (default: "Delibera").</param>
-    /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddDelibera(
-       this IServiceCollection services,
-       IConfiguration configuration,
-       ILoggerFactory loggerFactory,
-       string sectionName = CouncilOptions.SectionName)
-    {
-       ArgumentNullException.ThrowIfNull(loggerFactory);
-       services.AddDelibera(configuration, sectionName);
-       services.TryAddSingleton(loggerFactory);
+   /// <summary>
+   ///    Registers core Delibera services and wires the framework into the host's
+   ///    <see cref="ILoggerFactory" />. A <see cref="CouncilBuilder" /> resolved from the
+   ///    container is automatically decorated with a logger, so any debate started via DI
+   ///    logs to the host's pipeline (console, file, OpenTelemetry, …) in addition to the
+   ///    in-memory <see cref="ExecutionLog" /> collection.
+   /// </summary>
+   /// <param name="services">The service collection.</param>
+   /// <param name="configuration">Configuration root or section.</param>
+   /// <param name="loggerFactory">Host logger factory.</param>
+   /// <param name="sectionName">Configuration section name (default: "Delibera").</param>
+   /// <returns>The service collection for chaining.</returns>
+   public static IServiceCollection AddDelibera(
+      this IServiceCollection services,
+      IConfiguration configuration,
+      ILoggerFactory loggerFactory,
+      string sectionName = CouncilOptions.SectionName)
+   {
+      ArgumentNullException.ThrowIfNull(loggerFactory);
+      services.AddDelibera(configuration, sectionName);
+      services.TryAddSingleton(loggerFactory);
 
-       // Replace the transient builder registration so every resolved ICouncilBuilder
-       // gets a logger injected automatically. Consumers who build the executor themselves
-       // can still call WithLogger(...) explicitly to override.
-       services.Replace(ServiceDescriptor.Transient<ICouncilBuilder>(sp =>
-       {
-          var builder = new CouncilBuilder();
-          var lf = sp.GetService<ILoggerFactory>();
-          if (lf is not null)
-             builder.WithLogger(lf.CreateLogger("Delibera.Core.Council"));
-          return builder;
-       }));
+      // Replace the transient builder registration so every resolved ICouncilBuilder
+      // gets a logger injected automatically. Consumers who build the executor themselves
+      // can still call WithLogger(...) explicitly to override.
+      services.Replace(ServiceDescriptor.Transient<ICouncilBuilder>(sp =>
+      {
+         var builder = new CouncilBuilder();
+         var lf = sp.GetService<ILoggerFactory>();
+         if (lf is not null)
+            builder.WithLogger(lf.CreateLogger("Delibera.Core.Council"));
+         return builder;
+      }));
 
-       return services;
-    }
+      return services;
+   }
 
    /// <summary>
    ///    Registers a Microsoft.Extensions.AI <see cref="IChatClient" /> and exposes it as a Delibera

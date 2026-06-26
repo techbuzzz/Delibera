@@ -1,6 +1,5 @@
 using Delibera.Core.Council;
 using Delibera.Core.Extensions;
-using Delibera.Core.Interfaces;
 using Delibera.Core.Providers;
 using Delibera.Core.Providers.LLM;
 using Microsoft.Extensions.AI;
@@ -37,12 +36,12 @@ public static class MicrosoftExtensionsAiExample
 
       // Grab the underlying IChatClient and wrap it with the standard middleware pipeline
       // (function invocation + logging). This is the heart of "maximising the package potential".
-      IChatClient pipeline = ollama
+      var pipeline = ollama
          .AsChatClient()
-         .WithMiddleware(enableFunctionInvocation: true);
+         .WithMiddleware(true);
 
       // Expose the decorated client back to Delibera as a normal provider.
-      ILLMProvider msaiProvider = pipeline.AsLLMProvider("Ollama (via Microsoft.Extensions.AI)");
+      var msaiProvider = pipeline.AsLLMProvider("Ollama (via Microsoft.Extensions.AI)");
       Console.WriteLine($"  ✦ Provider name: {msaiProvider.ProviderName}");
 
       // ──────────────────────────────────────────────────────────────
@@ -53,8 +52,8 @@ public static class MicrosoftExtensionsAiExample
       {
          await foreach (var chunk in msaiProvider.ChatStreamAsync(
                            model,
-                           systemPrompt: "You are a concise assistant.",
-                           userPrompt: "In one sentence, what is Microsoft.Extensions.AI?"))
+                           "You are a concise assistant.",
+                           "In one sentence, what is Microsoft.Extensions.AI?"))
             Console.Write(chunk);
          Console.WriteLine();
       }
@@ -70,7 +69,7 @@ public static class MicrosoftExtensionsAiExample
       Console.WriteLine("\n  🧮 Embedding via IEmbeddingGenerator:");
       try
       {
-         IEmbeddingProvider embeddings = ollama
+         var embeddings = ollama
             .AsEmbeddingGenerator()
             .AsEmbeddingProvider("nomic-embed-text");
 
@@ -88,9 +87,9 @@ public static class MicrosoftExtensionsAiExample
       Console.WriteLine("\n  🏛️  Building a council from an IChatClient...");
       using var factory = new ProviderFactory();
       var councilProvider = factory.CreateFromChatClient(
-         name: "msai",
-         chatClient: ollama.AsChatClient(),
-         providerName: "Ollama");
+         "msai",
+         ollama.AsChatClient(),
+         "Ollama");
 
       var executor = new CouncilBuilder()
          .AddMember(model, councilProvider, "Architect")

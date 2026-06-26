@@ -27,15 +27,15 @@ public static class OperatorExample
       // (a) Stdio transport — a local MCP server launched as a child process.
       //     The "everything" reference server ships a handful of demo tools (echo, add, etc.).
       var everythingServer = McpServerConfig.Stdio(
-         name: "demo",
-         command: "npx",
-         arguments: ["-y", "@modelcontextprotocol/server-everything"]);
+         "demo",
+         "npx",
+         ["-y", "@modelcontextprotocol/server-everything"]);
 
       // (b) A filesystem MCP server scoped to a working directory (also stdio).
       var filesystemServer = McpServerConfig.Stdio(
-         name: "files",
-         command: "npx",
-         arguments: ["-y", "@modelcontextprotocol/server-filesystem", Directory.GetCurrentDirectory()]);
+         "files",
+         "npx",
+         ["-y", "@modelcontextprotocol/server-filesystem", Directory.GetCurrentDirectory()]);
 
       // (c) HTTP/SSE transport — a remote MCP server (e.g., a hosted Notion or web-search server).
       //     Supply auth headers as needed. Commented out: requires a real endpoint + token.
@@ -55,9 +55,9 @@ public static class OperatorExample
          .AddMember("llama2", ollama, "Analyst")
          .SetChairman(Chairman.CreateStandard("qwen2.5", ollama))
          .WithOperator(
-            modelName: "llama3.2",            // cheaper model for tool orchestration
-            provider: ollama,
-            servers: servers)
+            "llama3.2", // cheaper model for tool orchestration
+            ollama,
+            servers)
          .WithStandardDebate()
          .WithSystemPrompt("You are a meticulous research council. Delegate factual lookups to the Operator.")
          .WithUserPrompt(
@@ -106,6 +106,8 @@ public static class OperatorExample
       }
    }
 
-   private static string Preview(string text, int max) =>
-      string.IsNullOrEmpty(text) ? "(empty)" : text.Length <= max ? text : text[..max] + "…";
+   private static string Preview(string text, int max)
+   {
+      return string.IsNullOrEmpty(text) ? "(empty)" : text.Length <= max ? text : text[..max] + "…";
+   }
 }
