@@ -5,7 +5,89 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [10.2.2] - 2026
+## [10.2.3] - 2026
+
+### Added — AutoChunking (progressive disclosure for large documents)
+
+- **AutoChunking** — automatic splitting of large knowledge documents (contracts, reports, articles)
+  into context-window-sized chunks distributed across debate rounds via progressive disclosure.
+  When a document exceeds the smallest model's context window, the orchestrator creates a
+  `ChunkingPlan` and distributes chunks evenly across rounds so every model receives a complete
+  view of the document by the final round.
+
+- **`Chunking` namespace** (`Delibera.Core.Chunking`):
+  - `AutoChunker` — static planner with 3 strategies: `SemanticBoundary` (respects Markdown
+    headers → paragraphs → sentences), `FixedSize`, `SlidingWindow` (50% overlap).
+  - `AutoChunkingOrchestrator` — analyses model capabilities, calculates overhead, creates
+    the plan, and distributes chunks per round.
+  - `AutoChunkingOptions` — configuration: strategy, safety margin, max chunks/round,
+    Map-Reduce toggle, progressive disclosure toggle.
+  - `ChunkingPlan` / `DocumentChunk` — immutable records describing the split.
+
+- **`ModelCapabilities`** record — context window, max output tokens, vision/tool support,
+  model family. Obtained from providers via the new `ILLMProvider.GetModelCapabilitiesAsync()`.
+
+- **`ModelContextWindowRegistry`** — static registry of 40+ popular models (Llama, Qwen,
+  DeepSeek, Phi, Mistral, Gemma, GPT, Claude, YandexGPT, …) with their context window sizes.
+  `Register()` for custom models. Case-insensitive substring matching.
+
+- **`ILLMProvider.GetModelCapabilitiesAsync(string model, CancellationToken)`** — new
+  default interface method (returns `null`). Overridden by:
+  - `OllamaProvider` — queries `/api/show` and extracts `num_ctx` from Modelfile parameters
+    via regex. Falls back to `ModelContextWindowRegistry`.
+  - `ChatClientLLMProvider` / `YandexGptProvider` — fall back to `ModelContextWindowRegistry`.
+
+- **`PromptContext` extended** — new fields: `ChunkingPlan`, `AutoChunkingEnabled`,
+  `MinContextWindow`. New method `GetChunkedUserPrompt(roundNumber, totalRounds, previousRounds)`
+  returns round-appropriate chunks with `[Chunk X/Y]` markers and section titles.
+
+- **`DebateScenario.BuildChunkedPrompt()`** — protected helper used by all built-in strategies
+  (`StandardDebate`, `CritiqueDebate`, `ConsensusDebate`). Replaces `GetFullUserPrompt()` calls
+  with round-aware chunk distribution.
+
+- **`CouncilBuilder` bulk configuration**:
+  - `WithOptions(CouncilOptions options)` — apply a pre-built options snapshot.
+  - `WithOptions(Action<CouncilOptions> configure)` — inline lambda configuration.
+  - `CouncilBuilder(CouncilOptions options)` constructor — one-shot setup.
+  - `WithAutoChunking(AutoChunkingOptions?)` — enable chunking via fluent API.
+  - `WithModelContextWindow(pattern, tokens)` — register custom model context windows.
+  - `ApplyOptions()` — transfers all non-default `CouncilOptions` fields to the builder.
+
+- **`ICouncilBuilder` updated** — new methods: `WithOptions(CouncilOptions)`,
+  `WithOptions(Action<CouncilOptions>)`, `WithAutoChunking(...)`, `WithModelContextWindow(...)`.
+
+- **`AutoChunkingConfig`** in `CouncilOptions` — bound from `Delibera:AutoChunking`
+  configuration section. Fields: `Enabled`, `Strategy`, `SafetyMargin`, `MaxChunksPerRound`,
+  `EnableMapReduce`, `EnableProgressiveDisclosure`, `ModelContextWindows` (dictionary).
+  `ToOptions()` converts to `AutoChunkingOptions` and registers custom model windows.
+
+- **DI auto-wiring** — `AddDelibera(IConfiguration, ILoggerFactory, ...)` now resolves
+  `IOptions<CouncilOptions>` and passes it to `new CouncilBuilder(options)`, so all
+  settings (strategy, rounds, temperature, compression, auto-chunking, etc.) are applied
+  automatically. Explicit builder calls take precedence.
+
+- **Console example** `AutoChunkingExample` (run with `--autochunking`) demonstrating:
+  - 3 configuration paths: fluent API, options snapshot, lambda.
+  - Offline chunking plan demo for 4K/8K/32K/128K context windows.
+  - Model context window registry dump.
+  - Synthetic contract document (~15K+ chars) that triggers chunking on small-context models.
+
+### Changed
+
+- Bumped `Delibera.Core` package version `10.2.2` → `10.2.3`.
+- `CouncilExecutor` constructor now accepts optional `AutoChunkingOptions?` parameter.
+- `CouncilExecutor.ExecuteAsync()` invokes `AutoChunkingOrchestrator.PrepareContextAsync()`
+  before the debate when AutoChunking is enabled.
+- `CouncilExecutor.GetInfo()` displays AutoChunking configuration when active.
+- `appsettings.json` updated with `AutoChunking` section.
+
+### Compatibility
+
+- **No breaking changes.** AutoChunking is opt-in — disabled by default. All existing
+  `ILLMProvider` implementations continue to work (default `GetModelCapabilitiesAsync`
+  returns `null`). `PromptContext` is a `record` with `with`-expression support, so
+  existing code that constructs it directly is unaffected. The new `CouncilExecutor`
+  constructor parameter is optional.
 
 ### Added — Polly v8 resilience via Microsoft.Extensions.Http.Resilience
 

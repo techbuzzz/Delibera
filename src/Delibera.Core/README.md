@@ -2,7 +2,7 @@
 
 ### ⚖️ Thoughtful AI Decisions
 
-**Collective decision making through structured AI deliberation — with RAG, pgvector, Knowledge Keeper, Operator (MCP tools), Chairman, Context Compression, Dependency Injection & Execution Logging.**
+**Collective decision making through structured AI deliberation — with RAG, pgvector, Knowledge Keeper, Operator (MCP tools), Chairman, Context Compression, AutoChunking, Dependency Injection & Execution Logging.**
 
 [![NuGet](https://img.shields.io/nuget/v/Delibera.Core.svg)](https://www.nuget.org/packages/Delibera.Core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](https://github.com/techbuzzz/Delibera/blob/develop/LICENSE)
@@ -33,6 +33,7 @@ outcomes** rather than single-model guesses.
 - 🐘 **Qdrant + pgvector** — pluggable vector stores (dedicated DB or your existing PostgreSQL)
 - 🛠️ **Operator (MCP Tools)** — a micro-agent that delegates tasks to MCP servers (web search, file system, Notion, PostgreSQL…) on demand during the debate
 - 🗜️ **Context Compression** — 4 strategies (Semantic, Deduplication, Summarization, Hybrid) save 30–70% of tokens
+- ✂️ **AutoChunking** — progressive disclosure of large documents across rounds, respecting model context windows
 - 💉 **Dependency Injection** — `AddDelibera()` extension for `IServiceCollection` with full options binding
 - 📋 **Execution Logging** — `ExecutionLog` model with `ExecutionLogLevel` for Chairman, KK, Compression & participants
 - 📝 **Microsoft.Extensions.Logging** — inject your own `ILogger`/`ILoggerFactory`; every debate event is forwarded to the host's logging pipeline (in addition to the in-memory `ExecutionLog` collection)
@@ -202,6 +203,55 @@ var result = await new CouncilBuilder()
 
 Console.WriteLine(result.TokenStats?.ToSummary());
 ```
+
+---
+
+## ✂️ AutoChunking
+
+Automatically split large knowledge documents (contracts, reports, articles) into
+context-window-sized chunks distributed across debate rounds via **progressive disclosure**.
+
+```csharp
+using Delibera.Core.Chunking;
+using Delibera.Core.Knowledge;
+
+var kb = new MarkdownKnowledgeBase();
+await kb.LoadAsync("contract_200_pages.md");
+
+var result = await new CouncilBuilder()
+    .AddMember("phi3:mini", ollama, "Legal Expert")   // 4K context window
+    .AddMember("llama3.2", ollama, "Business Analyst") // 128K context window
+    .SetChairman(Chairman.CreateStandard("qwen2.5", ollama))
+    .WithKnowledge(kb)
+    .WithUserPrompt("Analyse this contract for risks to the client.")
+    .WithAutoChunking()  // ← auto-chunking enabled
+    .Build()
+    .ExecuteAsync();
+// Document is split into ~3K-token chunks (phi3:mini = 4K window)
+// Chunks are progressively disclosed across rounds
+```
+
+### Three configuration paths
+
+```csharp
+// 1. Fluent API
+builder.WithAutoChunking(new AutoChunkingOptions { Strategy = ChunkingStrategy.SemanticBoundary });
+
+// 2. CouncilOptions snapshot
+builder.WithOptions(new CouncilOptions { AutoChunking = new() { Enabled = true } });
+
+// 3. Lambda
+builder.WithOptions(o => { o.AutoChunking.Enabled = true; o.AutoChunking.MaxChunksPerRound = 2; });
+```
+
+### Model Context Window Registry
+
+```csharp
+var window = ModelContextWindowRegistry.GetContextWindow("llama3.2"); // → 131072
+ModelContextWindowRegistry.Register("my-custom-model", 65536);
+```
+
+> ▶️ Run the demo: `dotnet run --project src/Delibera.ConsoleApp -- --autochunking`
 
 ---
 
@@ -514,10 +564,18 @@ var (resultPath, statsPath, logsPath) = await result.SaveAllAsync("./output");
 		  }
 		]
 	 },
-	 "Output": {
-		"Directory": "./debate_results",
-		"SeparateFiles": true
-	 }
+ 	 "Output": {
+ 		"Directory": "./debate_results",
+ 		"SeparateFiles": true
+ 	 },
+ 	 "AutoChunking": {
+ 		"Enabled": true,
+ 		"Strategy": "SemanticBoundary",
+ 		"SafetyMargin": 0.15,
+ 		"MaxChunksPerRound": 3,
+ 		"EnableMapReduce": true,
+ 		"EnableProgressiveDisclosure": true
+ 	 }
   }
 }
 ```

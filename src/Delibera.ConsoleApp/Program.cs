@@ -112,10 +112,17 @@ public static class Program
          return;
       }
 
+      if (args.Contains("--autochunking"))
+      {
+         await AutoChunkingExample.RunAsync();
+         return;
+      }
+
       // Quick DI showcase before main demo
       Console.WriteLine("🆕 v3.1 DI Quick Demo:");
       Console.WriteLine("   Run with --di for full DI example");
-      Console.WriteLine("   Run with --separate-files for file output demo\n");
+      Console.WriteLine("   Run with --separate-files for file output demo");
+      Console.WriteLine("   Run with --autochunking for AutoChunking demo (large documents)\n");
 
       // ═══════════════════════════════════════════════
       // 1. Load configuration

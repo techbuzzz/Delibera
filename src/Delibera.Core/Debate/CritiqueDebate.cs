@@ -52,7 +52,7 @@ public sealed class CritiqueDebate : DebateScenario
       ArgumentNullException.ThrowIfNull(members);
       ArgumentNullException.ThrowIfNull(context);
       var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper, @operator);
-      var fullUserPrompt = context.GetFullUserPrompt();
+      var totalRounds = Math.Min(maxRounds, 4);
 
       // Operator briefing appended to participant system prompts.
       var operatorBriefing = BuildOperatorBriefing(@operator);
@@ -71,9 +71,10 @@ public sealed class CritiqueDebate : DebateScenario
          if (ki is not null) r1Ki.Add(ki);
       }
 
+      var r1BasePrompt = BuildChunkedPrompt(context, 1, totalRounds);
       var enrichedPrompt = string.IsNullOrWhiteSpace(knowledgeCtx)
-         ? fullUserPrompt
-         : $"{fullUserPrompt}\n\n📚 Knowledge:\n{knowledgeCtx}";
+         ? r1BasePrompt
+         : $"{r1BasePrompt}\n\n📚 Knowledge:\n{knowledgeCtx}";
 
       // Round 1: Initial Positions
       var round1StartedAt = DateTime.UtcNow;
@@ -95,13 +96,14 @@ public sealed class CritiqueDebate : DebateScenario
       // Round 2: Directed Critique
       var r1Text = FormatRoundResponses(round1);
       var r1OpText = FormatOperatorInteractions(r1Op);
+      var r2BasePrompt = BuildChunkedPrompt(context, 2, totalRounds, builder.Rounds);
       var r2Sys = $"""
                    {baseSystemPrompt}
                    You are a sharp analytical critic. Find the WEAKEST points in other participants' arguments.
                    Challenge assumptions, find logical flaws, identify missing evidence, propose counter-examples.
                    """;
       var r2Prompt = $"""
-                      Original question: {fullUserPrompt}
+                      Original question: {r2BasePrompt}
                       Responses to critique:
                       {r1Text}
                       {(string.IsNullOrWhiteSpace(r1OpText) ? "" : $"\n{r1OpText}")}
@@ -126,13 +128,14 @@ public sealed class CritiqueDebate : DebateScenario
       // Round 3: Defence
       var r2Text = FormatRoundResponses(round2);
       var r2OpText = FormatOperatorInteractions(r2Op);
+      var r3BasePrompt = BuildChunkedPrompt(context, 3, totalRounds, builder.Rounds);
       var r3Sys = $"""
                    {baseSystemPrompt}
                    Defend your position. Address every critique, strengthen weak arguments,
                    provide additional evidence, and concede where critics are right.
                    """;
       var r3Prompt = $"""
-                      Original question: {fullUserPrompt}
+                      Original question: {r3BasePrompt}
                       Initial responses: {r1Text}
                       Critiques: {r2Text}
                       {(string.IsNullOrWhiteSpace(r1OpText) && string.IsNullOrWhiteSpace(r2OpText) ? "" : $"\n{r1OpText}\n{r2OpText}")}

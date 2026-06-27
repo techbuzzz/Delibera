@@ -192,6 +192,24 @@ public sealed class YandexGptProvider : ILLMProvider
    }
 
    /// <inheritdoc />
+   /// <remarks>
+   ///    YandexGPT does not expose a capabilities endpoint, so this falls back to the
+   ///    static <see cref="ModelContextWindowRegistry" />. Known Yandex models are
+   ///    pre-registered there (yandexgpt-5 = 32K, yandexgpt-32k = 32K, yandexgpt = 8K).
+   /// </remarks>
+   public Task<ModelCapabilities?> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
+   {
+      var window = ModelContextWindowRegistry.GetContextWindow(model);
+      if (window is not null)
+      {
+         return Task.FromResult<ModelCapabilities?>(
+            new ModelCapabilities { ModelName = model, ContextWindowTokens = window });
+      }
+
+      return Task.FromResult<ModelCapabilities?>(null);
+   }
+
+   /// <inheritdoc />
    public async Task<string> ChatAsync(
       string model,
       string systemPrompt,

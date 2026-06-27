@@ -1,3 +1,4 @@
+using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 
 namespace Delibera.Core.Council;
@@ -8,6 +9,7 @@ namespace Delibera.Core.Council;
 /// </summary>
 public sealed class CouncilExecutor : ICouncilExecutor
 {
+   private readonly AutoChunkingOptions? _autoChunkingOptions;
    private readonly CompressionOptions? _compressionOptions;
    private readonly PromptContext _context;
    private readonly List<ExecutionLog> _executionLogs = [];
@@ -28,7 +30,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
       CompressionOptions? compressionOptions = null,
       CompressionCache? compressionCache = null,
       Operator? @operator = null,
-      DebateExecutionOptions? executionOptions = null)
+      DebateExecutionOptions? executionOptions = null,
+      AutoChunkingOptions? autoChunkingOptions = null)
    {
       Members = members;
       Chairman = chairman;
@@ -43,6 +46,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
       _compressionOptions = compressionOptions;
       CompressionCache = compressionCache;
       ExecutionOptions = executionOptions ?? DebateExecutionOptions.Default;
+      _autoChunkingOptions = autoChunkingOptions;
    }
 
    /// <summary>Compression cache (may be <c>null</c>).</summary>
@@ -139,6 +143,36 @@ public sealed class CouncilExecutor : ICouncilExecutor
       var effectiveContext = ExecutionOptions.HasResponseLanguage
          ? _context with { SystemPrompt = _context.SystemPrompt + ExecutionOptions.BuildLanguageDirective() }
          : _context;
+
+      // ── AutoChunking: analyse model capabilities and create chunking plan ──
+      if (_autoChunkingOptions is not null)
+      {
+         Log(ExecutionLog.Info("AutoChunking", "AutoChunking enabled — analysing model context windows…"));
+
+         var orchestrator = new AutoChunkingOrchestrator(_autoChunkingOptions, ExecutionOptions.Logger);
+         effectiveContext = await orchestrator.PrepareContextAsync(
+            effectiveContext, Members, Chairman, ct);
+
+         if (effectiveContext.AutoChunkingEnabled && effectiveContext.ChunkingPlan is { } plan)
+         {
+            Log(ExecutionLog.Info("AutoChunking",
+               $"Chunking plan created: {plan.TotalChunks} chunks, " +
+               $"~{plan.EstimatedTokensPerChunk} tokens/chunk, " +
+               $"recommended {plan.RecommendedRounds} rounds. " +
+               $"Min context window: {plan.ContextWindowTokens} tokens, " +
+               $"available per round: {plan.AvailableTokensPerRound} tokens."));
+         }
+         else if (effectiveContext.ChunkingPlan is not null)
+         {
+            Log(ExecutionLog.Info("AutoChunking",
+               "Knowledge content fits in a single round — chunking not needed."));
+         }
+         else
+         {
+            Log(ExecutionLog.Info("AutoChunking",
+               "No knowledge content to chunk or context windows could not be determined."));
+         }
+      }
 
       var result = await Strategy.ExecuteAsync(
          Members,
@@ -273,6 +307,17 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
          if (CompressionCache is not null)
             sb.AppendLine($"    Cache: enabled (max {CompressionCache.Count} entries)");
+      }
+
+      if (_autoChunkingOptions is not null)
+      {
+         sb.AppendLine();
+         sb.AppendLine("  ── AutoChunking ──");
+         sb.AppendLine($"    ✂️  Strategy: {_autoChunkingOptions.Strategy}");
+         sb.AppendLine($"    Safety margin: {_autoChunkingOptions.SafetyMargin:P0}");
+         sb.AppendLine($"    Max chunks/round: {_autoChunkingOptions.MaxChunksPerRound}");
+         sb.AppendLine($"    Map-Reduce: {(_autoChunkingOptions.EnableMapReduce ? "enabled" : "disabled")}");
+         sb.AppendLine($"    Progressive disclosure: {(_autoChunkingOptions.EnableProgressiveDisclosure ? "enabled" : "disabled")}");
       }
 
       sb.AppendLine();

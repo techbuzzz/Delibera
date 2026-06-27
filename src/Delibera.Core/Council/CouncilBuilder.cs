@@ -1,5 +1,7 @@
+using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
+using Delibera.Core.DependencyInjection;
 using Delibera.Core.Providers.Mcp;
 
 namespace Delibera.Core.Council;
@@ -10,6 +12,7 @@ namespace Delibera.Core.Council;
 public sealed class CouncilBuilder : ICouncilBuilder
 {
    private readonly List<CouncilMember> _members = [];
+   private AutoChunkingOptions? _autoChunkingOptions;
    private CouncilMember? _chairman;
    private CompressionCache? _compressionCache;
    private CompressionOptions? _compressionOptions;
@@ -29,6 +32,25 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private string _systemPrompt = "You are a helpful AI assistant participating in a council debate.";
    private float _temperature = 0.7f;
    private string _userPrompt = string.Empty;
+
+   /// <summary>
+   ///    Creates an empty builder. Use <see cref="WithOptions(CouncilOptions)" /> or
+   ///    <see cref="WithOptions(Action{CouncilOptions})" /> to apply pre-built configuration.
+   /// </summary>
+   public CouncilBuilder()
+   {
+   }
+
+   /// <summary>
+   ///    Creates a builder pre-configured from a <see cref="CouncilOptions" /> snapshot.
+   ///    Equivalent to <c>new CouncilBuilder().WithOptions(options)</c>.
+   /// </summary>
+   /// <param name="options">Configuration to apply immediately.</param>
+   public CouncilBuilder(CouncilOptions options)
+   {
+      ArgumentNullException.ThrowIfNull(options);
+      ApplyOptions(options);
+   }
 
    // ── Members ──
 
@@ -220,6 +242,100 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
+   // ── AutoChunking ──
+
+   /// <inheritdoc />
+   public ICouncilBuilder WithAutoChunking(AutoChunkingOptions? options = null)
+   {
+      _autoChunkingOptions = options ?? AutoChunkingOptions.Default;
+      return this;
+   }
+
+   /// <inheritdoc />
+   public ICouncilBuilder WithModelContextWindow(string modelNamePattern, int contextWindowTokens)
+   {
+      ModelContextWindowRegistry.Register(modelNamePattern, contextWindowTokens);
+      return this;
+   }
+
+   // ── Options (bulk configuration) ──
+
+   /// <inheritdoc />
+   public ICouncilBuilder WithOptions(CouncilOptions options)
+   {
+      ArgumentNullException.ThrowIfNull(options);
+      ApplyOptions(options);
+      return this;
+   }
+
+   /// <inheritdoc />
+   public ICouncilBuilder WithOptions(Action<CouncilOptions> configure)
+   {
+      ArgumentNullException.ThrowIfNull(configure);
+      var options = new CouncilOptions();
+      configure(options);
+      ApplyOptions(options);
+      return this;
+   }
+
+   /// <summary>
+   ///    Applies a <see cref="CouncilOptions" /> snapshot to the builder.
+   ///    Only sets fields that have non-default values — explicit builder calls
+   ///    made before or after <c>WithOptions</c> take precedence.
+   /// </summary>
+   private void ApplyOptions(CouncilOptions options)
+   {
+      // Strategy
+      if (!string.Equals(options.Strategy, "Standard", StringComparison.OrdinalIgnoreCase))
+      {
+         _strategy = options.Strategy.ToLowerInvariant() switch
+         {
+            "critique" => new CritiqueDebate(),
+            "consensus" => new ConsensusDebate(),
+            _ => new StandardDebate()
+         };
+      }
+
+      // Core parameters
+      if (options.MaxRounds != 4) _maxRounds = options.MaxRounds;
+      if (Math.Abs(options.Temperature - 0.7f) > 0.001f) _temperature = options.Temperature;
+      if (options.SystemPrompt is { Length: > 0 } sp && sp != "You are a helpful AI assistant participating in a council debate.")
+         _systemPrompt = sp;
+      if (options.ResponseLanguage is { Length: > 0 } lang)
+         _responseLanguage = lang;
+      if (options.MaxDegreeOfParallelism > 0)
+         _maxDegreeOfParallelism = options.MaxDegreeOfParallelism;
+
+      // Compression
+      if (options.Compression is { Enabled: true })
+      {
+         if (_compressor is null)
+         {
+            _compressor = CompressionFactory.Create(
+               options.Compression.Strategy,
+               llmProvider: null,
+               modelName: null,
+               embeddingProvider: null);
+         }
+
+         _compressionOptions ??= new CompressionOptions
+         {
+            TargetRatio = options.Compression.TargetRatio
+         };
+
+         if (options.Compression.EnableCache && _compressionCache is null)
+            _compressionCache = new CompressionCache(options.Compression.MaxCacheEntries);
+      }
+
+      // AutoChunking
+      if (options.AutoChunking is { Enabled: true } && _autoChunkingOptions is null)
+         _autoChunkingOptions = options.AutoChunking.ToOptions();
+
+      // Output
+      if (options.Output is { Directory: { Length: > 0 } dir } && dir != "./debate_results")
+         _outputPath = dir;
+   }
+
    /// <inheritdoc />
    ICouncilExecutor ICouncilBuilder.Build()
    {
@@ -310,6 +426,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
          _compressionOptions,
          _compressionCache,
          @operator,
-         executionOptions);
+         executionOptions,
+         _autoChunkingOptions);
    }
 }

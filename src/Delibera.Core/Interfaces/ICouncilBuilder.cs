@@ -1,5 +1,7 @@
+using Delibera.Core.Chunking;
 using Delibera.Core.Council;
 using Delibera.Core.Debate;
+using Delibera.Core.DependencyInjection;
 
 namespace Delibera.Core.Interfaces;
 
@@ -180,6 +182,69 @@ public interface ICouncilBuilder
    /// <param name="logger">Logger instance, or <c>null</c> to clear.</param>
    /// <returns>This builder for fluent chaining.</returns>
    ICouncilBuilder WithLogger(ILogger? logger);
+
+   /// <summary>
+   ///    Enables AutoChunking — automatic splitting of large knowledge documents into
+   ///    context-window-sized chunks distributed across debate rounds.
+   /// </summary>
+   /// <remarks>
+   ///    <para>
+   ///       When enabled, the orchestrator queries each model's context window size
+   ///       (via <see cref="ILLMProvider.GetModelCapabilitiesAsync" /> or the
+   ///       <see cref="ModelContextWindowRegistry" /> fallback) and creates a
+   ///       <see cref="ChunkingPlan" /> if the knowledge content exceeds the smallest
+   ///       model's capacity. Chunks are progressively disclosed across rounds so
+   ///       every model receives a complete view of the document by the final round.
+   ///    </para>
+   ///    <para>
+   ///       Use <see cref="WithModelContextWindow" /> to register custom model context
+   ///       window sizes that are not in the built-in registry.
+   ///    </para>
+   /// </remarks>
+   /// <param name="options">
+   ///    Chunking configuration. Pass <c>null</c> to use <see cref="AutoChunkingOptions.Default" />.
+   /// </param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithAutoChunking(AutoChunkingOptions? options = null);
+
+   /// <summary>
+   ///    Registers a custom context window size for a model pattern.
+   ///    The pattern is matched case-insensitively as a substring of the model name.
+   /// </summary>
+   /// <param name="modelNamePattern">
+   ///    Substring pattern (e.g. "my-fine-tuned-llama" matches "my-fine-tuned-llama:v2").
+   /// </param>
+   /// <param name="contextWindowTokens">Context window size in tokens.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithModelContextWindow(string modelNamePattern, int contextWindowTokens);
+
+   /// <summary>
+   ///    Applies a pre-built <see cref="CouncilOptions" /> snapshot to the builder.
+   ///    All non-default values are transferred. Explicit builder calls made before
+   ///    or after this method take precedence over the options snapshot.
+   /// </summary>
+   /// <param name="options">Configuration to apply.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithOptions(CouncilOptions options);
+
+   /// <summary>
+   ///    Applies configuration via a delegate that receives a fresh
+   ///    <see cref="CouncilOptions" /> instance. Useful for inline configuration
+   ///    without a separate options object.
+   /// </summary>
+   /// <param name="configure">Delegate that populates the options.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   /// <example>
+   /// <code>
+   /// builder.WithOptions(o =>
+   /// {
+   ///     o.Strategy = "Critique";
+   ///     o.MaxRounds = 6;
+   ///     o.AutoChunking.Enabled = true;
+   /// });
+   /// </code>
+   /// </example>
+   ICouncilBuilder WithOptions(Action<CouncilOptions> configure);
 
    /// <summary>
    ///    Validates configuration and builds an <see cref="ICouncilExecutor" />.

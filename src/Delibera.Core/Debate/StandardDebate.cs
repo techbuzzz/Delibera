@@ -56,7 +56,7 @@ public sealed class StandardDebate : DebateScenario
       ArgumentNullException.ThrowIfNull(members);
       ArgumentNullException.ThrowIfNull(context);
       var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper, @operator);
-      var fullUserPrompt = context.GetFullUserPrompt();
+      var totalRounds = Math.Min(maxRounds, 4);
 
       // Operator briefing is appended to participant system prompts so they know what tools exist.
       var operatorBriefing = BuildOperatorBriefing(@operator);
@@ -78,9 +78,10 @@ public sealed class StandardDebate : DebateScenario
       }
 
       // ══════════ Round 1: Initial Responses ══════════
+      var r1BasePrompt = BuildChunkedPrompt(context, 1, totalRounds);
       var r1Prompt = string.IsNullOrWhiteSpace(knowledgeContext)
-         ? fullUserPrompt
-         : $"{fullUserPrompt}\n\n📚 Knowledge Keeper context:\n{knowledgeContext}";
+         ? r1BasePrompt
+         : $"{r1BasePrompt}\n\n📚 Knowledge Keeper context:\n{knowledgeContext}";
 
       var round1StartedAt = DateTime.UtcNow;
       var r1Responses = await CollectResponsesAsync(members, baseSystemPrompt, r1Prompt, temperature, ct);
@@ -105,6 +106,7 @@ public sealed class StandardDebate : DebateScenario
       // ══════════ Round 2: Critique ══════════
       var r1Text = FormatRoundResponses(round1);
       var r1OpText = FormatOperatorInteractions(r1Op);
+      var r2BasePrompt = BuildChunkedPrompt(context, 2, totalRounds, builder.Rounds);
       var r2System = $"""
                       {baseSystemPrompt}
 
@@ -113,7 +115,7 @@ public sealed class StandardDebate : DebateScenario
                       Be constructive but thorough.
                       """;
       var r2Prompt = $"""
-                      Original question: {fullUserPrompt}
+                      Original question: {r2BasePrompt}
 
                       Initial responses:
                       {r1Text}
@@ -143,6 +145,7 @@ public sealed class StandardDebate : DebateScenario
       // ══════════ Round 3: Improved Responses ══════════
       var r2Text = FormatRoundResponses(round2);
       var r2OpText = FormatOperatorInteractions(r2Op);
+      var r3BasePrompt = BuildChunkedPrompt(context, 3, totalRounds, builder.Rounds);
       var r3System = $"""
                       {baseSystemPrompt}
 
@@ -151,7 +154,7 @@ public sealed class StandardDebate : DebateScenario
                       and synthesise the most comprehensive response possible.
                       """;
       var r3Prompt = $"""
-                      Original question: {fullUserPrompt}
+                      Original question: {r3BasePrompt}
 
                       Initial responses:
                       {r1Text}
