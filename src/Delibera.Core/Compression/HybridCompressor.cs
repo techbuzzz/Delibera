@@ -30,6 +30,11 @@ public sealed class HybridCompressor : IContextCompressor
    private readonly ILLMProvider? _llmProvider;
    private readonly string? _modelName;
 
+   // Lazy-cached sub-compressors to avoid re-allocation on every CompressAsync call.
+   private DeduplicationCompressor? _dedup;
+   private SemanticCompressor? _semantic;
+   private SummarizationCompressor? _summarizer;
+
    /// <summary>
    ///    Creates a hybrid compressor.
    /// </summary>
@@ -67,8 +72,8 @@ public sealed class HybridCompressor : IContextCompressor
       var currentText = text;
 
       // ── Stage 1: Deduplication ──
-      var dedup = new DeduplicationCompressor(_embeddingProvider);
-      var dedupResult = await dedup.CompressAsync(currentText, options, ct);
+      _dedup ??= new DeduplicationCompressor(_embeddingProvider);
+      var dedupResult = await _dedup.CompressAsync(currentText, options, ct);
       currentText = dedupResult.Text;
 
       var currentTokens = counter.EstimateTokens(currentText);
@@ -79,8 +84,8 @@ public sealed class HybridCompressor : IContextCompressor
       if (_embeddingProvider is not null)
       {
          var semanticOptions = options with { MaxOutputTokens = targetTokens };
-         var semantic = new SemanticCompressor(_embeddingProvider);
-         var semanticResult = await semantic.CompressAsync(currentText, semanticOptions, ct);
+         _semantic ??= new SemanticCompressor(_embeddingProvider);
+         var semanticResult = await _semantic.CompressAsync(currentText, semanticOptions, ct);
          currentText = semanticResult.Text;
 
          currentTokens = counter.EstimateTokens(currentText);
@@ -92,8 +97,8 @@ public sealed class HybridCompressor : IContextCompressor
       if (_llmProvider is not null && _modelName is not null)
       {
          var summOptions = options with { MaxOutputTokens = targetTokens };
-         var summarizer = new SummarizationCompressor(_llmProvider, _modelName);
-         var summResult = await summarizer.CompressAsync(currentText, summOptions, ct);
+         _summarizer ??= new SummarizationCompressor(_llmProvider, _modelName);
+         var summResult = await _summarizer.CompressAsync(currentText, summOptions, ct);
          currentText = summResult.Text;
          currentTokens = counter.EstimateTokens(currentText);
       }

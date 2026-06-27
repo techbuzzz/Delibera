@@ -1,3 +1,5 @@
+using Delibera.Core.Chunking;
+
 namespace Delibera.Core.DependencyInjection;
 
 /// <summary>
@@ -71,6 +73,9 @@ public sealed class CouncilOptions
    ///    registered by <c>AddDelibera</c>.
    /// </summary>
    public ResilienceOptions Resilience { get; set; } = new();
+
+   /// <summary>AutoChunking configuration options.</summary>
+   public AutoChunkingConfig AutoChunking { get; set; } = new();
 }
 
 /// <summary>
@@ -108,7 +113,10 @@ public sealed class ResilienceOptions
    /// <summary>Pipeline name used for cloud-hosted LLM gateways (Ollama Cloud, Yandex Cloud, MCP HTTP).</summary>
    public const string CloudPipelineName = "Delibera.Cloud";
 
-   /// <summary>Master switch — when <c>false</c> no retry pipeline is attached and HttpClients behave as plain <see cref="HttpClient" />.</summary>
+   /// <summary>
+   ///    Master switch — when <c>false</c> no retry pipeline is attached and HttpClients behave as plain
+   ///    <see cref="HttpClient" />.
+   /// </summary>
    public bool Enabled { get; set; } = true;
 
    /// <summary>Maximum number of retry attempts (the initial call counts as the first attempt).</summary>
@@ -302,4 +310,68 @@ public sealed class OutputOptions
 
    /// <summary>Optional file prefix (default: "debate_{timestamp}").</summary>
    public string? FilePrefix { get; set; }
+}
+
+/// <summary>
+///    Configuration options for AutoChunking — automatic splitting of large knowledge
+///    documents into context-window-sized chunks distributed across debate rounds.
+///    Bound from the <c>Delibera:AutoChunking</c> configuration section.
+/// </summary>
+public sealed class AutoChunkingConfig
+{
+   /// <summary>Whether AutoChunking is enabled. Default is <c>false</c>.</summary>
+   public bool Enabled { get; set; }
+
+   /// <summary>
+   ///    Chunking strategy: <c>"SemanticBoundary"</c> (default), <c>"FixedSize"</c>, or <c>"SlidingWindow"</c>.
+   /// </summary>
+   public string Strategy { get; set; } = "SemanticBoundary";
+
+   /// <summary>
+   ///    Safety margin as a fraction of the context window (0.0–0.5).
+   ///    Default 0.15 = 15% reserved for token estimation inaccuracy.
+   /// </summary>
+   public double SafetyMargin { get; set; } = 0.15;
+
+   /// <summary>Maximum number of chunks to include in a single round's prompt. Default is 3.</summary>
+   public int MaxChunksPerRound { get; set; } = 3;
+
+   /// <summary>
+   ///    When <c>true</c>, the Chairman receives a Map-Reduce summary of all chunks.
+   ///    Default is <c>true</c>.
+   /// </summary>
+   public bool EnableMapReduce { get; set; } = true;
+
+   /// <summary>
+   ///    When <c>true</c>, chunks are progressively disclosed across rounds.
+   ///    Default is <c>true</c>.
+   /// </summary>
+   public bool EnableProgressiveDisclosure { get; set; } = true;
+
+   /// <summary>
+   ///    Custom model context window registrations. Key = model name pattern (substring match),
+   ///    Value = context window size in tokens.
+   /// </summary>
+   public Dictionary<string, int> ModelContextWindows { get; set; } = [];
+
+   /// <summary>
+   ///    Converts this configuration to an <see cref="AutoChunkingOptions" /> instance.
+   /// </summary>
+   public AutoChunkingOptions ToOptions()
+   {
+      // Register any custom model context windows.
+      foreach (var (pattern, window) in ModelContextWindows)
+         ModelContextWindowRegistry.Register(pattern, window);
+
+      return new AutoChunkingOptions
+      {
+         Strategy = Enum.TryParse<ChunkingStrategy>(Strategy, ignoreCase: true, out var s)
+            ? s
+            : ChunkingStrategy.SemanticBoundary,
+         SafetyMargin = Math.Clamp(SafetyMargin, 0.0, 0.5),
+         MaxChunksPerRound = Math.Max(1, MaxChunksPerRound),
+         EnableMapReduce = EnableMapReduce,
+         EnableProgressiveDisclosure = EnableProgressiveDisclosure
+      };
+   }
 }

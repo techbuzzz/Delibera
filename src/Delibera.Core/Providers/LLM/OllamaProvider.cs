@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Resilience;
 using Microsoft.Extensions.AI;
@@ -173,6 +174,69 @@ public sealed class OllamaProvider : ILLMProvider
       {
          throw new InvalidOperationException($"Failed to list Ollama models: {ex.Message}", ex);
       }
+   }
+
+   /// <inheritdoc />
+   public async Task<ModelCapabilities?> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(model);
+
+      try
+      {
+         // Use Ollama's /api/show endpoint to get model metadata including Modelfile parameters.
+         var response = await Client.ShowModelAsync(model, ct);
+
+         // 1. Try to extract num_ctx from the Modelfile parameters string.
+         var contextWindow = ExtractContextWindowFromParameters(response.Parameters);
+
+         // 2. Fall back to the static registry if the API didn't report a context window.
+         contextWindow ??= ModelContextWindowRegistry.GetContextWindow(model);
+
+         // 3. Determine model family from the model info.
+         var family = response.Info?.Architecture ?? response.Details?.Family;
+
+          // 4. Check capabilities for vision support.
+          var supportsVision = response.Capabilities is not null &&
+             response.Capabilities.Any(c => c.Contains("vision", StringComparison.OrdinalIgnoreCase));
+
+         return new ModelCapabilities
+         {
+            ModelName = model,
+            ContextWindowTokens = contextWindow,
+            Family = family,
+            SupportsVision = supportsVision,
+            SupportsTools = false // Ollama tool support is model-dependent; default to false.
+         };
+      }
+      catch (Exception ex)
+      {
+         // If the API call fails, fall back to the static registry.
+         System.Diagnostics.Debug.WriteLine(
+            $"OllamaProvider: failed to get capabilities for '{model}': {ex.Message}");
+
+         var window = ModelContextWindowRegistry.GetContextWindow(model);
+         return window is not null
+            ? new ModelCapabilities { ModelName = model, ContextWindowTokens = window }
+            : null;
+      }
+   }
+
+   /// <summary>
+   ///    Extracts the <c>num_ctx</c> parameter from an Ollama Modelfile parameters string.
+   ///    The parameters string looks like:
+   ///    <c>num_keep 24\nstop "&lt;|start_header_id|&gt;"\nnum_ctx 131072\n...</c>
+   /// </summary>
+   private static int? ExtractContextWindowFromParameters(string? parameters)
+   {
+      if (string.IsNullOrWhiteSpace(parameters))
+         return null;
+
+      // Match "num_ctx <number>" in the parameters string.
+      var match = Regex.Match(parameters, @"num_ctx\s+(\d+)", RegexOptions.IgnoreCase);
+      if (match.Success && int.TryParse(match.Groups[1].Value, out var ctx))
+         return ctx;
+
+      return null;
    }
 
    /// <inheritdoc />

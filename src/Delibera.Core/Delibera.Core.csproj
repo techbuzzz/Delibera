@@ -12,21 +12,21 @@
 
       <!-- NuGet Package Metadata -->
       <PackageId>Delibera.Core</PackageId>
-      <Version>10.2.2</Version>
+      <Version>10.2.3</Version>
       <Title>Delibera</Title>
-      <Description>Delibera — Thoughtful AI Decisions. A framework for collective decision making through structured AI deliberation. Supports multi-model councils with RAG (Qdrant, PgVector), debate strategies, Knowledge Keeper, Chairman roles, dependency injection, context compression, Microsoft.Extensions.Logging, Microsoft.Extensions.Http.Resilience (Polly v8 retry pipelines), IHttpClientFactory wiring, response-language enforcement, and parallel Operator requests.</Description>
+      <Description>Delibera — Thoughtful AI Decisions. A framework for collective decision making through structured AI deliberation. Supports multi-model councils with RAG (Qdrant, PgVector), debate strategies, Knowledge Keeper, Chairman roles, dependency injection, context compression, AutoChunking (progressive disclosure for large documents), Microsoft.Extensions.Logging, Microsoft.Extensions.Http.Resilience (Polly v8 retry pipelines), IHttpClientFactory wiring, response-language enforcement, and parallel Operator requests.</Description>
       <Authors>Victor Buzin</Authors>
       <Company>Techbuzzz</Company>
       <Product>Delibera</Product>
       <Copyright>Copyright © 2026 Techbuzzz</Copyright>
-      <PackageTags>llm;ai;debate;council;deliberation;rag;qdrant;pgvector;ollama;openai;vector-search;embeddings;dependency-injection;resilience;polly;retry;httpclient</PackageTags>
+      <PackageTags>llm;ai;debate;council;deliberation;rag;qdrant;pgvector;ollama;openai;vector-search;embeddings;dependency-injection;resilience;polly;retry;httpclient;autochunking;chunking;context-window</PackageTags>
       <PackageReadmeFile>README.md</PackageReadmeFile>
       <PackageIcon>icon.png</PackageIcon>
       <PackageLicenseExpression>MIT</PackageLicenseExpression>
       <RepositoryUrl>https://github.com/techbuzzz/Delibera</RepositoryUrl>
       <RepositoryType>git</RepositoryType>
       <PackageProjectUrl>https://github.com/techbuzzz/Delibera</PackageProjectUrl>
-      <PackageReleaseNotes>v10.2.2 — Microsoft.Extensions.Http.Resilience integration (Polly v8 ResiliencePipeline): every HTTP-backed provider (Ollama, YandexGPT, MCP HTTP transport) now flows through IHttpClientFactory with a keyed Polly v8 retry pipeline. Hand-rolled retry loops in providers have been removed in favour of named pipelines ("Delibera.Local", "Delibera.Cloud", "Delibera.Default") registered via AddDelibera(). Configure via CouncilOptions.Resilience (MaxRetryAttempts, BaseDelay, MaxDelay, BackoffType, UseJitter, RetryableStatusCodes) or register custom named pipelines via AddDeliberaResiliencePipeline. New AddDeliberaHttpClient / WithHttpClientName() helpers for consumer wiring. Fully backward compatible: legacy constructors without a factory still work (they create a default HttpClient without resilience).</PackageReleaseNotes>
+      <PackageReleaseNotes>v10.2.3 — AutoChunking: automatic splitting of large knowledge documents into context-window-sized chunks distributed across debate rounds via progressive disclosure. New Chunking namespace with AutoChunker (SemanticBoundary / FixedSize / SlidingWindow strategies), AutoChunkingOrchestrator, and AutoChunkingOptions. ModelContextWindowRegistry with 40+ pre-registered models. ILLMProvider.GetModelCapabilitiesAsync() — OllamaProvider queries /api/show for num_ctx, others fall back to the registry. PromptContext extended with ChunkingPlan, AutoChunkingEnabled, MinContextWindow, and GetChunkedUserPrompt(). All debate strategies (Standard, Critique, Consensus) use BuildChunkedPrompt() for round-aware chunk distribution. CouncilBuilder gains WithOptions(CouncilOptions) / WithOptions(Action{CouncilOptions}) for bulk configuration from DI, appsettings, or inline lambdas. CouncilBuilder(CouncilOptions) constructor for one-shot setup. DI auto-wires CouncilOptions → CouncilBuilder. New AutoChunkingConfig in CouncilOptions with appsettings binding. ConsoleApp example: dotnet run -- --autochunking. Fully backward compatible — AutoChunking is opt-in.</PackageReleaseNotes>
       <IncludeSymbols>true</IncludeSymbols>
       <SymbolPackageFormat>snupkg</SymbolPackageFormat>
       <PublishRepositoryUrl>true</PublishRepositoryUrl>

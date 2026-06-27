@@ -6,7 +6,7 @@
 
 ### ⚖️ Thoughtful AI Decisions
 
-**Collective decision making through structured AI deliberation — with RAG, pgvector, Knowledge Keeper, 🛠️ Operator (MCP tools), Chairman, 🔥 Context Compression, 💉 Dependency Injection & 📋 Execution Logging**
+**Collective decision making through structured AI deliberation — with RAG, pgvector, Knowledge Keeper, 🛠️ Operator (MCP tools), Chairman, 🔥 Context Compression, ✂️ AutoChunking, 💉 Dependency Injection & 📋 Execution Logging**
 
 [![NuGet](https://img.shields.io/nuget/v/Delibera.Core.svg)](https://www.nuget.org/packages/Delibera.Core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](LICENSE)
@@ -43,6 +43,7 @@ well-reasoned outcomes** rather than single-model guesses.
 | **🛠️ Operator (MCP Tools)**  | A micro-agent that delegates tasks to MCP servers (web, files, Marp, Notion, …) on demand during the debate |
 | **🐘 Qdrant + pgvector**      | Pluggable vector stores — use a dedicated DB or your existing PostgreSQL              |
 | **🗜️ Context Compression**   | 4 strategies (Semantic, Deduplication, Summarization, Hybrid) save 30–70% of tokens   |
+| **✂️ AutoChunking**           | Progressive disclosure of large documents across rounds — respects model context windows |
 | **💉 Dependency Injection**   | `AddDelibera()` extension for `IServiceCollection` with full options binding          |
 | **📋 Execution Logging**      | `ExecutionLog` model with `LogLevel` — Chairman, KK, Compression & participant events |
 | **📁 Separate File Output**   | Export `result.md`, `statistics.md`, and `logs.md` independently                      |
@@ -62,6 +63,7 @@ well-reasoned outcomes** rather than single-model guesses.
 - [Dependency Injection](#-dependency-injection)
 - [Operator (MCP Tools)](#️-operator-mcp-tools)
 - [Context Compression](#-context-compression)
+- [AutoChunking](#-autochunking)
 - [RAG Integration](#-rag-integration)
 - [Debate Strategies](#-debate-strategies)
 - [Output Files Structure](#-output-files-structure)
@@ -448,6 +450,93 @@ TokenCounter                  ← Heuristic token estimation
 
 ---
 
+## ✂️ AutoChunking
+
+Automatically split large knowledge documents (contracts, reports, articles) into
+context-window-sized chunks distributed across debate rounds via **progressive disclosure**.
+When a document exceeds the smallest model's context window, the orchestrator creates a
+chunking plan and distributes chunks evenly — every model receives a complete view by the
+final round.
+
+### How it works
+
+1. **Model discovery** — queries each model's context window via `GetModelCapabilitiesAsync()`
+   (Ollama `/api/show`, or the built-in registry of 40+ models).
+2. **Overhead calculation** — system prompt + user question + response buffer + history.
+3. **Chunking plan** — splits the document on semantic boundaries (Markdown headers →
+   paragraphs → sentences), each chunk ≤ `minWindow − overhead − safetyMargin`.
+4. **Progressive disclosure** — Round 1 gets chunks 1..N/3, Round 2 gets N/3+1..2N/3, etc.
+   Each round sees `[Chunk X/Y] SectionTitle` markers + a summary of previous rounds.
+
+### Three configuration paths
+
+```csharp
+// Path 1: Fluent API
+var executor = new CouncilBuilder()
+    .WithAutoChunking(new AutoChunkingOptions
+    {
+        Strategy = ChunkingStrategy.SemanticBoundary,
+        SafetyMargin = 0.15,
+        MaxChunksPerRound = 3
+    })
+    /* …members, chairman, knowledge… */
+    .Build();
+
+// Path 2: CouncilOptions snapshot (from DI or manual)
+var options = new CouncilOptions
+{
+    AutoChunking = new AutoChunkingConfig { Enabled = true, Strategy = "SemanticBoundary" }
+};
+var executor = new CouncilBuilder(options)  // or .WithOptions(options)
+    /* … */
+    .Build();
+
+// Path 3: Lambda configuration
+var executor = new CouncilBuilder()
+    .WithOptions(o =>
+    {
+        o.AutoChunking.Enabled = true;
+        o.AutoChunking.MaxChunksPerRound = 2;
+    })
+    /* … */
+    .Build();
+```
+
+### Configuration (`appsettings.json`)
+
+```json
+{
+  "Delibera": {
+    "AutoChunking": {
+      "Enabled": true,
+      "Strategy": "SemanticBoundary",
+      "SafetyMargin": 0.15,
+      "MaxChunksPerRound": 3,
+      "EnableMapReduce": true,
+      "EnableProgressiveDisclosure": true,
+      "ModelContextWindows": {
+        "my-custom-model": 65536
+      }
+    }
+  }
+}
+```
+
+### Model Context Window Registry
+
+```csharp
+// Query known models
+var window = ModelContextWindowRegistry.GetContextWindow("llama3.2"); // → 131072
+var window = ModelContextWindowRegistry.GetContextWindow("phi3:mini"); // → 4096
+
+// Register custom models
+ModelContextWindowRegistry.Register("my-fine-tuned-model", 65536);
+```
+
+> ▶️ Run the demo: `dotnet run --project src/Delibera.ConsoleApp -- --autochunking`
+
+---
+
 ## 📚 RAG Integration
 
 Use a dedicated **Qdrant** instance or your existing **PostgreSQL/pgvector** database as a vector store.
@@ -562,6 +651,7 @@ dotnet run -- --rag                # Qdrant-backed RAG with Knowledge Keeper
 dotnet run -- --pgvector           # pgvector-backed RAG
 dotnet run -- --operator           # Operator role basics (MCP tools)
 dotnet run -- --operator-mcp       # 🆕 Operator with browser + Marp MCP servers
+dotnet run -- --autochunking       # 🆕 AutoChunking demo (large documents)
 
 # Or run the full default demo (reads appsettings.json)
 dotnet run
@@ -731,6 +821,7 @@ Delibera.Core
 ├── Council/              ← CouncilBuilder, CouncilExecutor, Chairman, KnowledgeKeeper, Operator
 ├── Debate/               ← StandardDebate, CritiqueDebate, ConsensusDebate
 ├── Compression/          ← Semantic / Deduplication / Summarization / Hybrid
+├── Chunking/             ← AutoChunker, AutoChunkingOrchestrator, AutoChunkingOptions
 ├── Providers/
 │   ├── LLM/              ← OllamaProvider, ChatClientLLMProvider, EmbeddingGeneratorProvider
 │   ├── RAG/              ← QdrantRagProvider, PgVectorRagProvider

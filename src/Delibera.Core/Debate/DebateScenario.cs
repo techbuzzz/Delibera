@@ -313,11 +313,34 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
       return interactions;
    }
 
-   /// <summary>
-   ///    Formats Operator interactions into a context block that can be injected into the
-   ///    next round's prompt so participants can use the Operator's findings.
-   /// </summary>
-   protected static string FormatOperatorInteractions(IReadOnlyList<OperatorInteraction> interactions)
+    /// <summary>
+    ///    Builds the user prompt for a specific round, respecting AutoChunking when enabled.
+    ///    When the context has a <see cref="PromptContext.ChunkingPlan" /> and
+    ///    <see cref="PromptContext.AutoChunkingEnabled" /> is <c>true</c>, returns the
+    ///    chunk-appropriate prompt. Otherwise falls back to <see cref="PromptContext.GetFullUserPrompt" />.
+    /// </summary>
+    /// <param name="context">The prompt context.</param>
+    /// <param name="roundNumber">Current round number (1-based).</param>
+    /// <param name="totalRounds">Total number of rounds in the debate.</param>
+    /// <param name="previousRounds">Previous rounds for context continuity (optional).</param>
+    /// <returns>The formatted user prompt for this round.</returns>
+    protected static string BuildChunkedPrompt(
+       PromptContext context,
+       int roundNumber,
+       int totalRounds,
+       IReadOnlyList<DebateRound>? previousRounds = null)
+    {
+       if (context.AutoChunkingEnabled && context.ChunkingPlan is not null)
+          return context.GetChunkedUserPrompt(roundNumber, totalRounds, previousRounds);
+
+       return context.GetFullUserPrompt();
+    }
+
+    /// <summary>
+    ///    Formats Operator interactions into a context block that can be injected into the
+    ///    next round's prompt so participants can use the Operator's findings.
+    /// </summary>
+    protected static string FormatOperatorInteractions(IReadOnlyList<OperatorInteraction> interactions)
    {
       if (interactions is not { Count: > 0 }) return string.Empty;
 
