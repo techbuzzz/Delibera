@@ -67,13 +67,20 @@ public sealed class TokenCounter
       if (text.Length <= MaxMemoizedLength && MaxMemoizedEntries > 0)
       {
          if (_memo.TryGetValue(text, out var cached))
+         {
+            // Touch: move to end of access-order list for LRU.
+            TouchMemoEntry(text);
             return cached;
+         }
 
          var value = EstimateTokens(text.AsSpan());
 
-         // Only memoize when the cache is not under pressure to keep memory bounded.
-         if (_memo.Count < MaxMemoizedEntries)
-            _memo.TryAdd(text, value);
+         // Evict oldest entries if at capacity before adding.
+         if (_memo.Count >= MaxMemoizedEntries)
+            EvictMemoEntries(_evictionBatchSize);
+
+         if (_memo.TryAdd(text, value))
+            TrackMemoEntry(text);
 
          return value;
       }
@@ -147,6 +154,44 @@ public sealed class TokenCounter
    // ──────────────────────────────────────────────
 
    private readonly ConcurrentDictionary<string, int> _memo = new();
+   private readonly LinkedList<string> _memoOrder = new(); // LRU access order
+   private readonly object _memoLock = new();
+   private const int _evictionBatchSize = 64; // evict 64 entries at a time when over capacity
+
+   private void TrackMemoEntry(string key)
+   {
+      lock (_memoLock)
+      {
+         _memoOrder.AddLast(key);
+      }
+   }
+
+   private void TouchMemoEntry(string key)
+   {
+      lock (_memoLock)
+      {
+         // Remove and re-add to move to end (most recently used).
+         _memoOrder.Remove(key);
+         _memoOrder.AddLast(key);
+      }
+   }
+
+   private void EvictMemoEntries(int count)
+   {
+      lock (_memoLock)
+      {
+         var removed = 0;
+         var node = _memoOrder.First;
+         while (node is not null && removed < count)
+         {
+            var next = node.Next;
+            _memo.TryRemove(node.Value, out _);
+            _memoOrder.Remove(node);
+            node = next;
+            removed++;
+         }
+      }
+   }
 
    private static int CountWords(ReadOnlySpan<char> text)
    {

@@ -222,59 +222,57 @@ public static class AutoChunker
    /// <summary>
    ///    Splits text into sections delimited by Markdown headers.
    ///    Each section includes its header line as the title.
+   ///    Uses a single-pass scan over the text — O(n) instead of O(n·k) per iteration.
    /// </summary>
    private static List<(string Title, string Content, int Start, int End)> SplitByHeaders(string doc)
    {
       var sections = new List<(string, string, int, int)>();
+      var span = doc.AsSpan();
 
-      // Find all header positions.
+      // Single-pass: scan for any header pattern at each position.
       var headerPositions = new List<(int Pos, int Level, string Title)>();
-      var searchStart = 0;
-      while (searchStart < doc.Length)
+      var i = 0;
+      while (i < span.Length)
       {
-         var earliestPos = int.MaxValue;
-         var earliestSep = "";
-         foreach (var sep in HeaderSeps)
+         // Check if current position starts a header line (must be at line start or after \n).
+         if (span[i] == '#' && (i == 0 || span[i - 1] == '\n'))
          {
-            var idx = doc.IndexOf(sep, searchStart, StringComparison.Ordinal);
-            if (idx >= 0 && idx < earliestPos)
+            var hashCount = 1;
+            var j = i + 1;
+            while (j < span.Length && span[j] == '#') { hashCount++; j++; }
+            // Must be followed by a space to be a valid Markdown header.
+            if (j < span.Length && span[j] == ' ' && hashCount <= 6)
             {
-               earliestPos = idx;
-               earliestSep = sep;
+               j++; // skip the space
+               var titleStart = j;
+               while (j < span.Length && span[j] != '\n' && span[j] != '\r') j++;
+               var title = span[titleStart..j].Trim().ToString();
+               headerPositions.Add((i, hashCount, title));
+               i = j; // continue after this header line
             }
          }
 
-         if (earliestPos == int.MaxValue) break;
-
-         // Extract the header line (up to the next newline).
-         var lineEnd = doc.IndexOf('\n', earliestPos + earliestSep.Length);
-         if (lineEnd < 0) lineEnd = doc.Length;
-         var title = doc[(earliestPos + earliestSep.Length)..lineEnd].Trim();
-
-         // Determine header level by counting '#' characters.
-         var level = earliestSep.Count(c => c == '#');
-
-         headerPositions.Add((earliestPos, level, title));
-         searchStart = lineEnd + 1;
+         // Advance to next newline.
+         while (i < span.Length && span[i] != '\n') i++;
+         if (i < span.Length) i++; // skip the newline
       }
 
       if (headerPositions.Count == 0)
       {
-         // No headers found — treat the whole document as one section.
          sections.Add(("Document", doc, 0, doc.Length));
          return sections;
       }
 
       // Build sections between headers.
-      for (var i = 0; i < headerPositions.Count; i++)
+      for (var idx = 0; idx < headerPositions.Count; idx++)
       {
-         var (pos, _, title) = headerPositions[i];
+         var (pos, _, title) = headerPositions[idx];
          var contentStart = doc.IndexOf('\n', pos);
          if (contentStart < 0) contentStart = pos;
-         else contentStart++; // skip the newline
+         else contentStart++;
 
-         var contentEnd = i + 1 < headerPositions.Count
-            ? headerPositions[i + 1].Pos
+         var contentEnd = idx + 1 < headerPositions.Count
+            ? headerPositions[idx + 1].Pos
             : doc.Length;
 
          var content = doc[contentStart..contentEnd].Trim();
@@ -377,20 +375,35 @@ public static class AutoChunker
    private static List<string> SplitBySeparators(string text, string[] separators)
    {
       var parts = new List<string>();
-      var remaining = text;
+      var span = text.AsSpan();
 
+      // Single-pass: find the first matching separator and split on it.
       foreach (var sep in separators)
       {
-         if (remaining.Length == 0) break;
-         var split = remaining.Split([sep], StringSplitOptions.None);
-         if (split.Length > 1)
+         if (span.IsEmpty) break;
+
+         var sepSpan = sep.AsSpan();
+         var idx = span.IndexOf(sepSpan, StringComparison.Ordinal);
+         if (idx >= 0)
          {
-            // Rejoin with the separator to preserve it.
-            for (var i = 0; i < split.Length; i++)
+            // Split on all occurrences of this separator.
+            var pos = 0;
+            while (pos < span.Length)
             {
-               var part = split[i].Trim();
+               var nextIdx = span[pos..].IndexOf(sepSpan, StringComparison.Ordinal);
+               if (nextIdx < 0)
+               {
+                  var remaining = span[pos..].Trim();
+                  if (remaining.Length > 0)
+                     parts.Add(remaining.ToString());
+                  break;
+               }
+
+               var part = span.Slice(pos, nextIdx).Trim();
                if (part.Length > 0)
-                  parts.Add(part);
+                  parts.Add(part.ToString());
+
+               pos += nextIdx + sepSpan.Length;
             }
 
             return parts;
@@ -398,7 +411,7 @@ public static class AutoChunker
       }
 
       // No separator matched — split by sentences as last resort.
-      var sentParts = remaining.Split(SentSeps, StringSplitOptions.RemoveEmptyEntries);
+      var sentParts = SplitBySentencesSpan(span);
       foreach (var p in sentParts)
       {
          var trimmed = p.Trim();
@@ -406,7 +419,48 @@ public static class AutoChunker
             parts.Add(trimmed);
       }
 
-      return parts.Count > 0 ? parts : [remaining.Trim()];
+      return parts.Count > 0 ? parts : [text.Trim()];
+   }
+
+   /// <summary>
+   ///    Splits a span by sentence-ending delimiters without intermediate string.Split allocations.
+   /// </summary>
+   private static List<string> SplitBySentencesSpan(ReadOnlySpan<char> span)
+   {
+      var parts = new List<string>();
+      var pos = 0;
+
+      while (pos < span.Length)
+      {
+         var nextDelim = int.MaxValue;
+         var delimLen = 0;
+
+         foreach (var d in SentSeps)
+         {
+            var idx = span[pos..].IndexOf(d.AsSpan(), StringComparison.Ordinal);
+            if (idx >= 0 && pos + idx < nextDelim)
+            {
+               nextDelim = pos + idx;
+               delimLen = d.Length;
+            }
+         }
+
+         if (nextDelim == int.MaxValue)
+         {
+            var remaining = span[pos..].Trim();
+            if (remaining.Length > 0)
+               parts.Add(remaining.ToString());
+            break;
+         }
+
+         var sentence = span[pos..(nextDelim + delimLen)].Trim();
+         if (sentence.Length > 0)
+            parts.Add(sentence.ToString());
+
+         pos = nextDelim + delimLen;
+      }
+
+      return parts;
    }
 
    /// <summary>

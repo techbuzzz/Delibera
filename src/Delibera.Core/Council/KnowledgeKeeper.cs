@@ -86,7 +86,7 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
                        Provide a clear, factual answer based on the context above.
                        Cite relevant source numbers in your answer.
                        """;
-         sourceChunks = context.Split("[Source ").Length - 1;
+          sourceChunks = CountOccurrences(context, "[Source ");
       }
 
       // 2. Generate answer via dedicated LLM
@@ -238,5 +238,24 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
       CancellationToken ct = default)
    {
       return _ragProvider.IndexFileAsync(CollectionName, filePath, chunkSize, chunkOverlap, ct);
+   }
+
+   /// <summary>
+   ///    Counts non-overlapping occurrences of a substring without allocating a string array.
+   /// </summary>
+   private static int CountOccurrences(string text, string pattern)
+   {
+      if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(pattern))
+         return 0;
+
+      var count = 0;
+      var idx = 0;
+      while ((idx = text.IndexOf(pattern, idx, StringComparison.Ordinal)) >= 0)
+      {
+         count++;
+         idx += pattern.Length;
+      }
+
+      return count;
    }
 }

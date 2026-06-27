@@ -226,7 +226,7 @@ public sealed class AutoChunkingOrchestrator
    }
 
    /// <summary>
-   ///    Queries all models for their context window size and returns the minimum.
+   ///    Queries all models for their context window size in parallel and returns the minimum.
    ///    Falls back to <see cref="Models.ModelContextWindowRegistry" /> when a provider
    ///    cannot report capabilities dynamically.
    /// </summary>
@@ -234,35 +234,41 @@ public sealed class AutoChunkingOrchestrator
       IReadOnlyList<(string ModelName, ILLMProvider Provider, string DisplayName)> models,
       CancellationToken ct)
    {
-      int? minWindow = null;
-      string? minModel = null;
-
-      foreach (var (modelName, provider, displayName) in models)
+      // Query all models in parallel — each provider call is I/O-bound.
+      var tasks = models.Select(async m =>
       {
          int? window = null;
 
          // 1. Try the provider's dynamic capabilities.
          try
          {
-            var caps = await provider.GetModelCapabilitiesAsync(modelName, ct);
+            var caps = await m.Provider.GetModelCapabilitiesAsync(m.ModelName, ct);
             if (caps?.ContextWindowTokens is { } w and > 0)
                window = w;
          }
-         catch (Exception ex)
+         catch
          {
             // Provider introspection failed — fall through to registry.
-            System.Diagnostics.Debug.WriteLine(
-               $"AutoChunking: failed to get capabilities for {displayName}: {ex.Message}");
          }
 
          // 2. Fall back to the static registry.
-         window ??= ModelContextWindowRegistry.GetContextWindow(modelName);
+         window ??= ModelContextWindowRegistry.GetContextWindow(m.ModelName);
 
-         if (window is { } w2 and > 0)
+         return (Window: window, m.DisplayName);
+      });
+
+      var results = await Task.WhenAll(tasks);
+
+      int? minWindow = null;
+      string? minModel = null;
+
+      foreach (var (window, displayName) in results)
+      {
+         if (window is { } w and > 0)
          {
-            if (minWindow is null || w2 < minWindow.Value)
+            if (minWindow is null || w < minWindow.Value)
             {
-               minWindow = w2;
+               minWindow = w;
                minModel = displayName;
             }
          }

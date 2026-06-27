@@ -112,41 +112,43 @@ public sealed class SemanticCompressor(IEmbeddingProvider embeddingProvider) : I
       return selected;
    }
 
+   /// <summary>
+   ///    Splits text into sentences using a single-pass scan — O(n) instead of O(n·k) per iteration.
+   ///    Checks each character position against all delimiters simultaneously.
+   /// </summary>
    internal static List<SentenceSpan> SplitSentences(string text)
    {
       ArgumentNullException.ThrowIfNull(text);
       var sentences = new List<SentenceSpan>();
-      ReadOnlySpan<string> delimiters = [". ", "! ", "? ", ".\n", "!\n", "?\n"];
-      var pos = 0;
+      var span = text.AsSpan();
+      var sentenceStart = 0;
 
-      while (pos < text.Length)
+      for (var i = 0; i < span.Length; i++)
       {
-         var nextDelim = int.MaxValue;
+         // Check if current position starts a sentence-ending delimiter.
          var delimLen = 0;
+         if (span[i] == '.' && i + 1 < span.Length && (span[i + 1] == ' ' || span[i + 1] == '\n')) delimLen = 2;
+         else if (span[i] == '!' && i + 1 < span.Length && (span[i + 1] == ' ' || span[i + 1] == '\n')) delimLen = 2;
+         else if (span[i] == '?' && i + 1 < span.Length && (span[i + 1] == ' ' || span[i + 1] == '\n')) delimLen = 2;
 
-         foreach (var d in delimiters)
+         if (delimLen > 0)
          {
-            var idx = text.IndexOf(d, pos, StringComparison.Ordinal);
-            if (idx >= 0 && idx < nextDelim)
-            {
-               nextDelim = idx;
-               delimLen = d.Length;
-            }
+            var end = i + delimLen;
+            var sentence = span[sentenceStart..end].Trim();
+            if (sentence.Length > 0)
+               sentences.Add(new SentenceSpan(sentenceStart, sentence.ToString()));
+
+            sentenceStart = end;
+            i = end - 1; // will be incremented by the for loop
          }
+      }
 
-         if (nextDelim == int.MaxValue)
-         {
-            var remaining = text[pos..].Trim();
-            if (remaining.Length > 0)
-               sentences.Add(new SentenceSpan(pos, remaining));
-            break;
-         }
-
-         var sentence = text[pos..(nextDelim + delimLen)].Trim();
-         if (sentence.Length > 0)
-            sentences.Add(new SentenceSpan(pos, sentence));
-
-         pos = nextDelim + delimLen;
+      // Add the final sentence.
+      if (sentenceStart < span.Length)
+      {
+         var remaining = span[sentenceStart..].Trim();
+         if (remaining.Length > 0)
+            sentences.Add(new SentenceSpan(sentenceStart, remaining.ToString()));
       }
 
       return sentences;

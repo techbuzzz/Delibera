@@ -278,6 +278,11 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
+   private const string DefaultStrategy = "Standard";
+   private const int DefaultMaxRounds = 4;
+   private const float DefaultTemperature = 0.7f;
+   private const string DefaultSystemPrompt = "You are a helpful AI assistant participating in a council debate.";
+
    /// <summary>
    ///    Applies a <see cref="CouncilOptions" /> snapshot to the builder.
    ///    Only sets fields that have non-default values — explicit builder calls
@@ -286,7 +291,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private void ApplyOptions(CouncilOptions options)
    {
       // Strategy
-      if (!string.Equals(options.Strategy, "Standard", StringComparison.OrdinalIgnoreCase))
+      if (!string.Equals(options.Strategy, DefaultStrategy, StringComparison.OrdinalIgnoreCase))
       {
          _strategy = options.Strategy.ToLowerInvariant() switch
          {
@@ -297,9 +302,9 @@ public sealed class CouncilBuilder : ICouncilBuilder
       }
 
       // Core parameters
-      if (options.MaxRounds != 4) _maxRounds = options.MaxRounds;
-      if (Math.Abs(options.Temperature - 0.7f) > 0.001f) _temperature = options.Temperature;
-      if (options.SystemPrompt is { Length: > 0 } sp && sp != "You are a helpful AI assistant participating in a council debate.")
+      if (options.MaxRounds != DefaultMaxRounds) _maxRounds = options.MaxRounds;
+      if (Math.Abs(options.Temperature - DefaultTemperature) > 0.001f) _temperature = options.Temperature;
+      if (options.SystemPrompt is { Length: > 0 } sp && sp != DefaultSystemPrompt)
          _systemPrompt = sp;
       if (options.ResponseLanguage is { Length: > 0 } lang)
          _responseLanguage = lang;

@@ -91,10 +91,11 @@ public sealed record PromptContext(
       if (start >= plan.TotalChunks)
          return GetFullUserPrompt(); // past the last chunk — fall back
 
-      var chunks = plan.Chunks
-         .Skip(start)
-         .Take(end - start)
-         .ToList();
+      // Index-based access — avoids LINQ Skip/Take enumerator allocations.
+      var count = end - start;
+      var chunks = new List<DocumentChunk>(count);
+      for (var i = start; i < end; i++)
+         chunks.Add(plan.Chunks[i]);
 
       if (chunks.Count == 0)
          return GetFullUserPrompt();
