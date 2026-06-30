@@ -210,7 +210,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
       if (!string.IsNullOrWhiteSpace(_outputPath))
       {
-         await result.SaveToFileAsync(_outputPath);
+         await result.SaveToFileAsync(_outputPath, ct);
          Log(ExecutionLog.Info("Output", $"Result saved to: {_outputPath}"));
       }
 

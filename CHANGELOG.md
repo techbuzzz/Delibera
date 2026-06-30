@@ -5,6 +5,76 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.2.4] - 2026
+
+### Added — Full cooperative CancellationToken support
+
+Every public async method in the library now honors a `CancellationToken` cooperatively.
+A single cancel signal aborts the entire pipeline — rounds, chairman synthesis, LLM
+calls, MCP tool invocations, RAG queries and even file writes — via
+`OperationCanceledException`.
+
+### Changed — Additive CT parameters (no breaking binary changes)
+
+- **`IKnowledgeBase.LoadAsync(string, CancellationToken)`** and
+  **`IKnowledgeBase.LoadManyAsync(IEnumerable<string>, CancellationToken)`** —
+  `CancellationToken ct = default` added to existing method signatures. Source-breaking
+  for any external implementer of the interface; binary-compatible for callers.
+
+- **`MarkdownKnowledgeBase`** — the file-path API
+  (`LoadAsync`, `LoadManyAsync`, `LoadDirectoryAsync`) now accepts a `CancellationToken`
+  and forwards it to `File.ReadAllTextAsync` and between files in bulk operations.
+
+- **`DebateResult`** — all save methods
+  (`SaveToMarkdownAsync`, `SaveStatisticsAsync`, `SaveLogsAsync`, `SaveAllAsync`,
+  `SaveToFileAsync`) accept a `CancellationToken` and forward it to `File.WriteAllTextAsync`.
+
+- **`CouncilExecutor.ExecuteAsync`** — the caller's `CancellationToken` is now forwarded
+  to the final `result.SaveToFileAsync(_outputPath, ct)` step, closing the top-level
+  cancellation chain.
+
+### Added — Hosted-service helper
+
+- **`Delibera.Core.Extensions.CouncilExecutorLifetimeExtensions.ExecuteAsync(
+  ICouncilExecutor, IAppStoppingToken, CancellationToken)`** — links the caller's
+  `CancellationToken` with an `IAppStoppingToken.ApplicationStopping` token via
+  `CancellationTokenSource.CreateLinkedTokenSource` so a host shutdown (ASP.NET Core,
+  Worker Service, etc.) cancels the debate cooperatively.
+
+- **`IAppStoppingToken`** — minimal `Delibera.Core.Extensions` interface
+  (`CancellationToken ApplicationStopping { get; }`) that any host lifetime can
+  implement in 3 lines without forcing a `Microsoft.Extensions.Hosting` dependency
+  on `Delibera.Core`.
+
+### Added — ConsoleApp demo
+
+- **`Delibera.ConsoleApp.Examples.CancellationExample`** — run with `--cancellation`.
+  Wires `Console.CancelKeyPress` to a `CancellationTokenSource` and forwards the
+  token through `executor.ExecuteAsync(cts.Token)`. Includes a heartbeat task that
+  proves the main thread is alive while the debate is awaiting. The default
+  `Program.Main` now also wires Ctrl+C for the main demo path so a user can cancel
+  any run with a single keystroke.
+
+### Tests
+
+- 6 new tests in `MarkdownKnowledgeBaseTests` covering CT honoring on the file-path
+  API and bulk operations.
+- 7 new tests in `DebateResultCancellationTests` covering all save methods with
+  pre-canceled tokens + a happy-path test for `SaveAllAsync`.
+- 2 new tests in `CouncilExecutorCancellationTests` covering the executor's
+  CT-aware save path and a positive no-cancel run.
+- 5 new tests in `CouncilExecutorLifetimeExtensionsTests` covering the
+  `IAppStoppingToken` helper, including null-argument validation.
+
+### Documentation
+
+- New **Cancellation Support** section in `Delibera.Core/README.md` with 4 worked
+  examples (timeout, manual cancel, ASP.NET Core `IHostApplicationLifetime` adapter,
+  Console Ctrl+C) and a table of cancellable operations.
+- New **Cancellation Support** section in the repo-root `README.md` with a quick-start
+  example and a link to the full guide.
+- Feature row added to the Key Features table in both READMEs.
+
 ## [10.2.3] - 2026
 
 ### Added — AutoChunking (progressive disclosure for large documents)

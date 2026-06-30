@@ -31,9 +31,27 @@ public static class Program
       // `alreadyReported` prevents double-printing when RunAsync prints its own
       // debate-specific diagnostic (with tips) before re-throwing.
       var alreadyReported = false;
+
+      // Default Ctrl+C handling: cancel the in-flight debate cooperatively
+      // instead of letting SIGINT terminate the process mid-round.
+      // Consumers who want to disable this behaviour (e.g. running under a
+      // debugger) can call `Main(args)` and ignore the default. Examples
+      // that use their own CancelKeyPress handlers (e.g. --cancellation)
+      // override this by setting e.Cancel = true on their own.
+      using var appCts = new CancellationTokenSource();
+      Console.CancelKeyPress += (_, e) =>
+      {
+         e.Cancel = true;
+         if (!appCts.IsCancellationRequested)
+         {
+            Console.WriteLine("\n⚠️  Ctrl+C detected — canceling the debate...");
+            try { appCts.Cancel(); } catch (ObjectDisposedException) { /* race */ }
+         }
+      };
+
       try
       {
-         await RunAsync(args, () => alreadyReported = true).ConfigureAwait(false);
+         await RunAsync(args, () => alreadyReported = true, appCts.Token).ConfigureAwait(false);
       }
       catch (Exception ex)
       {
@@ -47,7 +65,7 @@ public static class Program
       WaitForKeyOnExit("\n🏁 Delibera session complete. Press any key to exit…", false);
    }
 
-   private static async Task RunAsync(string[] args, Action onDebateFailed)
+   private static async Task RunAsync(string[] args, Action onDebateFailed, CancellationToken ct = default)
    {
       // ═══════════════════════════════════════════════
       // 🆕 v3.1: DI & Separate Files Examples
@@ -118,11 +136,18 @@ public static class Program
          return;
       }
 
+      if (args.Contains("--cancellation"))
+      {
+         await CancellationExample.RunAsync();
+         return;
+      }
+
       // Quick DI showcase before main demo
       Console.WriteLine("🆕 v3.1 DI Quick Demo:");
       Console.WriteLine("   Run with --di for full DI example");
       Console.WriteLine("   Run with --separate-files for file output demo");
-      Console.WriteLine("   Run with --autochunking for AutoChunking demo (large documents)\n");
+      Console.WriteLine("   Run with --autochunking for AutoChunking demo (large documents)");
+      Console.WriteLine("   Run with --cancellation for cooperative cancellation demo (Ctrl+C)\n");
 
       // ═══════════════════════════════════════════════
       // 1. Load configuration
@@ -161,10 +186,11 @@ public static class Program
       foreach (var (name, prov) in providers)
          try
          {
-            var ok = await prov.IsAvailableAsync();
+            ct.ThrowIfCancellationRequested();
+            var ok = await prov.IsAvailableAsync(ct);
             Console.WriteLine($"  {name}: {(ok ? "✅ Available" : "❌ Unavailable")}");
             if (!ok) continue;
-            var models = await prov.ListModelsAsync();
+            var models = await prov.ListModelsAsync(ct);
             Console.WriteLine($"    Models: {string.Join(", ", models.Take(10))}");
          }
          catch (Exception ex)
@@ -241,7 +267,8 @@ public static class Program
                foreach (var file in knowledgeFiles)
                   try
                   {
-                     var chunks = await knowledgeKeeper.IndexFileAsync(file);
+                     ct.ThrowIfCancellationRequested();
+                     var chunks = await knowledgeKeeper.IndexFileAsync(file, ct: ct);
                      Console.WriteLine($"  📄 Indexed: {file} ({chunks} chunks)");
                   }
                   catch (Exception ex)
@@ -266,12 +293,17 @@ public static class Program
          foreach (var file in cfg.GetSection("Knowledge:Files").Get<string[]>() ?? [])
             try
             {
-               await kb.LoadAsync(file);
+               ct.ThrowIfCancellationRequested();
+               await kb.LoadAsync(file, ct);
                Console.WriteLine($"  📄 Loaded: {file}");
             }
             catch (FileNotFoundException)
             {
                Console.WriteLine($"  ⚠️  Not found: {file}");
+            }
+            catch (OperationCanceledException)
+            {
+               throw;
             }
 
          if (kb.DocumentCount > 0)
@@ -477,7 +509,7 @@ public static class Program
 
       try
       {
-         var result = await executor.ExecuteAsync();
+         var result = await executor.ExecuteAsync(ct);
 
          Console.WriteLine($"\n{new string('═', 60)}");
          Console.WriteLine("🏆 DEBATE COMPLETED!");
@@ -527,7 +559,7 @@ public static class Program
          try
          {
             var separateDir = Path.Combine(outputDir, $"debate_{DateTime.UtcNow:yyyyMMdd_HHmmss}");
-            var (rp, sp, lp) = await result.SaveAllAsync(separateDir);
+            var (rp, sp, lp) = await result.SaveAllAsync(separateDir, filePrefix: null, ct: ct);
             Console.WriteLine($"    Result:      {rp}");
             Console.WriteLine($"    Statistics:  {sp}");
             Console.WriteLine($"    Logs:        {lp}");
@@ -544,6 +576,11 @@ public static class Program
             foreach (var log in result.ExecutionLogs.Where(l => l.Level >= ExecutionLogLevel.Info))
                Console.WriteLine($"    {log}");
          }
+      }
+      catch (OperationCanceledException) when (ct.IsCancellationRequested)
+      {
+         Console.WriteLine("\n🛑 Debate cancelled by user (Ctrl+C or token).");
+         // Don't print the full fatal-error panel for a clean cancel.
       }
       catch (Exception ex)
       {

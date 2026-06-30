@@ -42,6 +42,7 @@ outcomes** rather than single-model guesses.
 - ⚡ **Parallel Operator Requests** — `[[OPERATOR: …]]` tasks delegated within a round run in parallel, bounded by `MaxDegreeOfParallelism`
 - 📁 **Separate File Output** — export `result.md`, `statistics.md`, `logs.md` independently
 - 🤝 **Microsoft.Extensions.AI** — first-class `IChatClient` / `IEmbeddingGenerator` interop with logging & function-invocation middleware
+- 🛑 **Cooperative Cancellation** — every public async method accepts a `CancellationToken`; a host shutdown or user-initiated cancel aborts the debate mid-flight (rounds, LLM calls, MCP tools, RAG queries, file saves)
 - 🔌 **Interface-First** — clean abstractions for providers, factories, builders and executors
 - 🧱 **Modern C# 15** — file-scoped namespaces, records, init-only properties, global usings
 
@@ -596,9 +597,93 @@ in `Providers:ApiKey`.
 | `ModelContextProtocol`    | MCP client for the Operator role                            |
 | `Microsoft.Extensions.*`  | Configuration, DI and Options                               |
 
+## 🛑 Cancellation Support
+
+Every public async method in Delibera honors a `CancellationToken` cooperatively. The token
+flows from your entry point all the way down through debate rounds, chairman synthesis,
+LLM calls, MCP tool invocations, RAG queries and even file writes — a single cancel signal
+aborts the entire pipeline via `OperationCanceledException` (or `TaskCanceledException`).
+
+### 1. Basic cancellation with a timeout
+
+```csharp
+using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+var result = await executor.ExecuteAsync(cts.Token);
+```
+
+### 2. Manual cancellation
+
+```csharp
+using var cts = new CancellationTokenSource();
+
+cts.Cancel(); // from anywhere — UI button, signal handler, other component
+var result = await executor.ExecuteAsync(cts.Token);
+```
+
+### 3. ASP.NET Core / Worker Services — link to host shutdown
+
+Implement the lightweight `IAppStoppingToken` adapter for the host's lifetime
+(or use the extension directly with your own):
+
+```csharp
+using Delibera.Core.Extensions;
+
+public sealed class HostLifetimeAdapter(Microsoft.Extensions.Hosting.IHostApplicationLifetime lt)
+    : IAppStoppingToken
+{
+    public CancellationToken ApplicationStopping => lt.ApplicationStopping;
+}
+
+// In your hosted service / minimal API:
+public sealed class DebateRunner(
+    ICouncilExecutor executor,
+    IHostApplicationLifetime lifetime) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var adapter = new HostLifetimeAdapter(lifetime);
+        var result = await executor.ExecuteAsync(adapter, stoppingToken);
+        // ...
+    }
+}
+```
+
+`executor.ExecuteAsync(adapter, ct)` internally creates a linked `CancellationTokenSource`
+from `ct` + `adapter.ApplicationStopping`, so either a host shutdown *or* a caller cancel
+will stop the debate. The linked source is disposed in a `finally` block.
+
+### 4. Console apps — wire Ctrl+C
+
+```csharp
+using var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) =>
+{
+    e.Cancel = true;       // prevent the process from terminating
+    cts.Cancel();          // signal the debate
+};
+
+var result = await executor.ExecuteAsync(cts.Token);
+```
+
+### What gets cancelled?
+
+When a token is signaled, Delibera stops at the nearest cooperative checkpoint and throws
+`OperationCanceledException`. Cancellable operations include:
+
+| Component | CT-aware method |
+|---|---|
+| Top-level entry | `ICouncilExecutor.ExecuteAsync(ct)` |
+| Knowledge loading | `MarkdownKnowledgeBase.LoadAsync / LoadManyAsync / LoadDirectoryAsync / LoadTextAsync / LoadTextsAsync` |
+| LLM providers | `ChatAsync / ChatStreamAsync / IsAvailableAsync / ListModelsAsync / GetModelCapabilitiesAsync` |
+| RAG | `IRagProvider.IndexDocument / Search / GetContext`, `IVectorStore.Upsert / Search` |
+| Operator (MCP) | `IOperator.InitializeAsync / ExecuteTaskAsync`, `IMcpClient.Connect / ListTools / CallTool` |
+| Compression | `IContextCompressor.CompressAsync / CompressBatchAsync` |
+| Debate strategies | `IDebateStrategy.ExecuteAsync(ct)` (all three strategies) |
+| Output | `DebateResult.SaveToFileAsync / SaveToMarkdownAsync / SaveStatisticsAsync / SaveLogsAsync / SaveAllAsync` |
+
 ---
 
-## 📚 Learn More
+
 
 - 📖 Full README (architecture, design patterns, console app examples) → [github.com/techbuzzz/Delibera](https://github.com/techbuzzz/Delibera)
 - 📄 Step-by-step walkthrough → [docs/QuickStart.md](https://github.com/techbuzzz/Delibera/blob/develop/docs/QuickStart.md)
