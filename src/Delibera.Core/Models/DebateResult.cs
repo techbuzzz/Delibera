@@ -270,27 +270,36 @@ public sealed record DebateResult
    ///    Saves the debate result (rounds and verdict) to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the result Markdown file.</param>
-   public Task SaveToMarkdownAsync(string filePath)
+   /// <param name="ct">Cancellation token; checked at entry and forwarded to the file write.</param>
+   /// <exception cref="OperationCanceledException">The token has been canceled.</exception>
+   public Task SaveToMarkdownAsync(string filePath, CancellationToken ct = default)
    {
-      return WriteAllTextAsync(filePath, ToMarkdown());
+      ct.ThrowIfCancellationRequested();
+      return WriteAllTextAsync(filePath, ToMarkdown(), ct);
    }
 
    /// <summary>
    ///    Saves token statistics and compression logs to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the statistics Markdown file.</param>
-   public Task SaveStatisticsAsync(string filePath)
+   /// <param name="ct">Cancellation token; checked at entry and forwarded to the file write.</param>
+   /// <exception cref="OperationCanceledException">The token has been canceled.</exception>
+   public Task SaveStatisticsAsync(string filePath, CancellationToken ct = default)
    {
-      return WriteAllTextAsync(filePath, ToStatisticsMarkdown());
+      ct.ThrowIfCancellationRequested();
+      return WriteAllTextAsync(filePath, ToStatisticsMarkdown(), ct);
    }
 
    /// <summary>
    ///    Saves execution logs to a Markdown file.
    /// </summary>
    /// <param name="filePath">Path for the logs Markdown file.</param>
-   public Task SaveLogsAsync(string filePath)
+   /// <param name="ct">Cancellation token; checked at entry and forwarded to the file write.</param>
+   /// <exception cref="OperationCanceledException">The token has been canceled.</exception>
+   public Task SaveLogsAsync(string filePath, CancellationToken ct = default)
    {
-      return WriteAllTextAsync(filePath, ToLogsMarkdown());
+      ct.ThrowIfCancellationRequested();
+      return WriteAllTextAsync(filePath, ToLogsMarkdown(), ct);
    }
 
    /// <summary>
@@ -298,11 +307,15 @@ public sealed record DebateResult
    /// </summary>
    /// <param name="outputDirectory">Directory where files will be created.</param>
    /// <param name="filePrefix">Optional prefix for file names (default: "debate").</param>
+   /// <param name="ct">Cancellation token; checked before each file is written.</param>
    /// <returns>Paths of the three created files.</returns>
+   /// <exception cref="OperationCanceledException">The token has been canceled.</exception>
    public async Task<(string ResultPath, string StatisticsPath, string LogsPath)> SaveAllAsync(
       string outputDirectory,
-      string? filePrefix = null)
+      string? filePrefix = null,
+      CancellationToken ct = default)
    {
+      ct.ThrowIfCancellationRequested();
       if (!Directory.Exists(outputDirectory))
          Directory.CreateDirectory(outputDirectory);
 
@@ -311,10 +324,12 @@ public sealed record DebateResult
       var statsPath = Path.Combine(outputDirectory, $"{prefix}_statistics.md");
       var logsPath = Path.Combine(outputDirectory, $"{prefix}_logs.md");
 
-      await Task.WhenAll(
-         SaveToMarkdownAsync(resultPath),
-         SaveStatisticsAsync(statsPath),
-         SaveLogsAsync(logsPath));
+      ct.ThrowIfCancellationRequested();
+      await SaveToMarkdownAsync(resultPath, ct).ConfigureAwait(false);
+      ct.ThrowIfCancellationRequested();
+      await SaveStatisticsAsync(statsPath, ct).ConfigureAwait(false);
+      ct.ThrowIfCancellationRequested();
+      await SaveLogsAsync(logsPath, ct).ConfigureAwait(false);
 
       return (resultPath, statsPath, logsPath);
    }
@@ -323,8 +338,11 @@ public sealed record DebateResult
    ///    Saves the debate result to a Markdown file (backward-compatible).
    /// </summary>
    /// <param name="filePath">Path for the output file.</param>
-   public async Task SaveToFileAsync(string filePath)
+   /// <param name="ct">Cancellation token; checked at entry and forwarded to the file write.</param>
+   /// <exception cref="OperationCanceledException">The token has been canceled.</exception>
+   public async Task SaveToFileAsync(string filePath, CancellationToken ct = default)
    {
+      ct.ThrowIfCancellationRequested();
       // Backward compatible: saves the full content (result + statistics + logs) in a single file
       var sb = new StringBuilder();
       sb.Append(ToMarkdown());
@@ -351,16 +369,17 @@ public sealed record DebateResult
          }
       }
 
-      await WriteAllTextAsync(filePath, sb.ToString());
+      await WriteAllTextAsync(filePath, sb.ToString(), ct).ConfigureAwait(false);
    }
 
-   private static async Task WriteAllTextAsync(string filePath, string content)
+   private static async Task WriteAllTextAsync(string filePath, string content, CancellationToken ct = default)
    {
+      ct.ThrowIfCancellationRequested();
       var directory = Path.GetDirectoryName(filePath);
       if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
          Directory.CreateDirectory(directory);
 
-      await File.WriteAllTextAsync(filePath, content);
+      await File.WriteAllTextAsync(filePath, content, ct).ConfigureAwait(false);
    }
 }
 

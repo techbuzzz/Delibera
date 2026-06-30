@@ -5,6 +5,135 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.2.4] - 2026
+
+This release delivers **full cooperative `CancellationToken` support across every
+public async method** — a single cancel signal now aborts the entire pipeline
+(rounds, Chairman synthesis, LLM calls, MCP tool invocations, RAG queries and
+file writes) via `OperationCanceledException`. It also adds **in-memory
+`MarkdownKnowledgeBase` loaders** that ingest markdown bodies without temp
+files, with optional per-source metadata.
+
+### Added — In-memory `MarkdownKnowledgeBase` loaders
+
+- **`KnowledgeDocument`** — new sealed record in `Delibera.Core.Knowledge`
+  (`string Name`, `string Content`, `IReadOnlyDictionary<string, string>? Metadata`)
+  used to tag documents with per-source metadata so the council can distinguish
+  "contract" from "discovery context" inside the KB.
+
+- **`MarkdownKnowledgeBase.LoadTextAsync(string content, string sourceName, CancellationToken)`**
+  — ingest a markdown body without writing a temp file. The `sourceName`
+  appears in the council's per-round context, just like a file path would.
+
+- **`MarkdownKnowledgeBase.LoadTextAsync(KnowledgeDocument, CancellationToken)`**
+  — overload that preserves the supplied `Metadata` on the indexed document.
+
+- **`MarkdownKnowledgeBase.LoadTextsAsync(IEnumerable<KnowledgeDocument>, CancellationToken)`**
+  — sequential bulk ingest with cooperative cancellation checked between
+  documents.
+
+- **`MarkdownKnowledgeBase.DocumentMetadata`** — read-only snapshot
+  (`IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>?>`) of the
+  per-source metadata captured at load time. Sources loaded through the
+  file-path API appear as `null` entries.
+
+### Added — Full cooperative `CancellationToken` support
+
+Every public async method in the library now honors a `CancellationToken`
+cooperatively. A single cancel signal aborts the entire pipeline — rounds,
+Chairman synthesis, LLM calls, MCP tool invocations, RAG queries and even
+file writes — via `OperationCanceledException`.
+
+#### Changed — Additive CT parameters (no breaking binary changes)
+
+- **`IKnowledgeBase.LoadAsync(string, CancellationToken)`** and
+  **`IKnowledgeBase.LoadManyAsync(IEnumerable<string>, CancellationToken)`** —
+  `CancellationToken ct = default` added to existing method signatures.
+  **Source-breaking** for any external implementer of the interface;
+  **binary-compatible** for callers (parameter has a default value).
+
+- **`MarkdownKnowledgeBase`** — the file-path API
+  (`LoadAsync`, `LoadManyAsync`, `LoadDirectoryAsync`) now accepts a
+  `CancellationToken` and forwards it to `File.ReadAllTextAsync` and between
+  files in bulk operations.
+
+- **`DebateResult`** — all save methods
+  (`SaveToMarkdownAsync`, `SaveStatisticsAsync`, `SaveLogsAsync`, `SaveAllAsync`,
+  `SaveToFileAsync`) accept a `CancellationToken` and forward it to
+  `File.WriteAllTextAsync`. `SaveAllAsync` propagates the token to each
+  individual save call.
+
+- **`CouncilExecutor.ExecuteAsync`** — the caller's `CancellationToken` is now
+  forwarded to the final `result.SaveToFileAsync(_outputPath, ct)` step,
+  closing the top-level cancellation chain end-to-end.
+
+#### Added — Hosted-service helper
+
+- **`Delibera.Core.Extensions.IAppStoppingToken`** — minimal abstraction
+  (`CancellationToken ApplicationStopping { get; }`) that any host lifetime
+  can implement in three lines without forcing a `Microsoft.Extensions.Hosting`
+  dependency on `Delibera.Core`.
+
+- **`Delibera.Core.Extensions.CouncilExecutorLifetimeExtensions.ExecuteAsync(
+  ICouncilExecutor, IAppStoppingToken, CancellationToken)`** — links the
+  caller's `CancellationToken` with `IAppStoppingToken.ApplicationStopping`
+  via `CancellationTokenSource.CreateLinkedTokenSource` so a host shutdown
+  (ASP.NET Core, Worker Service, etc.) cancels the debate cooperatively.
+  Whichever signal fires first wins.
+
+#### Added — ConsoleApp demo
+
+- **`Delibera.ConsoleApp.Examples.CancellationExample`** — run with
+  `--cancellation`. Wires `Console.CancelKeyPress` to a
+  `CancellationTokenSource` and forwards the token through
+  `executor.ExecuteAsync(cts.Token)`. Includes a heartbeat task that proves
+  the main thread is alive while the debate is awaiting.
+
+- The default `Program.Main` now also wires Ctrl+C for the main demo path
+  so a user can cancel any run with a single keystroke. Example-mode
+  dispatchers (e.g. `--cancellation`) keep ownership of their own
+  `CancelKeyPress` handlers and are not double-bound.
+
+### Tests
+
+- **9 new tests** in `MarkdownKnowledgeBaseTests` for the in-memory loaders:
+  string overload happy-path, `KnowledgeDocument` overload happy-path with
+  metadata assertion, `LoadTextsAsync` bulk happy-path, source-name
+  overwrite semantics, and **6 cancellation tests** covering pre-canceled
+  tokens on every public method plus `LoadManyAsync` / `LoadDirectoryAsync`
+  honoring cancellation between files.
+- **7 new tests** in `DebateResultCancellationTests` covering all save
+  methods with pre-canceled tokens + a happy-path test for `SaveAllAsync`
+  that verifies the three files are produced.
+- **2 new tests** in `CouncilExecutorCancellationTests` covering the
+  executor's CT-aware save path and a positive no-cancel run.
+- **5 new tests** in `CouncilExecutorLifetimeExtensionsTests` covering the
+  `IAppStoppingToken` helper: caller-token respected, application-stopping
+  token respected, run-to-completion when neither is canceled, and
+  null-argument validation on both `executor` and `lifetime`.
+
+### Documentation
+
+- New **Cancellation Support** section in `Delibera.Core/README.md` with 4
+  worked examples (timeout, manual cancel, ASP.NET Core
+  `IHostApplicationLifetime` adapter, Console Ctrl+C) and a table of
+  cancellable operations.
+- New **Cancellation Support** section in the repo-root `README.md` with a
+  quick-start example and a link to the full guide.
+- Feature row added to the Key Features table in both READMEs.
+- `MarkdownKnowledgeBase.LoadTextAsync` and `LoadTextsAsync` added to the
+  cancellable-operations table in `Delibera.Core/README.md`.
+
+### Compatibility
+
+- **No breaking binary changes.** All new `CancellationToken` parameters
+  have a default value, so existing compiled callers continue to link and
+  run unchanged. External implementers of `IKnowledgeBase` must add the
+  `CancellationToken` parameter to their method signatures — this is a
+  source-level break for that scenario only.
+- **No behavior change** for callers that don't pass a token: the
+  pre-v10.2.4 behavior is preserved exactly.
+
 ## [10.2.3] - 2026
 
 ### Added — AutoChunking (progressive disclosure for large documents)

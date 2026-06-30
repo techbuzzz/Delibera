@@ -49,6 +49,7 @@ well-reasoned outcomes** rather than single-model guesses.
 | **📁 Separate File Output**   | Export `result.md`, `statistics.md`, and `logs.md` independently                      |
 | **🔌 Interface-First**        | Clean abstractions for providers, factories, builders and executors                   |
 | **🤝 Microsoft.Extensions.AI**| First-class support for `IChatClient` / `IEmbeddingGenerator` — plug in OpenAI, Azure OpenAI, Ollama or any compatible backend, with middleware (function calling, logging) |
+| **🛑 Cooperative Cancellation**| Every public async method accepts a `CancellationToken`; a host shutdown or user cancel aborts the debate mid-flight (rounds, LLM calls, MCP tools, RAG, file saves) |
 | **🧱 Modern C# 15 (preview)** | Built on .NET 10 with `LangVersion=preview`, file-scoped namespaces, records, span/SIMD hot paths |
 
 ---
@@ -67,6 +68,7 @@ well-reasoned outcomes** rather than single-model guesses.
 - [RAG Integration](#-rag-integration)
 - [Debate Strategies](#-debate-strategies)
 - [Output Files Structure](#-output-files-structure)
+- [Cancellation Support](#-cancellation-support)
 - [ConsoleApp Examples](#-consoleapp-examples)
 - [Installation & Build](#-installation--build)
 - [Architecture](#-architecture)
@@ -629,6 +631,28 @@ await result.SaveLogsAsync("logs.md");
 | `*_result.md`     | Full deliberation transcript, rounds, and the Chairman's final verdict       |
 | `*_statistics.md` | Token usage statistics with per-round breakdown                              |
 | `*_logs.md`       | Execution logs (`ExecutionLog`) for Chairman, KK, compression & participants |
+
+---
+
+## 🛑 Cancellation Support
+
+Every public async method in Delibera honors a `CancellationToken` cooperatively. A single
+cancel signal aborts the entire pipeline — rounds, chairman synthesis, LLM calls, MCP tools,
+RAG queries and even file writes — via `OperationCanceledException`.
+
+```csharp
+using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+var result = await executor.ExecuteAsync(cts.Token);
+```
+
+ASP.NET Core / Worker Services can link the token to `IHostApplicationLifetime.ApplicationStopping`
+via the `Delibera.Core.Extensions.CouncilExecutorLifetimeExtensions.ExecuteAsync(executor, lifetime, ct)`
+helper. Console apps can wire `Console.CancelKeyPress` to the same `CancellationTokenSource`.
+
+The `Delibera.ConsoleApp` includes a `--cancellation` demo that exercises this end-to-end.
+
+See the [Cancellation section in `Delibera.Core` README](src/Delibera.Core/README.md#-cancellation-support)
+for the full table of cancellable operations and the linked-token pattern.
 
 ---
 

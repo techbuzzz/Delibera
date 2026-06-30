@@ -10,7 +10,7 @@ using Polly.Retry;
 namespace Delibera.ConsoleApp.Examples;
 
 /// <summary>
-///    Demonstrates Delibera v10.2.2 Polly v8 resilience integration:
+///    Demonstrates Delibera v10.2.4 Polly v8 resilience integration:
 ///    registers <see cref="IDeliberaResiliencePipelineProvider" />, named HttpClients
 ///    (Ollama.Local, Ollama.Cloud, YandexGPT) with HttpRetryStrategyOptions attached via
 ///    Microsoft.Extensions.Http.Resilience, and constructs an Ollama provider that uses
@@ -24,7 +24,7 @@ public static class ResilienceExample
    public static async Task RunAsync()
    {
       Console.WriteLine("═══════════════════════════════════════════");
-      Console.WriteLine("  🛡️  Delibera — Polly v8 Resilience Example (v10.2.2)");
+      Console.WriteLine("  🛡️  Delibera — Polly v8 Resilience Example (v10.2.4)");
       Console.WriteLine("═══════════════════════════════════════════\n");
 
       var configuration = new ConfigurationBuilder()
