@@ -5,7 +5,273 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.2.6] - 2026
+
+A large feature release that delivers nine new capabilities across
+observability, DX, enterprise decision support, persistence, and memory. Every
+new feature is backward-compatible — existing call sites continue to work
+unchanged. The release also adds nine new `--flag` demo entries to the
+ConsoleApp (Streaming, Templates, Quick Wins, Telemetry, Adaptive Strategy,
+Voting, Structured Output, Persistence, Agent Memory).
+
+### Added — F-08 OpenTelemetry-style observability
+
+- **`Delibera.Core/Telemetry/`** — new namespace with:
+  - **`TelemetryOptions`** — `Enabled`, `ActivitySourceName`, `MeterName`, `ServiceVersion`.
+    Bound from `Delibera:Telemetry` configuration section.
+  - **`DeliberaActivitySource`** — centralised `System.Diagnostics.ActivitySource` facade
+    with `static readonly` fields. Returns `null` activities when no listener is
+    attached (the standard .NET zero-overhead pattern).
+  - **`DeliberaMeter`** — `System.Diagnostics.Metrics.Meter` with histograms
+    (`delibera.debate.duration`, `delibera.round.duration`), counters
+    (`delibera.tokens.total`, `delibera.debates.completed`), and gauge
+    (`delibera.compression.ratio`).
+  - **`DeliberaTelemetry`** — high-level facade (`StartDebate`, `StartRound`,
+    `StartMemberRespond`, `StartRagQuery`, `StartCompression`,
+    `StartOperatorTask`, `StartChairmanSynthesize`, `StartChairmanOpen`,
+    `RecordDebateCompleted`, `RecordRoundDuration`, `RecordTokens`,
+    `RecordCompressionRatio`, `MarkSucceeded`, `MarkFailed`).
+  - **`DeliberaActivityNames`** / **`DeliberaTelemetryTags`** — canonical span
+    names and tag keys (single source of truth).
+- **`CouncilBuilder.WithTelemetry(TelemetryOptions?)`** + delegate overload
+  `WithTelemetry(Action<TelemetryOptions>)`.
+- **`ICouncilExecutor.IsTelemetryEnabled`** + `DebateTimeout` + `LastStreamedResult`
+  + `StrategySelector` + `VotingStrategy` + `StructuredOutputSerializer` +
+  `StructuredOutputType` + `DebateStore` + `ResumeFromDebateId` + `AgentMemory`
+  surfaces.
+- `CouncilExecutor.ExecuteAsync` instruments: top-level `delibera.council.execute`
+  span + per-round duration histogram + aggregate token counter + compression
+  ratio gauge + debate-completed counter. `CompressTextAsync` wraps every
+  compression call in a `delibera.compression` span.
+- `GetInfo()` prints a new `── Telemetry ──` section when enabled.
+- 22 unit tests; 0 NuGet deps added in `Delibera.Core` (uses in-box APIs).
+
+### Added — F-10 Quick Wins Bundle (HTML / Timeout / Personas / Benchmark / Limit)
+
+- **F-10a HTML export** — `Output/HtmlExporter.cs` with `HtmlTheme` (Light/Dark),
+  `HtmlExportOptions` (theme, collapsibility, inline-CSS, title). `DebateResult`
+  gains `ToHtml(HtmlExportOptions?)` and `SaveToHtmlAsync(file, options?, ct)`.
+  Self-contained HTML with inline CSS, collapsible `<details>` rounds,
+  knowledge/operator sections, token statistics, printable layout.
+- **F-10b `WithTimeout(TimeSpan)`** — debate-level wall-clock timeout that links
+  a `CancellationTokenSource` with the caller's CT via
+  `CreateLinkedTokenSource`. `DebateTimeout` exposed on executor.
+- **F-10c `Persona` presets** — 6 built-in system-prompt fragments:
+  `Expert`, `DevilsAdvocate`, `CautiousOptimist`, `DataDrivenAnalyst`,
+  `RiskManager`, `Pragmatist`. `Persona.All` dictionary + `Persona.Resolve(name)`.
+- **F-10d `CouncilBenchmark`** — `Benchmarking/CouncilBenchmark.cs` with
+  `AddConfiguration(name, configure)` + `WithQuestion` + `WithMaxRounds`.
+  `RunAsync` runs configs sequentially (failures recorded per-entry).
+  `BenchmarkReport.ToMarkdown()` + `SaveComparisonAsync()` render side-by-side
+  verdicts / token usage / latency tables.
+- **F-10e `WithParticipantLimit(int)`** — guards against misconfiguration in
+  dynamic DI-driven setups; throws `InvalidOperationException` on `Build()` if
+  exceeded.
+- 27 unit tests.
+
+### Added — F-07 Debate Templates & Presets Library
+
+- **`Delibera.Core/Templates/DebateTemplate.cs`** — abstract `DebateTemplateBase`
+  fluent facade over `CouncilBuilder`. `DebateTemplate` static accessor with 6
+  built-in templates: `ArchitectureReview`, `RiskAssessment`, `CodeReview`,
+  `ProductDecision`, `SecurityAudit`, `DataArchitecture`. `DebateTemplate.Custom()`
+  escape hatch to a fresh `CouncilBuilder`. `ConfigureCore` runs eagerly inside
+  `WithProvider` so later fluent overrides take precedence over template defaults.
+- Fluent API mirrors `ICouncilBuilder`: `WithQuestion` / `WithProvider` /
+  `WithMaxRounds` / `WithTemperature` / `WithResponseLanguage` / `WithSystemPrompt` /
+  `SaveResultTo` / `WithTelemetry` / `WithTimeout` / `WithParticipantLimit` /
+  `WithKnowledgeKeeper` / `AddMember` / `WithChairman` + `Advanced` escape hatch.
+- 21 unit tests.
+
+### Added — F-01 Async Streaming Council
+
+- **`ICouncilExecutor.StreamDebateAsync(CancellationToken)`** added as DIM
+  with default implementation that calls `ExecuteAsync` and yields rounds at
+  the end (back-compat for external implementations).
+- **`CouncilExecutor.StreamDebateAsync`** override streams rounds **live**: the
+  debate runs on a background `Task`; the strategy's existing
+  `onRoundCompleted` callback bridges each completed round into an unbounded
+  `Channel<DebateRound>` (natural backpressure — strategy won't produce round
+  N+1 until the callback for N returns); the iterator reads from the channel
+  and yields each round as it completes.
+- `DebateRound.Total` (int?) and `IsFinal` (bool) properties added. `Total`
+  stamped by `StreamDebateAsync` on every yielded round
+  (`maxRounds + 1` when Chairman set, else `maxRounds`). `IsFinal` true when
+  the round name contains "Verdict" or "Final", or `RoundNumber >= Total`.
+- `ICouncilExecutor.LastStreamedResult` exposes the aggregated `DebateResult`
+  after the stream completes (with logs/token stats).
+- `OnRoundCompleted` event still fires for each round (back-compat).
+- `ExecuteAsync` stays fully backward-compatible.
+- 13 unit tests.
+
+### Added — F-09 Dynamic Strategy Switching
+
+- **`Delibera.Core/Debate/IStrategySelector.cs`** — `IStrategySelector` interface
+  (`SelectNextAsync` returns null or new strategy). `DebateProgress` record
+  (`CurrentRound`, `MaxRounds`, `CompletedRounds`, `ResponseDiversityScore`,
+  `IsStalemate`). `AdaptiveStrategySelector` built-in implementation:
+  - `Initial` + `OnStalemate` strategies (`required`).
+  - `StagnationThreshold` (default 2) consecutive low-diversity rounds.
+  - `StagnationScore` cutoff (default 0.3).
+  - Switches once per debate, then resets via `Reset()`.
+  - Falls back to Levenshtein text-similarity when no embedding provider
+    is configured (diversity score = 0.0 sentinel).
+  - No switch on last round.
+- **`DebateRound.StrategyUsed`** (`IDebateStrategy?`) — audit trail stamped on
+  every round when a selector is configured.
+- **`CouncilBuilder.WithAdaptiveStrategy(IStrategySelector)`** + `ICouncilBuilder`
+  surface — sets `Initial` strategy as starting strategy when
+  `AdaptiveStrategySelector` is used.
+- `CouncilExecutor` instruments the round callback to compute response
+  diversity (Levenshtein-based fallback), invoke `SelectNextAsync` after each
+  round, log strategy switch, stamp `StrategyUsed` on every round.
+- 16 unit tests.
+
+### Added — F-02 Pluggable Vote / Consensus Engine
+
+- **`Delibera.Core/Voting/IVotingStrategy.cs`** — `IVotingStrategy` interface
+  (`MethodName` + `TallyAsync`). `RankedOption`, `ParticipantBallot`,
+  `VotingResult` records. 3 built-in strategies:
+  - **`MajorityVotingStrategy`** — top-ranked option gets 1 point each.
+  - **`BordaCountVotingStrategy`** — N-1 points for top, N-2 for second, etc.
+  - **`WeightedVotingStrategy`** — per-member `MemberWeights` overrides.
+- **`Chairman.CreateVoting(model, provider, strategy)`** factory encodes the
+  strategy in the Chairman's `PersonaPrompt` via `VotingChairmanMarker` so
+  `CouncilExecutor` can detect it at runtime.
+- **`CouncilBuilder.WithVotingChairman(model, provider, strategy)`** +
+  `ICouncilBuilder.WithVotingChairman`.
+- `DebateResult.VotingTally` (`VotingResult?`) property. `ToMarkdown()` renders
+  a `🗳️ Voting Tally` section with method, winning option, and full score table.
+- `CouncilExecutor.RunVotingAsync` extracts numbered/bulleted options from the
+  final round's responses, asks each member to rank them, parses `'1,2,3'`
+  replies, builds `ParticipantBallot`s, tallies via `IVotingStrategy.TallyAsync`.
+- `WeightedVotingStrategy` validates non-negative weights and at least one
+  positive weight.
+- 16 unit tests.
+
+### Added — F-05 Structured Output / JSON Schema
+
+- **`Delibera.Core/Output/IStructuredOutputSerializer.cs`** — `IStructuredOutputSerializer`
+  interface (`GenerateSchema<T>` + `Deserialize<T>`). `JsonSchemaOutputSerializer`
+  default implementation:
+  - Uses .NET 10 `JsonSchemaExporter.GetJsonSchemaAsNode` for schema generation.
+  - `ExtractJson` helper strips markdown code fences and surrounding prose.
+  - `BuildStructuredPrompt` appends schema + type name to the synthesis prompt.
+  - `BuildCorrectionPrompt` builds the retry prompt on deserialisation failure.
+  - Default `TypeInfoResolver` set for .NET 10 compatibility.
+- **`ICouncilExecutor.ExecuteTypedAsync<TVerdict>(CancellationToken)`** added as
+  DIM with default implementation that uses `DebateResult.GetTypedVerdict<T>`.
+- `CouncilExecutor` overrides `ExecuteTypedAsync<T>`: runs `ExecuteAsync`, attempts
+  to deserialise existing `FinalVerdict`, on failure re-prompts Chairman with
+  correction prompt + schema, stamps `TypedVerdict` on `DebateResult` on success.
+  One automatic retry with failure logging.
+- `DebateResult.TypedVerdict` (`object?`) + `GetTypedVerdict<TVerdict>()` helper.
+- `CouncilBuilder.WithStructuredOutput<TVerdict>(serializer?)` +
+  `ICouncilBuilder.WithStructuredOutput<TVerdict>`.
+- 21 unit tests.
+
+### Added — F-03 Debate Persistence & Resume
+
+- **`Delibera.Core/Persistence/`** — new namespace with:
+  - **`IDebateStore`** interface (`Save` / `Load` / `List` / `Delete`).
+  - **`DebateCheckpoint`** record (`DebateId`, `CreatedAt`,
+    `LastCompletedRound`, `CompletedRounds`, `Options` snapshot,
+    `OriginalQuestion`).
+  - **`DebateCheckpointMeta`** lightweight metadata record.
+  - **`GenerateId()`** — ULID-style 26-char lexicographically-sortable ID
+    (timestamp prefix + random suffix).
+  - **`CreateEmpty()`** — factory for fresh checkpoints.
+  - **`FileDebateStore`** — atomic JSON write-temp → rename; optional
+    `RetentionDays`; thread-safe with `SemaphoreSlim`; lazy retention sweep on
+    `ListAsync`.
+  - **`InMemoryDebateStore`** — `ConcurrentDictionary`-backed, for testing.
+- **`CouncilOptions.Persistence`** sub-section with `PersistenceOptions`:
+  `Enabled`, `Store` (File/InMemory), `Directory`, `RetentionDays`,
+  `ResumeFromDebateId`.
+- `CouncilBuilder.WithPersistence(IDebateStore)` + `ResumeFrom(debateId)` +
+  `ICouncilBuilder`.
+- `CouncilExecutor.SaveCheckpointAsync`: after each round, builds a checkpoint
+  with completed rounds, options snapshot, and reuses existing debate id
+  (from `ResumeFrom` or a same-question match). Errors during save are reported
+  via `ReportError` (don't abort debate).
+- 24 unit tests.
+
+### Added — F-04 Agent Memory & Long-Term Context
+
+- **`Delibera.Core/Memory/IAgentMemory.cs`** — `IAgentMemory` interface
+  (`Store` / `Recall` / `Delete`). `MemoryEntry` record (`Content`, `CreatedAt`,
+  `Metadata`). 3 implementations:
+  - **`InMemoryAgentMemory`** — `ConcurrentDictionary`-backed, Jaccard
+    token-overlap similarity (no embedding provider required).
+  - **`QdrantAgentMemory`** — per-agent collection, uses `IRagProvider`
+    `SearchAsync` + `IEmbeddingProvider` for semantic similarity.
+  - **`PgVectorAgentMemory`** — shared table filtered by `agent_name` metadata.
+- `CouncilBuilder.WithAgentMemory(IAgentMemory?)` + `ICouncilBuilder` — null
+  parameter defaults to `InMemoryAgentMemory` (no persistence).
+- `CouncilExecutor`:
+  - **Pre-execution**: recalls each member's top-3 memories, dedupes by content,
+    prepends a `Memory from previous sessions` block to the system prompt for
+    all participants.
+  - **Post-execution**: stores each member's last response and the Chairman's
+    final verdict as `MemoryEntry` records, tagged with member display name +
+    debate id (when persistence enabled).
+  - Both phases log to `ExecutionLog` under source `AgentMemory`. Errors during
+    recall/store are reported but do not abort the debate.
+- 13 unit tests.
+
+### Added — ConsoleApp demos
+
+9 new `--flag` demo entries:
+- `--telemetry` (**TelemetryExample**) — in-process `ActivityListener` +
+  `MeterListener` printing every span and metric.
+- `--quick-wins` (**QuickWinsExample**) — HTML export, timeout, personas,
+  benchmark, participant limit.
+- `--templates` (**TemplatesExample**) — `ArchitectureReview` template
+  against a live Ollama endpoint.
+- `--stream` (**StreamingCouncilExample**) — `IAsyncEnumerable<DebateRound>`
+  live output with round-by-round progress.
+- `--adaptive-strategy` (**AdaptiveStrategyExample**) — `StandardDebate` →
+  `CritiqueDebate` switch on stagnation.
+- `--voting` (**VotingExample**) — `WeightedVotingStrategy` with per-member
+  weights.
+- `--structured-output` (**StructuredOutputExample**) — `ArchitectureDecision`
+  typed verdict.
+- `--persistence` (**PersistenceExample**) — `FileDebateStore` with retention
+  + auto-resume on existing checkpoint.
+- `--agent-memory` (**AgentMemoryExample**) — `InMemoryAgentMemory` across
+  successive debates.
+
+### Changed
+
+- Bumped `Delibera.Core` package version `10.2.5` → `10.2.6`.
+- `CouncilMember.PersonaPrompt` property now assigned in the constructor
+  (was previously null — fixed for F-02 voting chairman detection).
+- New `DebateRound.Total` and `IsFinal` properties; `StrategyUsed` property
+  (nullable).
+- New `DebateResult.TypedVerdict` and `VotingTally` properties; Markdown
+  output gains `🗳️ Voting Tally` section.
+- `<Description>` and `<PackageTags>` updated to mention new features.
+
+### Compatibility
+
+- **No breaking changes.** Every new feature is opt-in via additional builder
+  methods (`WithTelemetry`, `WithTimeout`, `WithVotingChairman`,
+  `WithStructuredOutput<T>`, `WithPersistence`, `WithAgentMemory`,
+  `WithAdaptiveStrategy`). The fluent API is fully backward compatible.
+
+### Test summary
+
+- 9 new test files, 163 new tests, **all 259 tests pass** (up from 105 in
+  10.2.5).
+
 ## [10.2.4] - 2026
+
+This release delivers **full cooperative `CancellationToken` support across every
+public async method** — a single cancel signal now aborts the entire pipeline
+(rounds, Chairman synthesis, LLM calls, MCP tool invocations, RAG queries and
+file writes) via `OperationCanceledException`. It also adds **in-memory
+`MarkdownKnowledgeBase` loaders** that ingest markdown bodies without temp
+files, with optional per-source metadata.
 
 This release delivers **full cooperative `CancellationToken` support across every
 public async method** — a single cancel signal now aborts the entire pipeline
