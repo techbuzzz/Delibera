@@ -1,3 +1,5 @@
+using Delibera.Core.Interfaces;
+
 namespace Delibera.Core.Models;
 
 /// <summary>
@@ -78,6 +80,14 @@ public sealed record DebateRound
 
    /// <summary>The prompt used during this round.</summary>
    public string? RoundPrompt { get; init; }
+
+   /// <summary>
+   ///    The strategy that produced this round. <c>null</c> for rounds built before
+   ///    F-09 (adaptive strategy switching) was introduced. Set by
+   ///    <see cref="Council.CouncilExecutor"/> when an <see cref="IStrategySelector"/>
+   ///    is configured, so consumers can audit which strategy was active for each round.
+   /// </summary>
+   public IDebateStrategy? StrategyUsed { get; init; }
 
    /// <summary>Knowledge Keeper queries &amp; answers that occurred during this round.</summary>
    public IReadOnlyList<KnowledgeInteraction> KnowledgeInteractions { get; init; } = [];

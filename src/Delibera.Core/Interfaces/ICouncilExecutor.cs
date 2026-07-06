@@ -1,4 +1,5 @@
 using Delibera.Core.Council;
+using Delibera.Core.Debate;
 using Delibera.Core.Telemetry;
 
 namespace Delibera.Core.Interfaces;
@@ -41,6 +42,13 @@ public interface ICouncilExecutor
     ///    Set via <see cref="ICouncilBuilder.WithTimeout(TimeSpan)"/>.
     /// </summary>
     TimeSpan? DebateTimeout { get; }
+
+    /// <summary>
+    ///    The adaptive strategy selector consulted after each round, or <c>null</c> when
+    ///    adaptive switching is disabled. Set via
+    ///    <see cref="ICouncilBuilder.WithAdaptiveStrategy(IStrategySelector)"/>.
+    /// </summary>
+    IStrategySelector? StrategySelector { get; }
 
     /// <summary>
     ///    The result of the most recent <see cref="StreamDebateAsync"/> call, once the

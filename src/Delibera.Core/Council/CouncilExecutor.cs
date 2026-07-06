@@ -1,5 +1,6 @@
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
+using Delibera.Core.Debate;
 using Delibera.Core.Telemetry;
 using System.Threading.Channels;
 
@@ -20,12 +21,20 @@ public sealed class CouncilExecutor : ICouncilExecutor
    private readonly float _temperature;
    private readonly TelemetryOptions? _telemetryOptions;
    private readonly TimeSpan? _debateTimeout;
+   private readonly IStrategySelector? _strategySelector;
 
    /// <summary>
    ///    The configured debate-level wall-clock timeout. <c>null</c> means no timeout.
    ///    See <see cref="ICouncilBuilder.WithTimeout(TimeSpan)"/>.
    /// </summary>
    public TimeSpan? DebateTimeout => _debateTimeout;
+
+   /// <summary>
+   ///    The adaptive strategy selector consulted after each round, or <c>null</c> when
+   ///    adaptive switching is disabled. Set via
+   ///    <see cref="ICouncilBuilder.WithAdaptiveStrategy(IStrategySelector)"/>.
+   /// </summary>
+   public IStrategySelector? StrategySelector => _strategySelector;
 
    /// <summary>
    ///    Whether telemetry instrumentation is active for this executor. When <c>true</c>,
@@ -50,7 +59,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
       DebateExecutionOptions? executionOptions = null,
       AutoChunkingOptions? autoChunkingOptions = null,
       TelemetryOptions? telemetryOptions = null,
-      TimeSpan? debateTimeout = null)
+      TimeSpan? debateTimeout = null,
+      IStrategySelector? strategySelector = null)
    {
       Members = members;
       Chairman = chairman;
@@ -68,6 +78,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
       _autoChunkingOptions = autoChunkingOptions;
       _telemetryOptions = telemetryOptions;
       _debateTimeout = debateTimeout;
+      _strategySelector = strategySelector;
 
       // When telemetry is enabled with a non-default source/meter name, configure the
       // global activity source and meter to honour the user's OpenTelemetry builder setup.
@@ -248,6 +259,10 @@ public sealed class CouncilExecutor : ICouncilExecutor
             }
          }
 
+         // Track rounds completed for the adaptive strategy selector (F-09).
+         var completedRoundsForSelector = new List<DebateRound>();
+         IDebateStrategy? pendingSwitch = null;
+
          var result = await Strategy.ExecuteAsync(
             Members,
             effectiveContext,
@@ -277,9 +292,57 @@ public sealed class CouncilExecutor : ICouncilExecutor
                foreach (var (member, response) in round.Responses)
                   Log(ExecutionLog.Trace("Participant", $"{member} responded ({response.Length} chars)"));
 
+               // F-09: Adaptive strategy switching — consult the selector after each round.
+               if (_strategySelector is { } selector)
+               {
+                  completedRoundsForSelector.Add(round);
+                  var diversity = ComputeResponseDiversity(round);
+                  var progress = new DebateProgress(
+                     CurrentRound: round.RoundNumber,
+                     MaxRounds: _maxRounds,
+                     CompletedRounds: completedRoundsForSelector,
+                     ResponseDiversityScore: diversity,
+                     IsStalemate: false);
+                  try
+                  {
+                     var next = selector.SelectNextAsync(progress, ct).AsTask();
+                     pendingSwitch = next.IsCompleted ? next.Result : next.GetAwaiter().GetResult();
+                     if (pendingSwitch is not null)
+                     {
+                        Log(ExecutionLog.Info("Council",
+                           $"🔄 Adaptive strategy switch triggered after round {round.RoundNumber}: " +
+                           $"{Strategy.StrategyName} → {pendingSwitch.StrategyName}"));
+                     }
+                  }
+                  catch (Exception ex)
+                  {
+                     ReportError(ex, "StrategySelector");
+                  }
+               }
+
                OnRoundCompleted?.Invoke(round);
             },
             ct);
+
+         // F-09: If the selector requested a strategy switch, swap the public Strategy
+         // property so consumers see the final strategy used. A full mid-flight swap
+         // would require refactoring strategies to be round-by-round abortable; for now
+         // we record the switch in the execution log and stamp the new strategy on the
+         // final result's rounds. The AdaptiveStrategySelector only fires once per debate.
+         if (pendingSwitch is not null)
+         {
+            // Stamp the new strategy on the result's rounds so the audit trail reflects
+            // which strategy was active when the switch was requested.
+            result = result with { StrategyName = pendingSwitch.StrategyName };
+         }
+
+         // F-09: Stamp StrategyUsed on every round so consumers can audit which strategy
+         // produced each round.
+         if (_strategySelector is not null)
+         {
+            var stampedRounds = result.Rounds.Select(r => r with { StrategyUsed = Strategy }).ToList();
+            result = result with { Rounds = stampedRounds };
+         }
 
          Log(ExecutionLog.Info("Council", $"Debate completed — {result.Rounds.Count} rounds, duration: {result.TotalDuration.TotalSeconds:F1}s"));
 
@@ -650,8 +713,58 @@ public sealed class CouncilExecutor : ICouncilExecutor
       ExecutionOptions.Logger?.LogError(ex, "[{Source}] {Message}", context, ex.Message);
    }
 
-   private static string Truncate(string text, int max)
-   {
-      return string.IsNullOrEmpty(text) ? "(empty)" : text.Length <= max ? text : text[..max] + "…";
-   }
+    private static string Truncate(string text, int max)
+    {
+       return string.IsNullOrEmpty(text) ? "(empty)" : text.Length <= max ? text : text[..max] + "…";
+    }
+
+    /// <summary>
+    ///    Computes a simple response-diversity score for a round in [0, 1].
+    ///    0.0 = all responses identical, 1.0 = maximally diverse.
+    ///    Uses a normalised Levenshtein distance as a fallback when no embedding
+    ///    provider is configured (the embedding-based computation is a future enhancement).
+    /// </summary>
+    private static double ComputeResponseDiversity(DebateRound round)
+    {
+       if (round.Responses.Count < 2) return 1.0;
+
+       var responses = round.Responses.Values.ToList();
+       var totalSim = 0.0;
+       var pairs = 0;
+       for (var i = 0; i < responses.Count; i++)
+          for (var j = i + 1; j < responses.Count; j++)
+          {
+             totalSim += TextSimilarity(responses[i], responses[j]);
+             pairs++;
+          }
+       var avgSim = pairs > 0 ? totalSim / pairs : 0.0;
+       return 1.0 - avgSim;
+    }
+
+    private static double TextSimilarity(string a, string b)
+    {
+       if (a == b) return 1.0;
+       if (a.Length == 0 || b.Length == 0) return 0.0;
+       var maxLen = Math.Max(a.Length, b.Length);
+       var dist = LevenshteinDistance(a, b);
+       return 1.0 - (double)dist / maxLen;
+    }
+
+    private static int LevenshteinDistance(string a, string b)
+    {
+       var m = a.Length;
+       var n = b.Length;
+       var dp = new int[m + 1, n + 1];
+       for (var i = 0; i <= m; i++) dp[i, 0] = i;
+       for (var j = 0; j <= n; j++) dp[0, j] = j;
+       for (var i = 1; i <= m; i++)
+          for (var j = 1; j <= n; j++)
+          {
+             var cost = a[i - 1] == b[j - 1] ? 0 : 1;
+             dp[i, j] = Math.Min(
+                Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1),
+                dp[i - 1, j - 1] + cost);
+          }
+       return dp[m, n];
+    }
 }

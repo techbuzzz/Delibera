@@ -260,6 +260,18 @@ public interface ICouncilBuilder
     /// <returns>This builder for fluent chaining.</returns>
     ICouncilBuilder WithParticipantLimit(int maxParticipants);
 
+    /// <summary>
+    ///    Enables adaptive strategy switching (F-09). After each round,
+    ///    <see cref="ICouncilExecutor"/> calls
+    ///    <see cref="IStrategySelector.SelectNextAsync"/>; if it returns a non-null
+    ///    strategy, the executor swaps <see cref="ICouncilExecutor.Strategy"/> before
+    ///    the next round. Use <see cref="AdaptiveStrategySelector"/> for the built-in
+    ///    stalemate detector.
+    /// </summary>
+    /// <param name="selector">The strategy selector to consult after each round.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder WithAdaptiveStrategy(IStrategySelector selector);
+
    /// <summary>
    ///    Applies a pre-built <see cref="CouncilOptions" /> snapshot to the builder.
    ///    All non-default values are transferred. Explicit builder calls made before

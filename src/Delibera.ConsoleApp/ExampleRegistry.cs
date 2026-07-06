@@ -51,7 +51,8 @@ public static class ExampleRegistry
          ["TelemetryExample"] = ("Telemetry (OpenTelemetry)", "In-process ActivityListener + MeterListener printing spans & metrics.", "Observability", 0, "telemetry", []),
          ["QuickWinsExample"] = ("Quick Wins Bundle", "HTML export, timeout, personas, benchmark, participant limit.", "Features", 4, "quick-wins", ["quickwins"]),
          ["TemplatesExample"] = ("Debate Templates", "Pre-configured councils: ArchitectureReview, RiskAssessment, CodeReview, …", "Features", 5, "templates", []),
-         ["StreamingCouncilExample"] = ("Streaming Council", "IAsyncEnumerable<DebateRound> — rounds yielded live as they complete.", "Features", 6, "stream", ["streaming"])
+         ["StreamingCouncilExample"] = ("Streaming Council", "IAsyncEnumerable<DebateRound> — rounds yielded live as they complete.", "Features", 6, "stream", ["streaming"]),
+         ["AdaptiveStrategyExample"] = ("Adaptive Strategy", "Switch debate strategy mid-flight on stagnation (AdaptiveStrategySelector).", "Features", 7, "adaptive-strategy", [])
       };
 
    /// <summary>Discovers all examples in the Examples namespace, ordered by category then order.</summary>

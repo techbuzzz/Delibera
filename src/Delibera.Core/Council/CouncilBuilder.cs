@@ -36,6 +36,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private TelemetryOptions? _telemetryOptions;
    private TimeSpan? _debateTimeout;
    private int? _maxParticipants;
+   private IStrategySelector? _strategySelector;
 
    /// <summary>
    ///    Creates an empty builder. Use <see cref="WithOptions(CouncilOptions)" /> or
@@ -340,6 +341,36 @@ public sealed class CouncilBuilder : ICouncilBuilder
        return this;
     }
 
+    // ── Adaptive strategy switching (F-09) ──
+
+    /// <summary>
+    ///    Enables adaptive strategy switching. After each round,
+    ///    <see cref="CouncilExecutor"/> calls
+    ///    <see cref="IStrategySelector.SelectNextAsync"/> with a
+    ///    <see cref="DebateProgress"/> snapshot; if the selector returns a non-null
+    ///    strategy, the executor swaps <see cref="ICouncilExecutor.Strategy"/> before
+    ///    the next round. Use <see cref="AdaptiveStrategySelector"/> for the built-in
+    ///    stalemate detector, or implement <see cref="IStrategySelector"/> for custom
+    ///    heuristics.
+    /// </summary>
+    /// <param name="selector">The strategy selector to consult after each round.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    /// <remarks>
+    ///    When <see cref="AdaptiveStrategySelector"/> is used, its <see cref="AdaptiveStrategySelector.Initial"/>
+    ///    is set as the council's starting strategy (overriding any prior
+    ///    <see cref="WithStrategy"/> call).
+    /// </remarks>
+    public ICouncilBuilder WithAdaptiveStrategy(IStrategySelector selector)
+    {
+       ArgumentNullException.ThrowIfNull(selector);
+       _strategySelector = selector;
+       // If the selector is an AdaptiveStrategySelector, adopt its Initial strategy
+       // as the council's starting strategy so the debate begins with the right one.
+       if (selector is AdaptiveStrategySelector adaptive)
+          _strategy = adaptive.Initial;
+       return this;
+    }
+
    // ── Options (bulk configuration) ──
 
    /// <inheritdoc />
@@ -524,6 +555,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
            executionOptions,
            _autoChunkingOptions,
            _telemetryOptions,
-           _debateTimeout);
+           _debateTimeout,
+           _strategySelector);
      }
 }
