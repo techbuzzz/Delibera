@@ -1,5 +1,6 @@
 using Delibera.Core.Output;
 using Delibera.Core.Voting;
+using System.Text.Json;
 
 namespace Delibera.Core.Models;
 
@@ -45,6 +46,35 @@ public sealed record DebateResult
     ///    includes a 🗳️ Voting Tally section alongside the Final Verdict.
     /// </summary>
     public VotingResult? VotingTally { get; init; }
+
+    /// <summary>
+    ///    When <see cref="ICouncilBuilder.WithStructuredOutput{TVerdict}"/> was used,
+    ///    holds the typed verdict deserialised from <see cref="FinalVerdict"/>.
+    ///    <c>null</c> when structured output was not configured or deserialisation failed.
+    /// </summary>
+    public object? TypedVerdict { get; init; }
+
+    /// <summary>
+    ///    Deserialises <see cref="FinalVerdict"/> into <typeparamref name="TVerdict"/>
+    ///    using a <see cref="JsonSchemaOutputSerializer"/>. Returns <c>null</c> on
+    ///    failure. Used by <see cref="Interfaces.ICouncilExecutor.ExecuteTypedAsync{TVerdict}"/>.
+    /// </summary>
+    /// <typeparam name="TVerdict">The target verdict type.</typeparam>
+    /// <returns>The deserialised verdict, or <c>null</c> on failure.</returns>
+    public TVerdict? GetTypedVerdict<TVerdict>() where TVerdict : class
+    {
+        if (TypedVerdict is TVerdict typed) return typed;
+        if (string.IsNullOrWhiteSpace(FinalVerdict)) return null;
+        try
+        {
+            var serializer = new JsonSchemaOutputSerializer();
+            return serializer.Deserialize<TVerdict>(FinalVerdict);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
    /// <summary>Timestamp when the debate started.</summary>
    public DateTime StartedAt { get; init; } = DateTime.UtcNow;

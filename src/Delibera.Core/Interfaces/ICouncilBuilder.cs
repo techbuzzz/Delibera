@@ -2,6 +2,7 @@ using Delibera.Core.Chunking;
 using Delibera.Core.Council;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
+using Delibera.Core.Output;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
 
@@ -283,6 +284,21 @@ public interface ICouncilBuilder
     /// <param name="votingStrategy">Voting strategy (Majority, BordaCount, Weighted).</param>
     /// <returns>This builder for fluent chaining.</returns>
     ICouncilBuilder WithVotingChairman(string modelName, ILLMProvider provider, IVotingStrategy votingStrategy);
+
+    /// <summary>
+    ///    Enables structured JSON output (F-05). The Chairman's synthesis prompt is
+    ///    augmented with a JSON schema generated from <typeparamref name="TVerdict"/>,
+    ///    and <see cref="ICouncilExecutor.ExecuteTypedAsync{TVerdict}"/> deserialises
+    ///    the response into a strongly-typed verdict. One automatic retry with a
+    ///    correction prompt is performed on deserialisation failure.
+    /// </summary>
+    /// <typeparam name="TVerdict">The target verdict type (typically a C# record).</typeparam>
+    /// <param name="serializer">
+    ///    Optional custom serializer. <c>null</c> uses <see cref="JsonSchemaOutputSerializer"/>
+    ///    with default options.
+    /// </param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null) where TVerdict : class;
 
    /// <summary>
    ///    Applies a pre-built <see cref="CouncilOptions" /> snapshot to the builder.

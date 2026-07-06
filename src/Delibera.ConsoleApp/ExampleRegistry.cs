@@ -53,7 +53,8 @@ public static class ExampleRegistry
          ["TemplatesExample"] = ("Debate Templates", "Pre-configured councils: ArchitectureReview, RiskAssessment, CodeReview, …", "Features", 5, "templates", []),
          ["StreamingCouncilExample"] = ("Streaming Council", "IAsyncEnumerable<DebateRound> — rounds yielded live as they complete.", "Features", 6, "stream", ["streaming"]),
          ["AdaptiveStrategyExample"] = ("Adaptive Strategy", "Switch debate strategy mid-flight on stagnation (AdaptiveStrategySelector).", "Features", 7, "adaptive-strategy", []),
-         ["VotingExample"] = ("Voting Engine", "Pluggable vote/consensus: Majority, BordaCount, Weighted strategies.", "Features", 8, "voting", [])
+         ["VotingExample"] = ("Voting Engine", "Pluggable vote/consensus: Majority, BordaCount, Weighted strategies.", "Features", 8, "voting", []),
+         ["StructuredOutputExample"] = ("Structured Output", "JSON-schema-validated typed verdicts from the Chairman.", "Features", 9, "structured-output", [])
       };
 
    /// <summary>Discovers all examples in the Examples namespace, ordered by category then order.</summary>

@@ -2,6 +2,7 @@ using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
+using Delibera.Core.Output;
 using Delibera.Core.Providers.Mcp;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
@@ -39,6 +40,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private int? _maxParticipants;
    private IStrategySelector? _strategySelector;
    private IVotingStrategy? _votingStrategy;
+   private IStructuredOutputSerializer? _structuredOutputSerializer;
+   private Type? _structuredOutputType;
 
    /// <summary>
    ///    Creates an empty builder. Use <see cref="WithOptions(CouncilOptions)" /> or
@@ -393,6 +396,28 @@ public sealed class CouncilBuilder : ICouncilBuilder
        return this;
     }
 
+    // ── Structured output (F-05) ──
+
+    /// <summary>
+    ///    Enables structured JSON output (F-05). The Chairman's synthesis prompt is
+    ///    augmented with a JSON schema generated from <typeparamref name="TVerdict"/>,
+    ///    and <see cref="ICouncilExecutor.ExecuteTypedAsync{TVerdict}"/> deserialises
+    ///    the response into a strongly-typed verdict. One automatic retry with a
+    ///    correction prompt is performed on deserialisation failure.
+    /// </summary>
+    /// <typeparam name="TVerdict">The target verdict type (typically a C# record).</typeparam>
+    /// <param name="serializer">
+    ///    Optional custom serializer. <c>null</c> uses <see cref="JsonSchemaOutputSerializer"/>
+    ///    with default options.
+    /// </param>
+    /// <returns>This builder for fluent chaining.</returns>
+    public ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null) where TVerdict : class
+    {
+       _structuredOutputSerializer = serializer ?? new JsonSchemaOutputSerializer();
+       _structuredOutputType = typeof(TVerdict);
+       return this;
+    }
+
    // ── Options (bulk configuration) ──
 
    /// <inheritdoc />
@@ -579,6 +604,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
            _telemetryOptions,
            _debateTimeout,
            _strategySelector,
-           _votingStrategy);
+           _votingStrategy,
+           _structuredOutputSerializer,
+           _structuredOutputType);
      }
 }

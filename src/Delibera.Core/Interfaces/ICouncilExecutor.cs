@@ -1,7 +1,9 @@
 using Delibera.Core.Council;
 using Delibera.Core.Debate;
+using Delibera.Core.Output;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
+using System.Text.Json;
 
 namespace Delibera.Core.Interfaces;
 
@@ -57,6 +59,18 @@ public interface ICouncilExecutor
     ///    <see cref="ICouncilBuilder.WithVotingChairman(string, ILLMProvider, IVotingStrategy)"/>.
     /// </summary>
     IVotingStrategy? VotingStrategy { get; }
+
+    /// <summary>
+    ///    The structured-output serializer, or <c>null</c> when structured output is
+    ///    disabled. Set via
+    ///    <see cref="ICouncilBuilder.WithStructuredOutput{TVerdict}(IStructuredOutputSerializer?)"/>.
+    /// </summary>
+    IStructuredOutputSerializer? StructuredOutputSerializer { get; }
+
+    /// <summary>
+    ///    The target verdict type for structured output, or <c>null</c> when disabled.
+    /// </summary>
+    Type? StructuredOutputType { get; }
 
     /// <summary>
     ///    The result of the most recent <see cref="StreamDebateAsync"/> call, once the
@@ -156,6 +170,38 @@ public interface ICouncilExecutor
         var result = await ExecuteAsync(ct).ConfigureAwait(false);
         foreach (var round in result.Rounds)
             yield return round;
+    }
+
+    /// <summary>
+    ///    Runs the debate and returns the result with a typed, schema-validated verdict
+    ///    deserialised from the Chairman's final synthesis. Requires
+    ///    <see cref="ICouncilBuilder.WithStructuredOutput{TVerdict}(IStructuredOutputSerializer?)"/>
+    ///    to have been called on the builder so the synthesis prompt is augmented with
+    ///    the JSON schema.
+    /// </summary>
+    /// <typeparam name="TVerdict">The target verdict type (typically a C# record).</typeparam>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>
+    ///    A tuple of the complete <see cref="DebateResult"/> and the deserialised
+    ///    <typeparamref name="TVerdict"/>. The verdict is <c>default</c> when the
+    ///    deserialisation fails after the automatic retry.
+    /// </returns>
+    /// <remarks>
+    ///    <para>
+    ///       The default implementation (DIM) calls <see cref="ExecuteAsync"/>, then
+    ///       uses <see cref="DebateResult.GetTypedVerdict{TVerdict}"/> to deserialise
+    ///       the <see cref="DebateResult.FinalVerdict"/> string into
+    ///       <typeparamref name="TVerdict"/> via <see cref="JsonSchemaOutputSerializer"/>.
+    ///       The built-in <see cref="Council.CouncilExecutor"/> overrides this to
+    ///       augment the synthesis prompt with the schema and retry once on failure.
+    ///    </para>
+    /// </remarks>
+    async Task<(DebateResult Result, TVerdict? Verdict)> ExecuteTypedAsync<TVerdict>(
+        CancellationToken ct = default) where TVerdict : class
+    {
+        var result = await ExecuteAsync(ct).ConfigureAwait(false);
+        var verdict = result.GetTypedVerdict<TVerdict>();
+        return (result, verdict);
     }
 
    /// <summary>

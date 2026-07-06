@@ -1,8 +1,10 @@
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
+using Delibera.Core.Output;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
+using System.Text.Json;
 using System.Threading.Channels;
 
 namespace Delibera.Core.Council;
@@ -24,6 +26,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
    private readonly TimeSpan? _debateTimeout;
    private readonly IStrategySelector? _strategySelector;
    private readonly IVotingStrategy? _votingStrategy;
+   private readonly IStructuredOutputSerializer? _structuredOutputSerializer;
+   private readonly Type? _structuredOutputType;
 
    /// <summary>
    ///    The configured debate-level wall-clock timeout. <c>null</c> means no timeout.
@@ -44,6 +48,18 @@ public sealed class CouncilExecutor : ICouncilExecutor
    ///    <see cref="ICouncilBuilder.WithVotingChairman(string, ILLMProvider, IVotingStrategy)"/>.
    /// </summary>
    public IVotingStrategy? VotingStrategy => _votingStrategy;
+
+   /// <summary>
+   ///    The structured-output serializer, or <c>null</c> when structured output is
+   ///    disabled. Set via
+    ///    <see cref="ICouncilBuilder.WithStructuredOutput{TVerdict}(IStructuredOutputSerializer?)"/>.
+   /// </summary>
+   public IStructuredOutputSerializer? StructuredOutputSerializer => _structuredOutputSerializer;
+
+   /// <summary>
+   ///    The target verdict type for structured output, or <c>null</c> when disabled.
+   /// </summary>
+   public Type? StructuredOutputType => _structuredOutputType;
 
    /// <summary>
    ///    Whether telemetry instrumentation is active for this executor. When <c>true</c>,
@@ -70,7 +86,9 @@ public sealed class CouncilExecutor : ICouncilExecutor
       TelemetryOptions? telemetryOptions = null,
       TimeSpan? debateTimeout = null,
       IStrategySelector? strategySelector = null,
-      IVotingStrategy? votingStrategy = null)
+      IVotingStrategy? votingStrategy = null,
+      IStructuredOutputSerializer? structuredOutputSerializer = null,
+      Type? structuredOutputType = null)
    {
       Members = members;
       Chairman = chairman;
@@ -90,6 +108,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
       _debateTimeout = debateTimeout;
       _strategySelector = strategySelector;
       _votingStrategy = votingStrategy;
+      _structuredOutputSerializer = structuredOutputSerializer;
+      _structuredOutputType = structuredOutputType;
 
       // When telemetry is enabled with a non-default source/meter name, configure the
       // global activity source and meter to honour the user's OpenTelemetry builder setup.
@@ -143,6 +163,68 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
    /// <inheritdoc />
    public event Action<Exception, string>? OnError;
+
+    /// <summary>
+    ///    Runs the debate and returns the result with a typed, schema-validated verdict.
+    ///    When structured output is configured (F-05), the Chairman's synthesis is
+    ///    augmented with a JSON schema and one retry is performed on deserialisation
+    ///    failure. When not configured, falls back to the default DIM behaviour.
+    /// </summary>
+    public async Task<(DebateResult Result, TVerdict? Verdict)> ExecuteTypedAsync<TVerdict>(
+        CancellationToken ct = default) where TVerdict : class
+    {
+        var result = await ExecuteAsync(ct).ConfigureAwait(false);
+
+        if (_structuredOutputSerializer is null || _structuredOutputType is null)
+        {
+            // Structured output not configured — use the default GetTypedVerdict path.
+            return (result, result.GetTypedVerdict<TVerdict>());
+        }
+
+        // Try to deserialize the existing FinalVerdict first.
+        var serializer = _structuredOutputSerializer;
+        TVerdict? verdict = null;
+        try { verdict = serializer.Deserialize<TVerdict>(result.FinalVerdict ?? ""); }
+        catch { /* expected — will retry below */ }
+
+        if (verdict is not null)
+            return (result with { TypedVerdict = verdict }, verdict);
+
+        // Retry: re-prompt the Chairman with the schema-augmented synthesis prompt.
+        if (Chairman is null || string.IsNullOrWhiteSpace(result.FinalVerdict))
+        {
+            Log(ExecutionLog.Warn("StructuredOutput", "Cannot retry — no Chairman or no prior verdict."));
+            return (result, null);
+        }
+
+        Log(ExecutionLog.Info("StructuredOutput", "Deserialisation failed — retrying with correction prompt…"));
+        var schema = serializer.GenerateSchema<TVerdict>();
+        var correctionPrompt = JsonSchemaOutputSerializer.BuildCorrectionPrompt(
+            result.FinalVerdict, "Initial deserialisation failed", schema, typeof(TVerdict).Name);
+
+        try
+        {
+            var retryResponse = await Chairman.AskAsync(
+                _context.SystemPrompt, correctionPrompt, _temperature, ct);
+            verdict = serializer.Deserialize<TVerdict>(retryResponse);
+            if (verdict is not null)
+            {
+                Log(ExecutionLog.Info("StructuredOutput", "Retry succeeded — verdict deserialised."));
+                // Stamp the typed verdict and the corrected final verdict on the result.
+                result = result with { FinalVerdict = retryResponse, TypedVerdict = verdict };
+            }
+            else
+            {
+                Log(ExecutionLog.Warn("StructuredOutput", "Retry also failed to produce a valid verdict."));
+            }
+        }
+        catch (Exception ex)
+        {
+            Log(ExecutionLog.Warn("StructuredOutput", $"Retry failed: {ex.Message}"));
+        }
+
+        return (result, verdict);
+    }
 
     /// <summary>
     ///    Runs the debate and returns the full result.
