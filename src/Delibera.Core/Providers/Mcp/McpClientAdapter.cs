@@ -1,5 +1,3 @@
-using Delibera.Core.Resilience;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
@@ -31,7 +29,7 @@ public sealed class McpClientAdapter : IMcpClient
    /// <summary>Creates a standalone adapter for the given MCP server configuration (no DI, no resilience).</summary>
    /// <param name="config">Server connection configuration.</param>
    public McpClientAdapter(McpServerConfig config)
-      : this(config, httpClientFactory: null, httpClientName: null, loggerFactory: null)
+      : this(config, null, null, null)
    {
    }
 
@@ -212,7 +210,7 @@ public sealed class McpClientAdapter : IMcpClient
          // attached via AddResilienceHandler). The transport disposes the
          // HttpClient on shutdown because ownsHttpClient=true.
          var httpClient = factory.CreateClient(httpClientName);
-         return new HttpClientTransport(options, httpClient, loggerFactory, ownsHttpClient: true);
+         return new HttpClientTransport(options, httpClient, loggerFactory, true);
       }
 
       return loggerFactory is null

@@ -42,18 +42,19 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
       Action<DebateRound>? onRoundCompleted = null,
       CancellationToken ct = default);
 
-    /// <inheritdoc cref="IDebateStrategyWithOptions.ExecuteAsync(IReadOnlyList{CouncilMember}, PromptContext, CouncilMember?, KnowledgeKeeper?, Operator?, DebateExecutionOptions, int, float, Action{DebateRound}?, CancellationToken)" />
-    public abstract Task<DebateResult> ExecuteAsync(
-       IReadOnlyList<CouncilMember> members,
-       PromptContext context,
-       CouncilMember? chairman,
-       KnowledgeKeeper? knowledgeKeeper,
-       Operator? @operator,
-       DebateExecutionOptions executionOptions,
-       int maxRounds = 4,
-       float temperature = 0.7f,
-       Action<DebateRound>? onRoundCompleted = null,
-       CancellationToken ct = default);
+   /// <inheritdoc
+   ///    cref="IDebateStrategyWithOptions.ExecuteAsync(IReadOnlyList{CouncilMember}, PromptContext, CouncilMember?, KnowledgeKeeper?, Operator?, DebateExecutionOptions, int, float, Action{DebateRound}?, CancellationToken)" />
+   public abstract Task<DebateResult> ExecuteAsync(
+      IReadOnlyList<CouncilMember> members,
+      PromptContext context,
+      CouncilMember? chairman,
+      KnowledgeKeeper? knowledgeKeeper,
+      Operator? @operator,
+      DebateExecutionOptions executionOptions,
+      int maxRounds = 4,
+      float temperature = 0.7f,
+      Action<DebateRound>? onRoundCompleted = null,
+      CancellationToken ct = default);
 
    // ──────────────────────────────────────────────
    // Shared helpers
@@ -313,34 +314,34 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
       return interactions;
    }
 
-    /// <summary>
-    ///    Builds the user prompt for a specific round, respecting AutoChunking when enabled.
-    ///    When the context has a <see cref="PromptContext.ChunkingPlan" /> and
-    ///    <see cref="PromptContext.AutoChunkingEnabled" /> is <c>true</c>, returns the
-    ///    chunk-appropriate prompt. Otherwise falls back to <see cref="PromptContext.GetFullUserPrompt" />.
-    /// </summary>
-    /// <param name="context">The prompt context.</param>
-    /// <param name="roundNumber">Current round number (1-based).</param>
-    /// <param name="totalRounds">Total number of rounds in the debate.</param>
-    /// <param name="previousRounds">Previous rounds for context continuity (optional).</param>
-    /// <returns>The formatted user prompt for this round.</returns>
-    protected static string BuildChunkedPrompt(
-       PromptContext context,
-       int roundNumber,
-       int totalRounds,
-       IReadOnlyList<DebateRound>? previousRounds = null)
-    {
-       if (context.AutoChunkingEnabled && context.ChunkingPlan is not null)
-          return context.GetChunkedUserPrompt(roundNumber, totalRounds, previousRounds);
+   /// <summary>
+   ///    Builds the user prompt for a specific round, respecting AutoChunking when enabled.
+   ///    When the context has a <see cref="PromptContext.ChunkingPlan" /> and
+   ///    <see cref="PromptContext.AutoChunkingEnabled" /> is <c>true</c>, returns the
+   ///    chunk-appropriate prompt. Otherwise falls back to <see cref="PromptContext.GetFullUserPrompt" />.
+   /// </summary>
+   /// <param name="context">The prompt context.</param>
+   /// <param name="roundNumber">Current round number (1-based).</param>
+   /// <param name="totalRounds">Total number of rounds in the debate.</param>
+   /// <param name="previousRounds">Previous rounds for context continuity (optional).</param>
+   /// <returns>The formatted user prompt for this round.</returns>
+   protected static string BuildChunkedPrompt(
+      PromptContext context,
+      int roundNumber,
+      int totalRounds,
+      IReadOnlyList<DebateRound>? previousRounds = null)
+   {
+      if (context.AutoChunkingEnabled && context.ChunkingPlan is not null)
+         return context.GetChunkedUserPrompt(roundNumber, totalRounds, previousRounds);
 
-       return context.GetFullUserPrompt();
-    }
+      return context.GetFullUserPrompt();
+   }
 
-    /// <summary>
-    ///    Formats Operator interactions into a context block that can be injected into the
-    ///    next round's prompt so participants can use the Operator's findings.
-    /// </summary>
-    protected static string FormatOperatorInteractions(IReadOnlyList<OperatorInteraction> interactions)
+   /// <summary>
+   ///    Formats Operator interactions into a context block that can be injected into the
+   ///    next round's prompt so participants can use the Operator's findings.
+   /// </summary>
+   protected static string FormatOperatorInteractions(IReadOnlyList<OperatorInteraction> interactions)
    {
       if (interactions is not { Count: > 0 }) return string.Empty;
 

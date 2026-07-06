@@ -86,7 +86,7 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
                        Provide a clear, factual answer based on the context above.
                        Cite relevant source numbers in your answer.
                        """;
-          sourceChunks = CountOccurrences(context, "[Source ");
+         sourceChunks = CountOccurrences(context, "[Source ");
       }
 
       // 2. Generate answer via dedicated LLM

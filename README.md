@@ -52,6 +52,22 @@ well-reasoned outcomes** rather than single-model guesses.
 | **🛑 Cooperative Cancellation**| Every public async method accepts a `CancellationToken`; a host shutdown or user cancel aborts the debate mid-flight (rounds, LLM calls, MCP tools, RAG, file saves) |
 | **🧱 Modern C# 15 (preview)** | Built on .NET 10 with `LangVersion=preview`, file-scoped namespaces, records, span/SIMD hot paths |
 
+### 🆕 What's new in v10.2.6
+
+| Feature | Description |
+| --- | --- |
+| **🌊 Async Streaming Council** | `ICouncilExecutor.StreamDebateAsync` yields each `DebateRound` live via an internal `Channel<DebateRound>` bridge — perfect for ASP.NET Core SSE, WebSocket, Blazor, and CLI live output. `DebateRound.Total` + `IsFinal` + `LastStreamedResult` round metadata included. |
+| **🗳️ Pluggable Vote Engine** | `IVotingStrategy` with built-in `MajorityVotingStrategy`, `BordaCountVotingStrategy`, `WeightedVotingStrategy` (per-member `MemberWeights`). `Chairman.CreateVoting(...)` swaps the synthesis path for a verifiable decision tally rendered as a 🗳️ Voting Tally section in the Markdown output. |
+| **💾 Debate Persistence & Resume** | `IDebateStore` + `FileDebateStore` (atomic JSON write-then-rename, `RetentionDays`) + `InMemoryDebateStore`. `CouncilBuilder.WithPersistence(...)` saves a checkpoint after every round; `ResumeFrom(debateId)` continues from the last completed round after a crash or pause. |
+| **🧠 Agent Memory** | `IAgentMemory` with `InMemoryAgentMemory` (Jaccard similarity), `QdrantAgentMemory` (per-agent collection), `PgVectorAgentMemory` (shared table filtered by `agent_name`). `CouncilBuilder.WithAgentMemory(...)` recalls before + persists after every debate. |
+| **📊 OpenTelemetry-style Observability** | `DeliberaActivitySource` + `DeliberaMeter` with histograms, counters, and gauge for spans like `delibera.council.execute`, `delibera.council.round`, `delibera.compression`. Zero-overhead when no listener is attached. `CouncilBuilder.WithTelemetry(...)` enables it. |
+| **📋 Structured Output** | `IStructuredOutputSerializer` + `JsonSchemaOutputSerializer` (uses .NET 10 `JsonSchemaExporter`). `ICouncilExecutor.ExecuteTypedAsync<TVerdict>` returns a strongly-typed verdict deserialised from the Chairman's response. One automatic retry on deserialisation failure. |
+| **🔄 Adaptive Strategy Switching** | `IStrategySelector` + `AdaptiveStrategySelector` swap the debate strategy mid-flight when responses stagnate (`StagnationThreshold` consecutive low-diversity rounds, Levenshtein fallback when no embedding provider). |
+| **📋 Debate Templates** | 6 built-in templates (`DebateTemplate.ArchitectureReview`, `RiskAssessment`, `CodeReview`, `ProductDecision`, `SecurityAudit`, `DataArchitecture`) with pre-configured participants, personas, strategies, and chairmen. |
+| **⚡ Quick Wins** | `DebateResult.ToHtml()` + `SaveToHtmlAsync()`; `CouncilBuilder.WithTimeout(TimeSpan)`; `Persona` presets; `CouncilBenchmark` for side-by-side model comparison; `WithParticipantLimit(int)` safety guard. |
+
+> See [CHANGELOG.md](CHANGELOG.md) for the full v10.2.6 release notes and [docs/v10.2.6.md](docs/v10.2.6.md) for the original roadmap.
+
 ---
 
 ## 📑 Table of Contents

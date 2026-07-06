@@ -39,7 +39,14 @@ public static class CancellationExample
          if (!cts.IsCancellationRequested)
          {
             Console.WriteLine("\n⚠️  Ctrl+C detected — signaling cancellation...");
-            try { cts.Cancel(); } catch (ObjectDisposedException) { /* race */ }
+            try
+            {
+               cts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+               /* race */
+            }
          }
       };
 
@@ -71,6 +78,7 @@ public static class CancellationExample
             Console.WriteLine("     just run the example against any reachable Ollama endpoint.");
             return;
          }
+
          ollama = factory.CreateOllama("https://api.ollama.com", apiKey);
       }
 
@@ -107,7 +115,10 @@ public static class CancellationExample
                await Task.Delay(TimeSpan.FromSeconds(2), heartbeatCts.Token);
             }
          }
-         catch (OperationCanceledException) { /* expected on shutdown */ }
+         catch (OperationCanceledException)
+         {
+            /* expected on shutdown */
+         }
       });
 
       // 4. Run the council with the token.
@@ -138,7 +149,14 @@ public static class CancellationExample
       finally
       {
          heartbeatCts.Cancel();
-         try { await heartbeat; } catch { /* ignore */ }
+         try
+         {
+            await heartbeat;
+         }
+         catch
+         {
+            /* ignore */
+         }
       }
    }
 }

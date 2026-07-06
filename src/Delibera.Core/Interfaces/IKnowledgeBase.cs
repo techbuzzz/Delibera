@@ -11,8 +11,8 @@ public interface IKnowledgeBase
 
    /// <summary>
    ///    Loads knowledge from the specified source (file path or URI).
-   ///    Implementations should honor <paramref name="ct"/> cooperatively and
-   ///    throw <see cref="OperationCanceledException"/> when cancellation is requested.
+   ///    Implementations should honor <paramref name="ct" /> cooperatively and
+   ///    throw <see cref="OperationCanceledException" /> when cancellation is requested.
    /// </summary>
    /// <param name="source">File path or URI identifying the knowledge source.</param>
    /// <param name="ct">Cancellation token; checked at entry and during the load.</param>
@@ -21,7 +21,7 @@ public interface IKnowledgeBase
 
    /// <summary>
    ///    Loads knowledge from multiple sources sequentially.
-   ///    Implementations should honor <paramref name="ct"/> cooperatively and
+   ///    Implementations should honor <paramref name="ct" /> cooperatively and
    ///    check for cancellation between sources.
    /// </summary>
    /// <param name="sources">The knowledge sources to load.</param>

@@ -23,8 +23,8 @@ namespace Delibera.Core.Compression;
 /// </remarks>
 public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvider = null) : IContextCompressor
 {
-   private readonly IEmbeddingProvider? _embeddingProvider = embeddingProvider;
    private const int BatchSize = 16;
+   private readonly IEmbeddingProvider? _embeddingProvider = embeddingProvider;
 
    /// <inheritdoc />
    public string StrategyName => "Deduplication";
@@ -100,10 +100,8 @@ public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvide
    private static bool IsDuplicate(ReadOnlySpan<float> candidate, List<float[]> keptVectors, double threshold)
    {
       foreach (var kv in CollectionsMarshal.AsSpan(keptVectors))
-      {
          if (SemanticCompressor.CosineSimilarity(candidate, kv) >= threshold)
             return true;
-      }
 
       return false;
    }
@@ -121,13 +119,11 @@ public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvide
          var isDuplicate = false;
 
          foreach (var k in CollectionsMarshal.AsSpan(keptSets))
-         {
             if (JaccardSimilarity(in ws, in k) >= threshold)
             {
                isDuplicate = true;
                break;
             }
-         }
 
          if (!isDuplicate)
          {
@@ -144,8 +140,12 @@ public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvide
    /// </summary>
    private static double JaccardSimilarity(in WordSet a, in WordSet b)
    {
-      var longer = a.Count > b.Count ? a : b;
-      var shorter = a.Count > b.Count ? b : a;
+      var longer = a.Count > b.Count
+         ? a
+         : b;
+      var shorter = a.Count > b.Count
+         ? b
+         : a;
 
       if (longer.Count == 0) return 0;
 
@@ -157,7 +157,9 @@ public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvide
             intersection++;
 
       var union = a.Count + b.Count - intersection;
-      return union > 0 ? (double)intersection / union : 0;
+      return union > 0
+         ? (double)intersection / union
+         : 0;
    }
 
    // Reusable word-bag to avoid allocating HashSet<string> per comparison.

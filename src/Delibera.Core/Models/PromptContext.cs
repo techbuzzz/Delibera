@@ -107,8 +107,8 @@ public sealed record PromptContext(
       {
          sb.AppendLine("### Previously Reviewed (Summary):");
          sb.AppendLine($"(Rounds 1–{roundNumber - 1} covered chunks 1–" +
-            $"{Math.Min((roundNumber - 1) * perRound, plan.TotalChunks)} " +
-            $"of {plan.TotalChunks})");
+                       $"{Math.Min((roundNumber - 1) * perRound, plan.TotalChunks)} " +
+                       $"of {plan.TotalChunks})");
          sb.AppendLine();
       }
 

@@ -71,6 +71,7 @@ public static class ResilientHttpClientExtensions
          foreach (var header in source.Content.Headers)
             clone.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
       }
+
       foreach (var header in source.Headers)
          clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
       foreach (var prop in source.Options)

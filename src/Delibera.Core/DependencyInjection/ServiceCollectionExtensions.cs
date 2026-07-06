@@ -1,4 +1,3 @@
-using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Council;
 using Delibera.Core.Providers;
@@ -9,8 +8,8 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Http.Resilience;
+using Microsoft.Extensions.Options;
 using Polly;
 
 namespace Delibera.Core.DependencyInjection;
@@ -20,6 +19,23 @@ namespace Delibera.Core.DependencyInjection;
 /// </summary>
 public static class ServiceCollectionExtensions
 {
+   private static void AddNamedHttpClient(IServiceCollection services, string name, string pipelineName)
+   {
+      services.AddDeliberaHttpClient(name, pipelineName);
+   }
+
+   private static DelayBackoffType ParseBackoffType(string value)
+   {
+      if (string.IsNullOrWhiteSpace(value))
+         return DelayBackoffType.Exponential;
+      return value.Trim().ToLowerInvariant() switch
+      {
+         "constant" => DelayBackoffType.Constant,
+         "linear" => DelayBackoffType.Linear,
+         _ => DelayBackoffType.Exponential
+      };
+   }
+
    /// <param name="services">The service collection.</param>
    extension(IServiceCollection services)
    {
@@ -95,29 +111,29 @@ public static class ServiceCollectionExtensions
          services.AddDelibera(configuration, sectionName);
          services.TryAddSingleton(loggerFactory);
 
-      // Replace the transient builder registration so every resolved ICouncilBuilder
-      // gets a logger injected automatically and CouncilOptions applied from DI.
-      // Consumers who build the executor themselves can still call WithLogger(...)
-      // or WithOptions(...) explicitly to override.
-      services.Replace(ServiceDescriptor.Transient<ICouncilBuilder>(sp =>
-      {
-         // Resolve CouncilOptions from DI if available.
-         var options = sp.GetService<Microsoft.Extensions.Options.IOptions<CouncilOptions>>()?.Value;
+         // Replace the transient builder registration so every resolved ICouncilBuilder
+         // gets a logger injected automatically and CouncilOptions applied from DI.
+         // Consumers who build the executor themselves can still call WithLogger(...)
+         // or WithOptions(...) explicitly to override.
+         services.Replace(ServiceDescriptor.Transient<ICouncilBuilder>(sp =>
+         {
+            // Resolve CouncilOptions from DI if available.
+            var options = sp.GetService<IOptions<CouncilOptions>>()?.Value;
 
-         // Create builder — if options are available, pass them to the constructor
-         // so all settings (strategy, rounds, temperature, compression, auto-chunking, etc.)
-         // are applied automatically.
-         var builder = options is not null
-            ? new CouncilBuilder(options)
-            : new CouncilBuilder();
+            // Create builder — if options are available, pass them to the constructor
+            // so all settings (strategy, rounds, temperature, compression, auto-chunking, etc.)
+            // are applied automatically.
+            var builder = options is not null
+               ? new CouncilBuilder(options)
+               : new CouncilBuilder();
 
-         // Attach logger from DI.
-         var lf = sp.GetService<ILoggerFactory>();
-         if (lf is not null)
-            builder.WithLogger(lf.CreateLogger("Delibera.Core.Council"));
+            // Attach logger from DI.
+            var lf = sp.GetService<ILoggerFactory>();
+            if (lf is not null)
+               builder.WithLogger(lf.CreateLogger("Delibera.Core.Council"));
 
-         return builder;
-      }));
+            return builder;
+         }));
 
          return services;
       }
@@ -135,7 +151,9 @@ public static class ServiceCollectionExtensions
       ///    The named HttpClients exposed are:
       ///    <list type="bullet">
       ///       <item><c>Delibera.Ollama.Local</c> / <c>Delibera.Ollama.Cloud</c> — base address must be set by the caller.</item>
-      ///       <item><c>Delibera.YandexGPT</c></item>
+      ///       <item>
+      ///          <c>Delibera.YandexGPT</c>
+      ///       </item>
       ///       <item><c>Delibera.Mcp.{ServerName}</c> — registered lazily by the MCP factory.</item>
       ///    </list>
       /// </remarks>
@@ -148,7 +166,7 @@ public static class ServiceCollectionExtensions
             services.Configure(configure);
 
          // Register the pipeline factory (and any consumer-supplied custom pipelines).
-         services.AddDeliberaResilienceCore(customPipelines: null);
+         services.AddDeliberaResilienceCore(null);
 
          // Register the three built-in HttpClients with Polly resilience handlers attached.
          AddNamedHttpClient(services, "Delibera.Ollama.Local", ResilienceOptions.LocalPipelineName);
@@ -182,11 +200,11 @@ public static class ServiceCollectionExtensions
          builder.AddResilienceHandler(pipelineName, (pipelineBuilder, context) =>
          {
             // Resolve the live ResilienceOptions snapshot so option changes are honoured.
-            var monitor = context.ServiceProvider.GetService<Microsoft.Extensions.Options.IOptionsMonitor<ResilienceOptions>>();
+            var monitor = context.ServiceProvider.GetService<IOptionsMonitor<ResilienceOptions>>();
             var opts = monitor is not null
-               ? (pipelineName == ResilienceOptions.LocalPipelineName || pipelineName == ResilienceOptions.CloudPipelineName
+               ? pipelineName == ResilienceOptions.LocalPipelineName || pipelineName == ResilienceOptions.CloudPipelineName
                   ? monitor.Get(ResilienceOptions.DefaultPipelineName)
-                  : monitor.CurrentValue)
+                  : monitor.CurrentValue
                : new ResilienceOptions();
 
             if (!opts.Enabled)
@@ -196,7 +214,9 @@ public static class ServiceCollectionExtensions
             // everything else (Cloud, Default, custom) retries on the configured status codes.
             var statusCodes = pipelineName == ResilienceOptions.LocalPipelineName
                ? null
-               : opts.RetryableStatusCodes is { Length: > 0 } ? opts.RetryableStatusCodes : null;
+               : opts.RetryableStatusCodes is { Length: > 0 }
+                  ? opts.RetryableStatusCodes
+                  : null;
 
             var retry = new HttpRetryStrategyOptions
             {
@@ -228,23 +248,6 @@ public static class ServiceCollectionExtensions
 
          return builder;
       }
-   }
-
-   private static void AddNamedHttpClient(IServiceCollection services, string name, string pipelineName)
-   {
-      services.AddDeliberaHttpClient(name, pipelineName);
-   }
-
-   private static DelayBackoffType ParseBackoffType(string value)
-   {
-      if (string.IsNullOrWhiteSpace(value))
-         return DelayBackoffType.Exponential;
-      return value.Trim().ToLowerInvariant() switch
-      {
-         "constant" => DelayBackoffType.Constant,
-         "linear" => DelayBackoffType.Linear,
-         _ => DelayBackoffType.Exponential
-      };
    }
 
    extension(IServiceCollection services)
