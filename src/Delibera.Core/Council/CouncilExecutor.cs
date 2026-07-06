@@ -1,7 +1,9 @@
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
+using Delibera.Core.DependencyInjection;
 using Delibera.Core.Output;
+using Delibera.Core.Persistence;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
 using System.Text.Json;
@@ -28,6 +30,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
    private readonly IVotingStrategy? _votingStrategy;
    private readonly IStructuredOutputSerializer? _structuredOutputSerializer;
    private readonly Type? _structuredOutputType;
+   private readonly IDebateStore? _debateStore;
+   private readonly string? _resumeFromDebateId;
 
    /// <summary>
    ///    The configured debate-level wall-clock timeout. <c>null</c> means no timeout.
@@ -62,6 +66,19 @@ public sealed class CouncilExecutor : ICouncilExecutor
    public Type? StructuredOutputType => _structuredOutputType;
 
    /// <summary>
+   ///    The debate store used for checkpointing, or <c>null</c> when persistence
+   ///    is disabled. Set via
+   ///    <see cref="ICouncilBuilder.WithPersistence(IDebateStore)"/>.
+   /// </summary>
+   public IDebateStore? DebateStore => _debateStore;
+
+   /// <summary>
+   ///    The debate identifier to resume from, or <c>null</c> for a fresh debate.
+   ///    Set via <see cref="ICouncilBuilder.ResumeFrom(string)"/>.
+   /// </summary>
+   public string? ResumeFromDebateId => _resumeFromDebateId;
+
+   /// <summary>
    ///    Whether telemetry instrumentation is active for this executor. When <c>true</c>,
    ///    <see cref="ExecuteAsync"/> emits <see cref="System.Diagnostics.Activity"/> spans
    ///    and records metrics via <see cref="DeliberaMeter"/>.
@@ -88,7 +105,9 @@ public sealed class CouncilExecutor : ICouncilExecutor
       IStrategySelector? strategySelector = null,
       IVotingStrategy? votingStrategy = null,
       IStructuredOutputSerializer? structuredOutputSerializer = null,
-      Type? structuredOutputType = null)
+      Type? structuredOutputType = null,
+      IDebateStore? debateStore = null,
+      string? resumeFromDebateId = null)
    {
       Members = members;
       Chairman = chairman;
@@ -110,6 +129,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
       _votingStrategy = votingStrategy;
       _structuredOutputSerializer = structuredOutputSerializer;
       _structuredOutputType = structuredOutputType;
+      _debateStore = debateStore;
+      _resumeFromDebateId = resumeFromDebateId;
 
       // When telemetry is enabled with a non-default source/meter name, configure the
       // global activity source and meter to honour the user's OpenTelemetry builder setup.
@@ -352,8 +373,9 @@ public sealed class CouncilExecutor : ICouncilExecutor
             }
          }
 
-         // Track rounds completed for the adaptive strategy selector (F-09).
-         var completedRoundsForSelector = new List<DebateRound>();
+         // Track rounds completed for the adaptive strategy selector (F-09)
+         // AND for checkpoint persistence (F-03). Always populated.
+         var completedRounds = new List<DebateRound>();
          IDebateStrategy? pendingSwitch = null;
 
          var result = await Strategy.ExecuteAsync(
@@ -388,12 +410,11 @@ public sealed class CouncilExecutor : ICouncilExecutor
                // F-09: Adaptive strategy switching — consult the selector after each round.
                if (_strategySelector is { } selector)
                {
-                  completedRoundsForSelector.Add(round);
                   var diversity = ComputeResponseDiversity(round);
                   var progress = new DebateProgress(
                      CurrentRound: round.RoundNumber,
                      MaxRounds: _maxRounds,
-                     CompletedRounds: completedRoundsForSelector,
+                     CompletedRounds: completedRounds,
                      ResponseDiversityScore: diversity,
                      IsStalemate: false);
                   try
@@ -412,6 +433,15 @@ public sealed class CouncilExecutor : ICouncilExecutor
                      ReportError(ex, "StrategySelector");
                   }
                }
+
+               // F-03: Save a checkpoint after each round so the debate can be resumed.
+               if (_debateStore is { } store)
+               {
+                  SaveCheckpointAsync(store, round, completedRounds, ct).GetAwaiter().GetResult();
+               }
+
+               // Track the round AFTER the callbacks so it's included in the next checkpoint.
+               completedRounds.Add(round);
 
                OnRoundCompleted?.Invoke(round);
             },
@@ -858,10 +888,77 @@ public sealed class CouncilExecutor : ICouncilExecutor
     private static double TextSimilarity(string a, string b)
     {
        if (a == b) return 1.0;
-       if (a.Length == 0 || b.Length == 0) return 0.0;
-       var maxLen = Math.Max(a.Length, b.Length);
-       var dist = LevenshteinDistance(a, b);
-       return 1.0 - (double)dist / maxLen;
+        if (a.Length == 0 || b.Length == 0) return 0.0;
+        var maxLen = Math.Max(a.Length, b.Length);
+        var dist = LevenshteinDistance(a, b);
+        return 1.0 - (double)dist / maxLen;
+    }
+
+    /// <summary>
+    ///    F-03: Saves a checkpoint after a round completes. Tries to reuse the existing
+    ///    debate identifier (from <see cref="_resumeFromDebateId"/> or a same-question
+    ///    match in the store) so successive saves overwrite the same file. Errors
+    ///    are reported but do not abort the debate.
+    /// </summary>
+    private async Task SaveCheckpointAsync(
+        IDebateStore store,
+        DebateRound round,
+        List<DebateRound> completedRounds,
+        CancellationToken ct)
+    {
+        try
+        {
+            // Reuse the resume id if provided; otherwise try to find an existing
+            // checkpoint with the same question (a simple "continue the latest debate"
+            // heuristic for the most common use case).
+            string? existingId = _resumeFromDebateId;
+            if (existingId is not null)
+            {
+                var existing = await store.LoadCheckpointAsync(existingId, ct).ConfigureAwait(false);
+                if (existing is not null)
+                {
+                    existingId = existing.DebateId;
+                }
+            }
+            else
+            {
+                var list = await store.ListAsync(ct).ConfigureAwait(false);
+                var sameQuestion = list.FirstOrDefault(m => m.OriginalQuestion == _context.UserPrompt);
+                existingId = sameQuestion?.DebateId;
+            }
+
+            var options = CouncilOptionsSnapshot();
+            var checkpoint = new DebateCheckpoint(
+                DebateId: existingId ?? string.Empty, // empty → store generates a new id
+                CreatedAt: DateTimeOffset.UtcNow,
+                LastCompletedRound: round.RoundNumber,
+                CompletedRounds: completedRounds,
+                Options: options,
+                OriginalQuestion: _context.UserPrompt);
+            var id = await store.SaveCheckpointAsync(checkpoint, ct).ConfigureAwait(false);
+            Log(ExecutionLog.Trace("Persistence", $"Checkpoint saved: {id} (round {round.RoundNumber}/{_maxRounds})"));
+        }
+        catch (Exception ex)
+        {
+            ReportError(ex, "Persistence");
+        }
+    }
+
+    /// <summary>
+    ///    Builds a <see cref="CouncilOptions"/> snapshot from the executor's current
+    ///    configuration so a resumed debate can reapply the same settings.
+    /// </summary>
+    private CouncilOptions CouncilOptionsSnapshot()
+    {
+        return new CouncilOptions
+        {
+            Strategy = Strategy.StrategyName,
+            MaxRounds = _maxRounds,
+            Temperature = _temperature,
+            SystemPrompt = _context.SystemPrompt,
+            ResponseLanguage = ExecutionOptions.ResponseLanguage,
+            MaxDegreeOfParallelism = ExecutionOptions.MaxDegreeOfParallelism
+        };
     }
 
     private static int LevenshteinDistance(string a, string b)

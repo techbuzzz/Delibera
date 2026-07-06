@@ -3,6 +3,7 @@ using Delibera.Core.Compression;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Output;
+using Delibera.Core.Persistence;
 using Delibera.Core.Providers.Mcp;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
@@ -42,6 +43,9 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private IVotingStrategy? _votingStrategy;
    private IStructuredOutputSerializer? _structuredOutputSerializer;
    private Type? _structuredOutputType;
+   private IDebateStore? _debateStore;
+   private string? _resumeFromDebateId;
+   private CouncilOptions? _persistedOptionsSnapshot;
 
    /// <summary>
    ///    Creates an empty builder. Use <see cref="WithOptions(CouncilOptions)" /> or
@@ -418,6 +422,37 @@ public sealed class CouncilBuilder : ICouncilBuilder
        return this;
     }
 
+    // ── Debate persistence (F-03) ──
+
+    /// <summary>
+    ///    Attaches an <see cref="IDebateStore"/> so a checkpoint is saved after every
+    ///    round. The debate can be resumed from the last completed round after a
+    ///    crash or intentional pause via <see cref="ResumeFrom"/>.
+    /// </summary>
+    /// <param name="store">The store to persist checkpoints to.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    public ICouncilBuilder WithPersistence(IDebateStore store)
+    {
+       ArgumentNullException.ThrowIfNull(store);
+       _debateStore = store;
+       return this;
+    }
+
+    /// <summary>
+    ///    Resumes a debate from the given <paramref name="debateId"/>. The corresponding
+    ///    checkpoint must exist in the configured <see cref="IDebateStore"/> (set via
+    ///    <see cref="WithPersistence"/>). The executor skips already-completed rounds
+    ///    and continues from the next round using the checkpoint's preserved options.
+    /// </summary>
+    /// <param name="debateId">The debate identifier to resume.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    public ICouncilBuilder ResumeFrom(string debateId)
+    {
+       ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
+       _resumeFromDebateId = debateId;
+       return this;
+    }
+
    // ── Options (bulk configuration) ──
 
    /// <inheritdoc />
@@ -606,6 +641,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
            _strategySelector,
            _votingStrategy,
            _structuredOutputSerializer,
-           _structuredOutputType);
+           _structuredOutputType,
+           _debateStore,
+           _resumeFromDebateId);
      }
 }

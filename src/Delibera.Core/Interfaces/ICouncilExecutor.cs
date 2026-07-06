@@ -1,6 +1,7 @@
 using Delibera.Core.Council;
 using Delibera.Core.Debate;
 using Delibera.Core.Output;
+using Delibera.Core.Persistence;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
 using System.Text.Json;
@@ -71,6 +72,19 @@ public interface ICouncilExecutor
     ///    The target verdict type for structured output, or <c>null</c> when disabled.
     /// </summary>
     Type? StructuredOutputType { get; }
+
+    /// <summary>
+    ///    The debate store used for checkpointing, or <c>null</c> when persistence
+    ///    is disabled. Set via
+    ///    <see cref="ICouncilBuilder.WithPersistence(IDebateStore)"/>.
+    /// </summary>
+    IDebateStore? DebateStore { get; }
+
+    /// <summary>
+    ///    The debate identifier to resume from, or <c>null</c> for a fresh debate.
+    ///    Set via <see cref="ICouncilBuilder.ResumeFrom(string)"/>.
+    /// </summary>
+    string? ResumeFromDebateId { get; }
 
     /// <summary>
     ///    The result of the most recent <see cref="StreamDebateAsync"/> call, once the

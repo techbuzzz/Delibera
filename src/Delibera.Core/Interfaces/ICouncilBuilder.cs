@@ -3,6 +3,7 @@ using Delibera.Core.Council;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Output;
+using Delibera.Core.Persistence;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
 
@@ -299,6 +300,24 @@ public interface ICouncilBuilder
     /// </param>
     /// <returns>This builder for fluent chaining.</returns>
     ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null) where TVerdict : class;
+
+    /// <summary>
+    ///    Attaches an <see cref="IDebateStore"/> so a checkpoint is saved after every
+    ///    round (F-03). The debate can be resumed from the last completed round via
+    ///    <see cref="ResumeFrom"/>.
+    /// </summary>
+    /// <param name="store">The store to persist checkpoints to.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder WithPersistence(IDebateStore store);
+
+    /// <summary>
+    ///    Resumes a debate from the given <paramref name="debateId"/> (F-03). The
+    ///    corresponding checkpoint must exist in the configured
+    ///    <see cref="IDebateStore"/>.
+    /// </summary>
+    /// <param name="debateId">The debate identifier to resume.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder ResumeFrom(string debateId);
 
    /// <summary>
    ///    Applies a pre-built <see cref="CouncilOptions" /> snapshot to the builder.
