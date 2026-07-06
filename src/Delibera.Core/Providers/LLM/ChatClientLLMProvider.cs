@@ -54,7 +54,7 @@ public sealed class ChatClientLLMProvider : ILLMProvider
    }
 
    /// <summary>The default model id reported by the underlying client metadata (may be <c>null</c>).</summary>
-   public string? DefaultModelId { get; }
+   private string? DefaultModelId { get; }
 
    /// <summary>Exposes the wrapped <see cref="IChatClient" /> for advanced scenarios and middleware composition.</summary>
    public IChatClient ChatClient { get; }
@@ -118,9 +118,9 @@ public sealed class ChatClientLLMProvider : ILLMProvider
       {
          var response = await ChatClient.GetResponseAsync(messages, options, ct);
          var text = response.Text.Trim();
-         if (string.IsNullOrWhiteSpace(text))
-            throw new InvalidOperationException($"Empty response from model '{model}' ({ProviderName}).");
-         return text;
+         return string.IsNullOrWhiteSpace(text)
+            ? throw new InvalidOperationException($"Empty response from model '{model}' ({ProviderName}).")
+            : text;
       }
       catch (OperationCanceledException) when (ct.IsCancellationRequested)
       {

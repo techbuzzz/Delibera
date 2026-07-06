@@ -39,9 +39,7 @@ public abstract class CachingFactory<TBuilder, TInstance>
    /// <summary>Returns a cached instance by name, or <c>null</c>.</summary>
    protected TInstance? GetInstance(string name)
    {
-      return _instances.TryGetValue(name, out var p)
-         ? p
-         : null;
+      return _instances.GetValueOrDefault(name);
    }
 
    /// <summary>Registers a builder for a new provider type (e.g., "OpenAI", "YandexGPT").</summary>
@@ -101,15 +99,16 @@ public abstract class CachingFactory<TBuilder, TInstance>
 public sealed class ProviderFactory : CachingFactory<Func<IConfigurationSection, ILLMProvider>, ILLMProvider>, ILLMProviderFactory
 {
    /// <summary>Creates a factory with the built-in Ollama provider registered.</summary>
-   public ProviderFactory()
-   {
-      RegisterBuilder("Ollama", config =>
-      {
-         var endpoint = config["Endpoint"] ?? "http://localhost:11434";
-         var apiKey = config["ApiKey"] ?? "";
-         return new OllamaProvider(endpoint, apiKey);
-      });
-   }
+    public ProviderFactory()
+    {
+       RegisterBuilder("Ollama", config =>
+       {
+          var endpoint = config["Endpoint"] ?? "http://localhost:11434";
+          var apiKey = config["ApiKey"] ?? "";
+          var maxOutputTokens = int.TryParse(config["MaxOutputTokens"], out var t) ? t : -1;
+          return new OllamaProvider(endpoint, apiKey, maxOutputTokens: maxOutputTokens);
+       });
+    }
 
    /// <inheritdoc />
    ILLMProviderFactory ILLMProviderFactory.RegisterBuilder(string providerType, Func<IConfigurationSection, ILLMProvider> builder)
@@ -138,44 +137,59 @@ public sealed class ProviderFactory : CachingFactory<Func<IConfigurationSection,
       return GetAllInstances();
    }
 
-   /// <summary>
-   ///    Creates an Ollama provider with direct parameters. The connection mode (local vs
-   ///    cloud) is inferred from <paramref name="apiKey" />: non-empty selects cloud,
-   ///    empty selects local. Prefer <see cref="CreateLocalOllama" /> /
-   ///    <see cref="CreateCloudOllama" /> for explicit control.
-   /// </summary>
-   public OllamaProvider CreateOllama(string endpoint, string apiKey = "")
-   {
-      var key = $"ollama:{endpoint}:{(string.IsNullOrWhiteSpace(apiKey) ? "local" : "cloud")}";
-      if (GetInstance(key) is OllamaProvider existing) return existing;
+    /// <summary>
+    ///    Creates an Ollama provider with direct parameters. The connection mode (local vs
+    ///    cloud) is inferred from <paramref name="apiKey" />: non-empty selects cloud,
+    ///    empty selects local. Prefer <see cref="CreateLocalOllama" /> /
+    ///    <see cref="CreateCloudOllama" /> for explicit control.
+    /// </summary>
+    /// <param name="endpoint">Ollama endpoint URL.</param>
+    /// <param name="apiKey">API key (empty for local server).</param>
+    /// <param name="maxOutputTokens">
+    ///    Per-call output token cap; <c>-1</c> = infinite generation (default, overrides
+    ///    OllamaSharp's 128-token default which truncates long responses mid-JSON).
+    /// </param>
+    public OllamaProvider CreateOllama(string endpoint, string apiKey = "", int maxOutputTokens = -1)
+    {
+       var key = $"ollama:{endpoint}:{(string.IsNullOrWhiteSpace(apiKey) ? "local" : "cloud")}:{maxOutputTokens}";
+       if (GetInstance(key) is OllamaProvider existing) return existing;
 
-      var provider = new OllamaProvider(endpoint, apiKey);
-      CacheInstance(key, provider);
-      return provider;
-   }
+       var provider = new OllamaProvider(endpoint, apiKey, maxOutputTokens: maxOutputTokens);
+       CacheInstance(key, provider);
+       return provider;
+    }
 
-   /// <summary>Creates a provider for a local Ollama server (e.g. <c>http://localhost:11434</c>).</summary>
-   public OllamaProvider CreateLocalOllama(string endpoint, TimeSpan? timeout = null)
-   {
-      var key = $"ollama:{endpoint}:local";
-      if (GetInstance(key) is OllamaProvider existing) return existing;
+    /// <summary>Creates a provider for a local Ollama server (e.g. <c>http://localhost:11434</c>).</summary>
+    /// <param name="endpoint">Ollama endpoint URL.</param>
+    /// <param name="timeout">HTTP timeout (null = local default).</param>
+    /// <param name="maxOutputTokens">Per-call output token cap; <c>-1</c> = infinite generation (default).</param>
+    public OllamaProvider CreateLocalOllama(string endpoint, TimeSpan? timeout = null,
+       int maxOutputTokens = -1)
+    {
+       var key = $"ollama:{endpoint}:local:{maxOutputTokens}";
+       if (GetInstance(key) is OllamaProvider existing) return existing;
 
-      var provider = OllamaProvider.ForLocal(endpoint, timeout);
-      CacheInstance(key, provider);
-      return provider;
-   }
+       var provider = OllamaProvider.ForLocal(endpoint, timeout, maxOutputTokens);
+       CacheInstance(key, provider);
+       return provider;
+    }
 
-   /// <summary>Creates a provider for Ollama Cloud (e.g. <c>https://api.ollama.com</c>).</summary>
-   public OllamaProvider CreateCloudOllama(string endpoint, string apiKey, TimeSpan? timeout = null)
-   {
-      ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
-      var key = $"ollama:{endpoint}:cloud";
-      if (GetInstance(key) is OllamaProvider existing) return existing;
+    /// <summary>Creates a provider for Ollama Cloud (e.g. <c>https://api.ollama.com</c>).</summary>
+    /// <param name="endpoint">Ollama endpoint URL.</param>
+    /// <param name="apiKey">Ollama Cloud API key.</param>
+    /// <param name="timeout">HTTP timeout (null = cloud default).</param>
+    /// <param name="maxOutputTokens">Per-call output token cap; <c>-1</c> = infinite generation (default).</param>
+    public OllamaProvider CreateCloudOllama(string endpoint, string apiKey, TimeSpan? timeout = null,
+       int maxOutputTokens = -1)
+    {
+       ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
+       var key = $"ollama:{endpoint}:cloud:{maxOutputTokens}";
+       if (GetInstance(key) is OllamaProvider existing) return existing;
 
-      var provider = OllamaProvider.ForCloud(endpoint, apiKey, timeout);
-      CacheInstance(key, provider);
-      return provider;
-   }
+       var provider = OllamaProvider.ForCloud(endpoint, apiKey, timeout, maxOutputTokens);
+       CacheInstance(key, provider);
+       return provider;
+    }
 
    /// <summary>
    ///    Creates (or returns a cached) <see cref="ChatClientLLMProvider" /> from any Microsoft.Extensions.AI
