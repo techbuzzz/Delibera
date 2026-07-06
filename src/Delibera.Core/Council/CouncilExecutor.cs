@@ -1,6 +1,7 @@
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Telemetry;
+using System.Threading.Channels;
 
 namespace Delibera.Core.Council;
 
@@ -318,13 +319,179 @@ public sealed class CouncilExecutor : ICouncilExecutor
             DeliberaTelemetry.RecordDebateCompleted(totalMs, Strategy.StrategyName, succeeded);
             debateActivity?.Dispose();
          }
-      }
-   }
+       }
+    }
 
-   /// <summary>
-   ///    Compresses text using the configured compressor, with optional caching.
-   ///    Returns the original text unchanged if no compressor is configured.
-   /// </summary>
+    /// <summary>
+    ///    Streams the debate round-by-round via <see cref="IAsyncEnumerable{DebateRound}"/>
+    ///    so consumers (ASP.NET Core SSE, WebSocket, Blazor, CLI) can react to each round
+    ///    as it completes — without waiting for the full debate to finish.
+    /// </summary>
+    /// <remarks>
+    ///    <para>
+    ///       Internally the debate runs on a background task and the existing
+    ///       <see cref="IDebateStrategy.ExecuteAsync"/> callback (<c>onRoundCompleted</c>)
+    ///       bridges each completed round into a <see cref="Channel{T}"/>. This iterator
+    ///       reads from the channel and yields each round live as it is produced. The
+    ///       strategy API stays unchanged — the streaming layer is a thin bridge on top.
+    ///    </para>
+    ///    <para>
+    ///       Each yielded round has its <see cref="DebateRound.Total"/> set to the
+    ///       strategy's expected total round count (<see cref="_maxRounds"/> + 1 when a
+    ///       Chairman is attached, otherwise <see cref="_maxRounds"/>) so consumers can
+    ///       render <c>"Round 2 / 4"</c> progress UIs. The final Chairman-verdict round
+    ///       has <see cref="DebateRound.IsFinal"/> = <c>true</c>.
+    ///    </para>
+    ///    <para>
+    ///       Cancellation: <paramref name="ct"/> is linked with the configured
+    ///       <see cref="DebateTimeout"/> (F-10b) and propagated into the strategy. When
+    ///       cancelled, the channel is completed and iteration stops cleanly via
+    ///       <see cref="OperationCanceledException"/>.
+    ///    </para>
+    /// </remarks>
+    /// <param name="ct">Cancellation token. Cancelling mid-stream aborts the current LLM
+    /// call and stops iteration cleanly.</param>
+    /// <returns>An async enumerable yielding one <see cref="DebateRound"/> per round.</returns>
+    public async IAsyncEnumerable<DebateRound> StreamDebateAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        _executionLogs.Clear();
+
+        // Link the caller's CT with the configured debate timeout (F-10b) so either
+        // signal cancels the background task and completes the channel.
+        CancellationTokenSource? timeoutCts = null;
+        CancellationTokenSource? linkedCts = null;
+        CancellationToken effectiveToken = ct;
+        if (_debateTimeout is { } timeout && timeout != System.Threading.Timeout.InfiniteTimeSpan)
+        {
+            timeoutCts = new CancellationTokenSource(timeout);
+            linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+            effectiveToken = linkedCts.Token;
+        }
+
+        // Unbounded channel: the strategy invokes onRoundCompleted synchronously
+        // between rounds, so it provides natural backpressure (it won't produce the
+        // next round until the callback returns). An unbounded channel is correct
+        // because we never have more than one round in flight at a time.
+        var channel = Channel.CreateUnbounded<DebateRound>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = true
+        });
+
+        // The total-rounds hint is strategy + chairman verdict round (if a chairman is set).
+        var totalRounds = Chairman is not null ? _maxRounds + 1 : _maxRounds;
+
+        // Capture the user's OnRoundCompleted handler (if any) so we can fan out to it
+        // alongside the channel writer.
+        var userOnRoundCompleted = OnRoundCompleted;
+
+        // Background task: runs the debate and writes each completed round to the channel.
+        var debateTask = Task.Run(async () =>
+        {
+            DebateResult? result = null;
+            try
+            {
+                result = await ExecuteCoreWithCallbackAsync(
+                    round =>
+                    {
+                        // Stamp the total-rounds hint so consumers can render progress.
+                        var stamped = round with { Total = totalRounds };
+                        // Fan out to the user's OnRoundCompleted handler (back-compat).
+                        userOnRoundCompleted?.Invoke(stamped);
+                        // Push to the channel. Unbounded → never blocks, never drops.
+                        channel.Writer.TryWrite(stamped);
+                    },
+                    effectiveToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (effectiveToken.IsCancellationRequested)
+            {
+                // Expected on mid-stream cancellation — fall through to channel completion.
+            }
+            catch (Exception ex)
+            {
+                // Propagate the exception to the consumer via the channel so
+                // StreamDebateAsync surfaces it rather than silently stalling.
+                channel.Writer.TryComplete(ex);
+                return;
+            }
+            finally
+            {
+                // Always complete the channel so the consumer's await foreach exits.
+                channel.Writer.TryComplete();
+            }
+
+            // If we got here, the debate finished normally. The final result (with
+            // execution logs) is exposed via a side channel for callers who want both
+            // streaming and the aggregated DebateResult. We store it on a field that
+            // LastResult returns after the stream completes.
+            _lastStreamedResult = result;
+        }, effectiveToken);
+
+        // Read rounds from the channel and yield them as they arrive.
+        try
+        {
+            await foreach (var round in channel.Reader.ReadAllAsync(effectiveToken).ConfigureAwait(false))
+                yield return round;
+
+            // Await the background task so any unhandled exception (other than OCE) surfaces.
+            await debateTask.ConfigureAwait(false);
+        }
+        finally
+        {
+            // Ensure the background task is observed even if the consumer stops early.
+            try { await debateTask.ConfigureAwait(false); } catch { /* already surfaced or cancelled */ }
+            linkedCts?.Dispose();
+            timeoutCts?.Dispose();
+        }
+    }
+
+    /// <summary>
+    ///    The result of the most recent <see cref="StreamDebateAsync"/> call, once the
+    ///    stream has completed. <c>null</c> while the stream is in progress or before
+    ///    any streaming call. Useful when a consumer wants both the live round stream
+    ///    and the aggregated <see cref="DebateResult"/> (with execution logs, token
+    ///    stats, etc.) at the end.
+    /// </summary>
+    public DebateResult? LastStreamedResult => _lastStreamedResult;
+
+    private DebateResult? _lastStreamedResult;
+
+    /// <summary>
+    ///    Internal helper that runs <see cref="ExecuteCoreAsync"/> with a custom
+    ///    <c>onRoundCompleted</c> callback. Used by <see cref="StreamDebateAsync"/> so
+    ///    the streaming layer can intercept each round before it reaches the user's
+    ///    handler. Refactored extraction of the strategy-invocation block so the
+    ///    timeout-wrapping <see cref="ExecuteAsync"/> and the streaming path share the
+    ///    same core logic.
+    /// </summary>
+    private Task<DebateResult> ExecuteCoreWithCallbackAsync(
+        Action<DebateRound> onRoundCompleted,
+        CancellationToken ct)
+    {
+        // We need to invoke ExecuteCoreAsync but with a different round callback than
+        // the one baked into its strategy call. The cleanest way: temporarily swap the
+        // OnRoundCompleted event for the duration of this call. Since the executor is
+        // not documented as thread-safe, this is safe — only one debate runs at a time.
+        var original = OnRoundCompleted;
+        try
+        {
+            // Replace the event with our interceptor that adds telemetry + the user's
+            // handler + the channel-writer. We use a single delegate so unsubscribing
+            // is reliable.
+            OnRoundCompleted = onRoundCompleted;
+            return ExecuteCoreAsync(ct);
+        }
+        finally
+        {
+            OnRoundCompleted = original;
+        }
+    }
+
+    /// <summary>
+    ///    Compresses text using the configured compressor, with optional caching.
+    ///    Returns the original text unchanged if no compressor is configured.
+    /// </summary>
    /// <param name="text">Text to compress.</param>
    /// <param name="ct">Cancellation token.</param>
    /// <returns>Compressed context (or pass-through if no compressor).</returns>

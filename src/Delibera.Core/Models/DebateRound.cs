@@ -37,8 +37,35 @@ public sealed record KnowledgeRoundContext(
 /// </summary>
 public sealed record DebateRound
 {
+   private int? _totalRounds;
+
    /// <summary>Round number (1-based).</summary>
    public required int RoundNumber { get; init; }
+
+   /// <summary>
+   ///    Total number of rounds the debate will produce, including the final
+   ///    Chairman-verdict round. <c>null</c> when the total is unknown (e.g. when
+   ///    a round arrives via a callback that does not know the strategy's plan).
+   ///    Set by <see cref="Council.CouncilExecutor.StreamDebateAsync"/> on every
+   ///    yielded round so consumers can render <c>"Round 2 / 4"</c> progress UIs.
+   /// </summary>
+   public int? Total
+   {
+      get => _totalRounds;
+      init => _totalRounds = value;
+   }
+
+   /// <summary>
+   ///    Whether this round is the final one (the Chairman's verdict synthesis).
+   ///    <c>true</c> for the round whose <see cref="RoundName"/> indicates a verdict
+   ///    or when <see cref="RoundNumber"/> equals <see cref="Total"/>.
+   ///    Computed lazily; <c>false</c> when <see cref="Total"/> is <c>null</c> and
+   ///    the round name does not look like a verdict.
+   /// </summary>
+   public bool IsFinal =>
+      RoundName.Contains("Verdict", StringComparison.OrdinalIgnoreCase) ||
+      RoundName.Contains("Final", StringComparison.OrdinalIgnoreCase) ||
+      (_totalRounds is { } total && RoundNumber >= total);
 
    /// <summary>Round title (e.g., "Initial Responses", "Critique").</summary>
    public required string RoundName { get; init; }

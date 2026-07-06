@@ -50,7 +50,8 @@ public static class ExampleRegistry
          ["ChatClientLLMProviderExample"] = ("ChatClientLLMProvider", "OpenAI/Azure/Ollama via Microsoft.Extensions.AI + streaming.", "Microsoft.Extensions.AI", 1, "chatclient", ["chat-client-llm-provider"]),
          ["TelemetryExample"] = ("Telemetry (OpenTelemetry)", "In-process ActivityListener + MeterListener printing spans & metrics.", "Observability", 0, "telemetry", []),
          ["QuickWinsExample"] = ("Quick Wins Bundle", "HTML export, timeout, personas, benchmark, participant limit.", "Features", 4, "quick-wins", ["quickwins"]),
-         ["TemplatesExample"] = ("Debate Templates", "Pre-configured councils: ArchitectureReview, RiskAssessment, CodeReview, …", "Features", 5, "templates", [])
+         ["TemplatesExample"] = ("Debate Templates", "Pre-configured councils: ArchitectureReview, RiskAssessment, CodeReview, …", "Features", 5, "templates", []),
+         ["StreamingCouncilExample"] = ("Streaming Council", "IAsyncEnumerable<DebateRound> — rounds yielded live as they complete.", "Features", 6, "stream", ["streaming"])
       };
 
    /// <summary>Discovers all examples in the Examples namespace, ordered by category then order.</summary>

@@ -42,6 +42,16 @@ public interface ICouncilExecutor
     /// </summary>
     TimeSpan? DebateTimeout { get; }
 
+    /// <summary>
+    ///    The result of the most recent <see cref="StreamDebateAsync"/> call, once the
+    ///    stream has completed. <c>null</c> while the stream is in progress, before any
+    ///    streaming call, or after <see cref="ExecuteAsync"/> was used instead of
+    ///    streaming. Useful when a consumer wants both the live round stream and the
+    ///    aggregated <see cref="DebateResult"/> (with execution logs, token stats, etc.)
+    ///    at the end.
+    /// </summary>
+    DebateResult? LastStreamedResult { get; }
+
    /// <summary>
    ///    Optional <see cref="ILogger" /> used by the executor to surface progress
    ///    (Chairman actions, rounds, compression, errors, …) to a host's logging pipeline.
@@ -73,12 +83,64 @@ public interface ICouncilExecutor
    /// </summary>
    event Action<Exception, string>? OnError;
 
-   /// <summary>
-   ///    Runs the debate and returns the full result.
-   /// </summary>
-   /// <param name="ct">Cancellation token.</param>
-   /// <returns>Complete debate result with rounds, verdict, logs, and metadata.</returns>
-   Task<DebateResult> ExecuteAsync(CancellationToken ct = default);
+    /// <summary>
+    ///    Runs the debate and returns the full result.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Complete debate result with rounds, verdict, logs, and metadata.</returns>
+    Task<DebateResult> ExecuteAsync(CancellationToken ct = default);
+
+    /// <summary>
+    ///    Streams the debate round-by-round via <see cref="IAsyncEnumerable{DebateRound}"/>
+    ///    so consumers (ASP.NET Core SSE, WebSocket, Blazor, CLI) can react to each round
+    ///    as it completes — without waiting for the full debate to finish.
+    /// </summary>
+    /// <param name="ct">Cancellation token. Cancelling mid-stream aborts the current LLM
+    /// call and stops iteration cleanly via <see cref="OperationCanceledException"/>.</param>
+    /// <returns>
+    ///    An async enumerable yielding one <see cref="DebateRound"/> per round, including
+    ///    the final Chairman-verdict round. Each yielded round has its
+    ///    <see cref="DebateRound.Total"/> and <see cref="DebateRound.IsFinal"/> properties
+    ///    populated so consumers can render <c>"Round 2 / 4"</c> progress UIs.
+    /// </returns>
+    /// <remarks>
+    ///    <para>
+    ///       The default implementation (DIM) calls <see cref="ExecuteAsync"/> and yields
+    ///       all rounds at the end — preserving backward compatibility for any external
+    ///       <see cref="ICouncilExecutor"/> implementation. The built-in
+    ///       <see cref="Council.CouncilExecutor"/> overrides this to stream rounds
+    ///       live as they complete.
+    ///    </para>
+    ///    <para>
+    ///       <b>Usage — CLI live output:</b>
+    ///       <code>
+    /// await foreach (var round in executor.StreamDebateAsync(ct))
+    ///     Console.WriteLine($"[Round {round.RoundNumber}/{round.Total}] {round.RoundName}");
+    ///       </code>
+    ///    </para>
+    ///    <para>
+    ///       <b>Usage — ASP.NET Core SSE:</b>
+    ///       <code>
+    /// app.MapGet("/debate/stream", async (HttpContext ctx, ICouncilExecutor executor) =>
+    /// {
+    ///     ctx.Response.Headers.ContentType = "text/event-stream";
+    ///     await foreach (var round in executor.StreamDebateAsync(ctx.RequestAborted))
+    ///     {
+    ///         var json = JsonSerializer.Serialize(round);
+    ///         await ctx.Response.WriteAsync($"data: {json}\n\n");
+    ///         await ctx.Response.Body.FlushAsync();
+    ///     }
+    /// });
+    ///       </code>
+    ///    </para>
+    /// </remarks>
+    async IAsyncEnumerable<DebateRound> StreamDebateAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var result = await ExecuteAsync(ct).ConfigureAwait(false);
+        foreach (var round in result.Rounds)
+            yield return round;
+    }
 
    /// <summary>
    ///    Compresses text using the configured compressor, with optional caching.
