@@ -51,9 +51,8 @@ public static class ChatClientLLMProviderExample
       // Two equivalent forms:
       //    var llmProvider = new ChatClientLLMProvider(decoratedClient);
       //    var llmProvider = decoratedClient.AsLLMProvider();
-      var llmProvider = new ChatClientLLMProvider(decoratedClient, "Ollama (via ChatClientLLMProvider)");
+       var llmProvider = new ChatClientLLMProvider(decoratedClient, "Ollama (via ChatClientLLMProvider)");
       Console.WriteLine($"  ✦ ILLMProvider: {llmProvider.ProviderName}");
-      Console.WriteLine($"    DefaultModelId: {llmProvider.DefaultModelId ?? "(none)"}");
 
       // ──────────────────────────────────────────────────────────────
       // 4. Provider introspection

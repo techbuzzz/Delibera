@@ -11,6 +11,7 @@ using Delibera.Core.Providers;
 using Delibera.Core.Providers.LLM;
 using Delibera.Core.Providers.RAG;
 using Microsoft.Extensions.Configuration;
+using Spectre.Console;
 
 namespace Delibera.ConsoleApp;
 
@@ -26,140 +27,175 @@ public static class Program
       Console.OutputEncoding = Encoding.UTF8;
       PrintBanner();
 
-      // Top-level crash guard: any unhandled exception is printed in full and the
-      // console is kept open so the user can read the diagnostic before it closes.
-      // `alreadyReported` prevents double-printing when RunAsync prints its own
-      // debate-specific diagnostic (with tips) before re-throwing.
-      var alreadyReported = false;
-
       // Default Ctrl+C handling: cancel the in-flight debate cooperatively
       // instead of letting SIGINT terminate the process mid-round.
-      // Consumers who want to disable this behaviour (e.g. running under a
-      // debugger) can call `Main(args)` and ignore the default. Examples
-      // that use their own CancelKeyPress handlers (e.g. --cancellation)
-      // override this by setting e.Cancel = true on their own.
       using var appCts = new CancellationTokenSource();
       Console.CancelKeyPress += (_, e) =>
       {
          e.Cancel = true;
          if (!appCts.IsCancellationRequested)
          {
-            Console.WriteLine("\n⚠️  Ctrl+C detected — canceling the debate...");
+            AnsiConsole.MarkupLine("\n[yellow]⚠️  Ctrl+C detected — canceling the debate...[/]");
             try { appCts.Cancel(); } catch (ObjectDisposedException) { /* race */ }
          }
       };
 
       try
       {
-         await RunAsync(args, () => alreadyReported = true, appCts.Token).ConfigureAwait(false);
+         await RunAsync(args, appCts.Token).ConfigureAwait(false);
       }
       catch (Exception ex)
       {
-         if (!alreadyReported)
-            PrintFatalError(ex);
-
-         WaitForKeyOnExit("Press any key to exit…", true);
+         PrintFatalError(ex);
+         WaitForKeyOnExit("[red]Press any key to exit…[/]", isError: true);
          return;
       }
 
-      WaitForKeyOnExit("\n🏁 Delibera session complete. Press any key to exit…", false);
+      WaitForKeyOnExit("\n[green]🏁 Delibera session complete. Press any key to exit…[/]", isError: false);
    }
 
-   private static async Task RunAsync(string[] args, Action onDebateFailed, CancellationToken ct = default)
+   private static async Task RunAsync(string[] args, CancellationToken ct)
    {
       // ═══════════════════════════════════════════════
       // 🆕 v3.1: DI & Separate Files Examples
       // ═══════════════════════════════════════════════
-      if (args.Contains("--di"))
+
+      // 1. Discover every example in the Examples/ folder dynamically.
+      var examples = ExampleRegistry.Discover();
+
+      // 2. If a CLI flag matches an example id or alias (e.g. "--chatclient"), run it directly.
+      ExampleEntry? matched = null;
+      foreach (var flag in args.Where(a => a.StartsWith("--", StringComparison.Ordinal)))
       {
-         await DependencyInjectionExample.RunAsync();
+         matched = examples.Find(flag[2..]);
+         if (matched is not null) break;
+      }
+
+      if (matched is not null)
+      {
+         await RunExampleAsync(matched, ct);
          return;
       }
 
-      if (args.Contains("--separate-files"))
+      // 3. "--list" prints the catalog as a Spectre table (useful for scripts / CI).
+      if (args.Contains("--list"))
       {
-         await SeparateFilesExample.RunAsync();
+         PrintExampleCatalog(examples);
          return;
       }
 
-      if (args.Contains("--compression"))
+      // 4. Interactive Spectre.Console menu (when stdin is a TTY and no flag was given).
+      if (IsInteractiveConsole && args.Length == 0)
       {
-         await CompressionExample.RunAsync();
+         var selection = ShowExampleMenu(examples);
+         if (selection is null)
+            return;
+         await RunExampleAsync(selection, ct);
          return;
       }
 
-      if (args.Contains("--multiprovider"))
+      // 5. Default demo: full config-driven council debate (reads appsettings.json).
+      await RunDefaultDebateAsync(args, ct);
+   }
+
+   // ─── Example dispatch ──────────────────────────────────────────────────────
+
+   private static async Task RunExampleAsync(ExampleEntry example, CancellationToken ct)
+   {
+      AnsiConsole.Write(new Rule($"[bold green]{example.Title}[/]")
       {
-         await MultiProviderExample.RunAsync();
-         return;
+         Style = Style.Parse("green dim")
+      });
+      AnsiConsole.MarkupLine($"[dim]{example.Description}[/]");
+      AnsiConsole.WriteLine();
+
+      try
+      {
+         await example.RunAsync(ct);
+      }
+      catch (OperationCanceledException) when (ct.IsCancellationRequested)
+      {
+         AnsiConsole.MarkupLine("\n[yellow]🛑 Cancelled by user (Ctrl+C).[/]");
+      }
+      catch (Exception ex)
+      {
+         PrintFatalError(ex, $"❌ Example '{example.Title}' failed");
+         throw;
+      }
+   }
+
+   // ─── Interactive menu ────────────────────────────────────────────────────────
+
+   private static ExampleEntry? ShowExampleMenu(IReadOnlyList<ExampleEntry> examples)
+   {
+      // Group by category, present as a flat selection list with section dividers.
+      var choices = new List<string>();
+      var choiceToEntry = new Dictionary<string, ExampleEntry>();
+      string? lastCategory = null;
+
+      foreach (var ex in examples)
+      {
+         if (ex.Category != lastCategory)
+         {
+            choices.Add($"── {ex.Category} ──");
+            lastCategory = ex.Category;
+         }
+         var label = $"  {ex.Title}";
+         choices.Add(label);
+         choiceToEntry[label] = ex;
       }
 
-      if (args.Contains("--pgvector"))
-      {
-         await PgVectorExample.RunAsync();
-         return;
-      }
+      choices.Add("── Default ──");
+      choices.Add("  Full Council Debate (appsettings.json)");
 
-      if (args.Contains("--rag"))
-      {
-         await RagExample.RunAsync();
-         return;
-      }
+      var selected = AnsiConsole.Prompt(
+         new SelectionPrompt<string>()
+            .Title("Choose a [green]Delibera example[/] to run:")
+            .PageSize(20)
+            .MoreChoicesText("[grey](Move up and down to see more)[/]")
+            .AddChoices(choices));
 
-      if (args.Contains("--operator"))
-      {
-         await OperatorExample.RunAsync();
-         return;
-      }
+      // Divider headers are not runnable; treat them as no-ops.
+      if (selected.Contains("Full Council Debate", StringComparison.OrdinalIgnoreCase))
+         return null;
 
-      if (args.Contains("--operator-mcp"))
-      {
-         await OperatorMcpToolsExample.RunAsync();
-         return;
-      }
+      return choiceToEntry.TryGetValue(selected, out var entry) ? entry : null;
+   }
 
-       if (args.Contains("--msai"))
-       {
-          await MicrosoftExtensionsAiExample.RunAsync();
-          return;
-       }
+   private static void PrintExampleCatalog(IReadOnlyList<ExampleEntry> examples)
+   {
+      var table = new Table()
+         .BorderColor(Color.Green)
+         .AddColumn(new TableColumn("[bold]Flag[/]"))
+         .AddColumn(new TableColumn("[bold]Aliases[/]"))
+         .AddColumn(new TableColumn("[bold]Title[/]"))
+         .AddColumn(new TableColumn("[bold]Category[/]"))
+         .AddColumn(new TableColumn("[bold]Description[/]"));
 
-       if (args.Contains("--chatclient"))
-       {
-          await ChatClientLLMProviderExample.RunAsync();
-          return;
-       }
+      foreach (var e in examples)
+         table.AddRow($"--{e.Id}", string.Join(", ", e.Aliases), e.Title, e.Category, e.Description);
 
-      if (args.Contains("--resilience"))
-      {
-         await ResilienceExample.RunAsync();
-         return;
-      }
+      AnsiConsole.Write(table);
+      AnsiConsole.MarkupLine("[grey]Run with any flag above, or no args for the interactive menu.[/]");
+   }
 
-      if (args.Contains("--autochunking"))
-      {
-         await AutoChunkingExample.RunAsync();
-         return;
-      }
+   // ─── Default config-driven debate ──────────────────────────────────────────
 
-      if (args.Contains("--cancellation"))
-      {
-         await CancellationExample.RunAsync();
-         return;
-      }
-
+   private static async Task RunDefaultDebateAsync(string[] args, CancellationToken ct)
+   {
       // Quick DI showcase before main demo
-       Console.WriteLine("🆕 v3.1 DI Quick Demo:");
-       Console.WriteLine("   Run with --di for full DI example");
-       Console.WriteLine("   Run with --separate-files for file output demo");
-       Console.WriteLine("   Run with --autochunking for AutoChunking demo (large documents)");
-       Console.WriteLine("   Run with --cancellation for cooperative cancellation demo (Ctrl+C)");
-       Console.WriteLine("   Run with --chatclient for ChatClientLLMProvider (M.E.AI) demo\n");
+      AnsiConsole.MarkupLine("🆕 [bold]v3.1 DI Quick Demo:[/]");
+      AnsiConsole.MarkupLine("   Run with [blue]--list[/] to see all available examples");
+      AnsiConsole.MarkupLine("   Run with [blue]--di[/] for full DI example");
+      AnsiConsole.MarkupLine("   Run with [blue]--separate-files[/] for file output demo");
+      AnsiConsole.MarkupLine("   Run with [blue]--autochunking[/] for AutoChunking demo (large documents)");
+      AnsiConsole.MarkupLine("   Run with [blue]--cancellation[/] for cooperative cancellation demo (Ctrl+C)");
+      AnsiConsole.MarkupLine("   Run with [blue]--chatclient[/] for ChatClientLLMProvider (M.E.AI) demo\n");
 
       // ═══════════════════════════════════════════════
       // 1. Load configuration
       // ═══════════════════════════════════════════════
-      Console.WriteLine("📋 Loading configuration...");
+      AnsiConsole.MarkupLine("📋 [bold]Loading configuration...[/]");
 
       var configuration = new ConfigurationBuilder()
          .SetBasePath(Directory.GetCurrentDirectory())
@@ -172,7 +208,7 @@ public static class Program
       // ═══════════════════════════════════════════════
       // 2. Initialise LLM providers
       // ═══════════════════════════════════════════════
-      Console.WriteLine("🔧 Initialising LLM providers...\n");
+      AnsiConsole.MarkupLine("🔧 [bold]Initialising LLM providers...[/]\n");
 
       using var factory = new ProviderFactory();
       var providers = new Dictionary<string, ILLMProvider>();
@@ -181,29 +217,29 @@ public static class Program
       {
          var name = sec.Key;
          var type = sec["Type"] ?? "Ollama";
-         Console.WriteLine($"  ✦ {name} (Type: {type}, Endpoint: {sec["Endpoint"]})");
+         AnsiConsole.MarkupLine($"  ✦ [bold]{name}[/] (Type: {type}, Endpoint: {sec["Endpoint"]})");
 
          providers[name] = factory.Create(name, type, sec);
       }
 
-      Console.WriteLine($"\n  ✅ {providers.Count} provider(s) initialised");
+      AnsiConsole.MarkupLine($"\n  ✅ [green]{providers.Count} provider(s) initialised[/]");
 
       // Check availability
-      Console.WriteLine("\n🏥 Checking provider availability...");
+      AnsiConsole.MarkupLine("\n🏥 [bold]Checking provider availability...[/]");
       foreach (var (name, prov) in providers)
          try
          {
             ct.ThrowIfCancellationRequested();
             var ok = await prov.IsAvailableAsync(ct);
-            Console.WriteLine($"  {name}: {(ok ? "✅ Available" : "❌ Unavailable")}");
+            AnsiConsole.MarkupLine($"  {name}: {(ok ? "[green]✅ Available[/]" : "[red]❌ Unavailable[/]")}");
             if (!ok) continue;
             var models = await prov.ListModelsAsync(ct);
-            Console.WriteLine($"    Models: {string.Join(", ", models.Take(10))}");
+            AnsiConsole.MarkupLine($"    Models: {string.Join(", ", models.Take(10))}");
          }
          catch (Exception ex)
          {
-            Console.WriteLine($"  {name}: ⚠️  {ex.Message}");
-            Console.WriteLine("    (Expected if Ollama Cloud API key is not configured)");
+            AnsiConsole.MarkupLine($"  {name}: [yellow]⚠️  {Markup.Escape(ex.Message)}[/]");
+            AnsiConsole.MarkupLine("    [dim](Expected if Ollama Cloud API key is not configured)[/]");
          }
 
       // ═══════════════════════════════════════════════
@@ -230,7 +266,7 @@ public static class Program
             // Try Qdrant
             if (qdrantCfg.Exists())
             {
-               Console.WriteLine("\n📚 Setting up RAG with Qdrant...");
+               AnsiConsole.MarkupLine("\n📚 [bold]Setting up RAG with Qdrant...[/]");
                try
                {
                   var ragFactory = new RagProviderFactory();
@@ -238,28 +274,28 @@ public static class Program
                      embeddingProvider,
                      qdrantCfg["Host"] ?? "localhost",
                      qdrantCfg.GetValue<int?>("Port") ?? 6334);
-                  Console.WriteLine("  ✅ Qdrant RAG ready");
+                  AnsiConsole.MarkupLine("  [green]✅ Qdrant RAG ready[/]");
                }
                catch (Exception ex)
                {
-                  Console.WriteLine($"  ⚠️  Qdrant: {ex.Message}");
+                  AnsiConsole.MarkupLine($"  [yellow]⚠️  Qdrant: {Markup.Escape(ex.Message)}[/]");
                }
             }
 
             // Fallback to pgvector
             if (activeRagProvider is null && pgCfg.Exists())
             {
-               Console.WriteLine("\n📚 Setting up RAG with pgvector...");
+               AnsiConsole.MarkupLine("\n📚 [bold]Setting up RAG with pgvector...[/]");
                try
                {
                   var connStr = pgCfg["ConnectionString"] ?? "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres";
                   var ragFactory = new RagProviderFactory();
                   activeRagProvider = ragFactory.CreatePgVector(embeddingProvider, connStr);
-                  Console.WriteLine("  ✅ pgvector RAG ready");
+                  AnsiConsole.MarkupLine("  [green]✅ pgvector RAG ready[/]");
                }
                catch (Exception ex)
                {
-                  Console.WriteLine($"  ⚠️  pgvector: {ex.Message}");
+                  AnsiConsole.MarkupLine($"  [yellow]⚠️  pgvector: {Markup.Escape(ex.Message)}[/]");
                }
             }
 
@@ -276,14 +312,14 @@ public static class Program
                   {
                      ct.ThrowIfCancellationRequested();
                      var chunks = await knowledgeKeeper.IndexFileAsync(file, ct: ct);
-                     Console.WriteLine($"  📄 Indexed: {file} ({chunks} chunks)");
+                     AnsiConsole.MarkupLine($"  📄 Indexed: {file} ({chunks} chunks)");
                   }
                   catch (Exception ex)
                   {
-                     Console.WriteLine($"  ⚠️  Could not index {file}: {ex.Message}");
+                     AnsiConsole.MarkupLine($"  [yellow]⚠️  Could not index {file}: {Markup.Escape(ex.Message)}[/]");
                   }
 
-               Console.WriteLine($"  ✅ Knowledge Keeper ready ({activeRagProvider.ProviderName})");
+               AnsiConsole.MarkupLine($"  [green]✅ Knowledge Keeper ready[/] ({activeRagProvider.ProviderName})");
             }
          }
       }
@@ -294,7 +330,7 @@ public static class Program
       IKnowledgeBase? knowledgeBase = null;
       if (cfg.GetValue<bool>("Knowledge:Enabled") && knowledgeKeeper is null)
       {
-         Console.WriteLine("\n📚 Loading Markdown knowledge base...");
+         AnsiConsole.MarkupLine("\n📚 [bold]Loading Markdown knowledge base...[/]");
          var kb = new MarkdownKnowledgeBase("Council Knowledge");
 
          foreach (var file in cfg.GetSection("Knowledge:Files").Get<string[]>() ?? [])
@@ -302,11 +338,11 @@ public static class Program
             {
                ct.ThrowIfCancellationRequested();
                await kb.LoadAsync(file, ct);
-               Console.WriteLine($"  📄 Loaded: {file}");
+               AnsiConsole.MarkupLine($"  📄 Loaded: {file}");
             }
             catch (FileNotFoundException)
             {
-               Console.WriteLine($"  ⚠️  Not found: {file}");
+               AnsiConsole.MarkupLine($"  [yellow]⚠️  Not found: {file}[/]");
             }
             catch (OperationCanceledException)
             {
@@ -316,7 +352,7 @@ public static class Program
          if (kb.DocumentCount > 0)
          {
             knowledgeBase = kb;
-            Console.WriteLine($"  ✅ {kb.DocumentCount} document(s), {kb.TotalCharacters} chars");
+            AnsiConsole.MarkupLine($"  [green]✅ {kb.DocumentCount} document(s), {kb.TotalCharacters} chars[/]");
          }
       }
 
@@ -330,7 +366,7 @@ public static class Program
       var compCfg = cfg.GetSection("ContextCompression");
       if (compCfg.GetValue<bool>("Enabled"))
       {
-         Console.WriteLine("\n🗜️  Setting up Context Compression...");
+         AnsiConsole.MarkupLine("\n🗜️  [bold]Setting up Context Compression...[/]");
          var strategyName = compCfg["Strategy"] ?? "Deduplication";
 
          try
@@ -366,23 +402,23 @@ public static class Program
                compressionCache = new CompressionCache(maxEntries);
             }
 
-            Console.WriteLine($"  Strategy: {compressor.StrategyName}");
-            Console.WriteLine($"  Target ratio: {compressionOptions.TargetRatio:P0}");
+            AnsiConsole.MarkupLine($"  Strategy: {compressor.StrategyName}");
+            AnsiConsole.MarkupLine($"  Target ratio: {compressionOptions.TargetRatio:P0}");
             if (compressionCache is not null)
-               Console.WriteLine($"  Cache: enabled (max {compressionCache.Count} entries)");
-            Console.WriteLine("  ✅ Compression ready");
+               AnsiConsole.MarkupLine($"  Cache: enabled (max {compressionCache.Count} entries)");
+            AnsiConsole.MarkupLine("  [green]✅ Compression ready[/]");
          }
          catch (Exception ex)
          {
-            Console.WriteLine($"  ⚠️  Compression setup failed: {ex.Message}");
-            Console.WriteLine("  ℹ️  Proceeding without compression");
+            AnsiConsole.MarkupLine($"  [yellow]⚠️  Compression setup failed: {Markup.Escape(ex.Message)}[/]");
+            AnsiConsole.MarkupLine("  [dim]ℹ️  Proceeding without compression[/]");
          }
       }
 
       // ═══════════════════════════════════════════════
       // 6. Build the Council
       // ═══════════════════════════════════════════════
-      Console.WriteLine("\n🏛️  Building the Council...\n");
+      AnsiConsole.MarkupLine("\n🏛️  [bold]Building the Council...[/]\n");
 
       var debateCfg = cfg.GetSection("Debate");
       var stratName = debateCfg["Strategy"] ?? "Standard";
@@ -421,11 +457,11 @@ public static class Program
          if (providers.TryGetValue(provName, out var prov))
          {
             builder.AddMember(modelName, prov, role, persona);
-            Console.WriteLine($"  👤 {modelName} ({provName}) [{role}]");
+            AnsiConsole.MarkupLine($"  👤 {modelName} ({provName}) [{role}]");
          }
          else
          {
-            Console.WriteLine($"  ⚠️  Provider '{provName}' not found for '{modelName}'");
+            AnsiConsole.MarkupLine($"  [yellow]⚠️  Provider '{provName}' not found for '{modelName}'[/]");
          }
       }
 
@@ -444,7 +480,7 @@ public static class Program
             _ => Chairman.CreateStandard(chairModel, cp)
          };
          builder.SetChairman(chairman);
-         Console.WriteLine($"  ★  Chairman: {chairModel} ({chairProv}) [{chairType}]");
+         AnsiConsole.MarkupLine($"  ★  Chairman: {chairModel} ({chairProv}) [{chairType}]");
       }
 
       // Knowledge
@@ -459,7 +495,7 @@ public static class Program
          builder.WithCompression(compressor, compressionOptions);
          if (compressionCache is not null)
             builder.WithCompressionCache();
-         Console.WriteLine($"  🗜️  Compression: {compressor.StrategyName}");
+         AnsiConsole.MarkupLine($"  🗜️  Compression: {compressor.StrategyName}");
       }
 
       // Output
@@ -469,13 +505,13 @@ public static class Program
       builder.SaveResultTo(outputFile);
 
       var executor = builder.Build();
-      Console.WriteLine($"\n{executor.GetInfo()}");
+      AnsiConsole.MarkupLine($"\n{Markup.Escape(executor.GetInfo())}");
 
       // ═══════════════════════════════════════════════
       // 7. Run the debate
       // ═══════════════════════════════════════════════
-      Console.WriteLine("🎯 Starting debate...\n");
-      Console.WriteLine(new string('═', 60));
+      AnsiConsole.MarkupLine("🎯 [bold]Starting debate...[/]\n");
+      AnsiConsole.Write(new Rule().RuleStyle(Style.Parse("green dim")));
 
       // Stream every ExecutionLog entry live so the user can watch progress in real time.
       executor.OnLog += entry => WriteLogEntry(entry);
@@ -485,21 +521,21 @@ public static class Program
 
       executor.OnRoundCompleted += round =>
       {
-         Console.WriteLine($"\n✅ Round {round.RoundNumber}: {round.RoundName} ({round.Duration.TotalSeconds:F1}s)");
-         Console.WriteLine(new string('─', 50));
+         AnsiConsole.MarkupLine($"\n[green]✅ Round {round.RoundNumber}: {round.RoundName}[/] [dim]({round.Duration.TotalSeconds:F1}s)[/]");
+         AnsiConsole.Write(new Rule().RuleStyle(Style.Parse("grey dim")));
 
          if (round.KnowledgeInteractions.Count > 0)
          {
-            Console.WriteLine("  📚 Knowledge Keeper interactions:");
+            AnsiConsole.MarkupLine("  📚 Knowledge Keeper interactions:");
             foreach (var ki in round.KnowledgeInteractions)
-               Console.WriteLine($"    Q: {ki.Query[..Math.Min(80, ki.Query.Length)]}… → {ki.SourceChunks} chunks");
+               AnsiConsole.MarkupLine($"    Q: {Markup.Escape(ki.Query[..Math.Min(80, ki.Query.Length)])}… → {ki.SourceChunks} chunks");
          }
 
          if (round.OperatorInteractions.Count > 0)
          {
-            Console.WriteLine("  🛠️  Operator interactions:");
+            AnsiConsole.MarkupLine("  🛠️  Operator interactions:");
             foreach (var oi in round.OperatorInteractions)
-               Console.WriteLine($"    {oi.RequesterName}: {oi.Task[..Math.Min(80, oi.Task.Length)]}… → {oi.ToolCallCount} tool call(s)");
+               AnsiConsole.MarkupLine($"    {oi.RequesterName}: {Markup.Escape(oi.Task[..Math.Min(80, oi.Task.Length)])}… → {oi.ToolCallCount} tool call(s)");
          }
 
          foreach (var (member, response) in round.Responses)
@@ -507,129 +543,137 @@ public static class Program
             var preview = response.Length > 300
                ? response[..300] + "…"
                : response;
-            Console.WriteLine($"\n  📝 {member}:");
-            Console.WriteLine($"     {preview.Replace("\n", "\n     ")}");
+            AnsiConsole.MarkupLine($"\n  📝 [bold]{Markup.Escape(member)}[/]:");
+            AnsiConsole.MarkupLine($"     {Markup.Escape(preview).Replace("\n", "\n     ")}");
          }
 
-         Console.WriteLine(new string('─', 50));
+         AnsiConsole.Write(new Rule().RuleStyle(Style.Parse("grey dim")));
       };
 
       try
       {
          var result = await executor.ExecuteAsync(ct);
 
-         Console.WriteLine($"\n{new string('═', 60)}");
-         Console.WriteLine("🏆 DEBATE COMPLETED!");
-         Console.WriteLine($"{new string('═', 60)}\n");
+         AnsiConsole.Write(new Rule().RuleStyle(Style.Parse("green")));
+         AnsiConsole.MarkupLine("[bold green]🏆 DEBATE COMPLETED![/]");
+         AnsiConsole.Write(new Rule().RuleStyle(Style.Parse("green")));
 
-         Console.WriteLine($"  Debate ID:          {result.DebateId}");
-         Console.WriteLine($"  Strategy:           {result.StrategyName}");
-         Console.WriteLine($"  Rounds:             {result.Rounds.Count}");
-         Console.WriteLine($"  Duration:           {result.TotalDuration.TotalSeconds:F1}s");
-         Console.WriteLine($"  Participants:       {string.Join(", ", result.Participants)}");
+         AnsiConsole.MarkupLine($"\n  Debate ID:          {result.DebateId}");
+         AnsiConsole.MarkupLine($"  Strategy:           {result.StrategyName}");
+         AnsiConsole.MarkupLine($"  Rounds:             {result.Rounds.Count}");
+         AnsiConsole.MarkupLine($"  Duration:           {result.TotalDuration.TotalSeconds:F1}s");
+         AnsiConsole.MarkupLine($"  Participants:       {string.Join(", ", result.Participants)}");
          if (result.KnowledgeKeeperName is not null)
-            Console.WriteLine($"  Knowledge Keeper:   {result.KnowledgeKeeperName}");
+            AnsiConsole.MarkupLine($"  Knowledge Keeper:   {result.KnowledgeKeeperName}");
          if (result.OperatorName is not null)
-            Console.WriteLine($"  Operator:           {result.OperatorName}");
+            AnsiConsole.MarkupLine($"  Operator:           {result.OperatorName}");
 
          // Token statistics
-         if (result.TokenStats is not null) Console.WriteLine($"\n{result.TokenStats.ToSummary()}");
+         if (result.TokenStats is not null) AnsiConsole.MarkupLine($"\n{Markup.Escape(result.TokenStats.ToSummary())}");
 
          // Compression log summary
          if (result.CompressionLogs.Count > 0)
          {
-            Console.WriteLine($"  🗜️  Compression ops: {result.CompressionLogs.Count}");
+            AnsiConsole.MarkupLine($"  🗜️  Compression ops: {result.CompressionLogs.Count}");
             foreach (var log in result.CompressionLogs)
-               Console.WriteLine($"    R{log.RoundNumber}: {log.Description} — {log.Ratio:P0} ({log.Duration.TotalMilliseconds:F0}ms)");
+               AnsiConsole.MarkupLine($"    R{log.RoundNumber}: {log.Description} — {log.Ratio:P0} ({log.Duration.TotalMilliseconds:F0}ms)");
          }
 
          // Cache stats
          if (compressionCache is not null)
-            Console.WriteLine($"\n  {compressionCache.GetSummary()}");
+            AnsiConsole.MarkupLine($"\n  {Markup.Escape(compressionCache.GetSummary())}");
 
          if (!string.IsNullOrWhiteSpace(result.OpeningStatement))
          {
-            Console.WriteLine("\n══ OPENING STATEMENT ══\n");
-            Console.WriteLine(result.OpeningStatement);
+            AnsiConsole.MarkupLine("\n[bold]══ OPENING STATEMENT ══[/]\n");
+            AnsiConsole.MarkupLine(Markup.Escape(result.OpeningStatement));
          }
 
          if (!string.IsNullOrWhiteSpace(result.FinalVerdict))
          {
-            Console.WriteLine("\n══ FINAL VERDICT ══\n");
-            Console.WriteLine(result.FinalVerdict);
+            AnsiConsole.MarkupLine("\n[bold]══ FINAL VERDICT ══[/]\n");
+            AnsiConsole.MarkupLine(Markup.Escape(result.FinalVerdict));
          }
 
          // 🆕 v3.1: Save separate files
-         Console.WriteLine("\n  📁 Output files:");
-         Console.WriteLine($"    Single file: {outputFile}");
+         AnsiConsole.MarkupLine("\n  📁 Output files:");
+         AnsiConsole.MarkupLine($"    Single file: {outputFile}");
 
          try
          {
             var separateDir = Path.Combine(outputDir, $"debate_{DateTime.UtcNow:yyyyMMdd_HHmmss}");
             var (rp, sp, lp) = await result.SaveAllAsync(separateDir, filePrefix: null, ct: ct);
-            Console.WriteLine($"    Result:      {rp}");
-            Console.WriteLine($"    Statistics:  {sp}");
-            Console.WriteLine($"    Logs:        {lp}");
+            AnsiConsole.MarkupLine($"    Result:      {rp}");
+            AnsiConsole.MarkupLine($"    Statistics:  {sp}");
+            AnsiConsole.MarkupLine($"    Logs:        {lp}");
          }
          catch (Exception saveEx)
          {
-            Console.WriteLine($"    ⚠️  Separate files: {saveEx.Message}");
+            AnsiConsole.MarkupLine($"    [yellow]⚠️  Separate files: {Markup.Escape(saveEx.Message)}[/]");
          }
 
          // 🆕 v3.1: Execution logs summary
          if (result.ExecutionLogs.Count > 0)
          {
-            Console.WriteLine($"\n  📋 Execution Logs ({result.ExecutionLogs.Count} entries):");
+            AnsiConsole.MarkupLine($"\n  📋 Execution Logs ({result.ExecutionLogs.Count} entries):");
             foreach (var log in result.ExecutionLogs.Where(l => l.Level >= ExecutionLogLevel.Info))
-               Console.WriteLine($"    {log}");
+               AnsiConsole.MarkupLine($"    {Markup.Escape(log.ToString())}");
          }
       }
       catch (OperationCanceledException) when (ct.IsCancellationRequested)
       {
-         Console.WriteLine("\n🛑 Debate cancelled by user (Ctrl+C or token).");
+         AnsiConsole.MarkupLine("\n[yellow]🛑 Debate cancelled by user (Ctrl+C or token).[/]");
          // Don't print the full fatal-error panel for a clean cancel.
       }
       catch (Exception ex)
       {
          PrintFatalError(ex, "❌ Debate failed");
-         Console.WriteLine("\n💡 Tips:");
-         Console.WriteLine("   • Ensure Ollama Cloud API key is set in appsettings.json");
-         Console.WriteLine("   • Or run a local Ollama server: ollama serve");
-         Console.WriteLine("   • For Qdrant RAG: docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant");
-         Console.WriteLine("   • For pgvector RAG: PostgreSQL 15+ with CREATE EXTENSION vector;");
-         onDebateFailed();
+         AnsiConsole.MarkupLine("\n💡 [bold]Tips:[/]");
+         AnsiConsole.MarkupLine("   • Ensure Ollama Cloud API key is set in appsettings.json");
+         AnsiConsole.MarkupLine("   • Or run a local Ollama server: ollama serve");
+         AnsiConsole.MarkupLine("   • For Qdrant RAG: docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant");
+         AnsiConsole.MarkupLine("   • For pgvector RAG: PostgreSQL 15+ with CREATE EXTENSION vector;");
          throw;
       }
    }
 
+   // ─── Banner & observability helpers ──────────────────────────────────────────
+
    private static void PrintBanner()
    {
-      Console.ForegroundColor = ConsoleColor.Green;
-      Console.WriteLine("""
-
-                           ██████╗ ███████╗██╗     ██╗██████╗ ███████╗██████╗  █████╗
-                           ██╔══██╗██╔════╝██║     ██║██╔══██╗██╔════╝██╔══██╗██╔══██╗
-                           ██║  ██║█████╗  ██║     ██║██████╔╝█████╗  ██████╔╝███████║
-                           ██║  ██║██╔══╝  ██║     ██║██╔══██╗██╔══╝  ██╔══██╗██╔══██║
-                           ██████╔╝███████╗███████╗██║██████╔╝███████╗██║  ██║██║  ██║
-                           ╚═════╝ ╚══════╝╚══════╝╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
-
-                              ⚖️   Thoughtful AI Decisions   ·   v3.1
-
-                           RAG • pgvector • Knowledge Keeper • Chairman
-                           Context Compression • DI • Execution Logging
-
-                        """);
-      Console.ResetColor();
+      AnsiConsole.Write(new FigletText("Delibera")
+      {
+         Color = Color.Green
+      });
+      AnsiConsole.Write(new Text("   ⚖️  Thoughtful AI Decisions  ·  v3.1", new Style(Color.Grey))
+      {
+         Justification = Justify.Center
+      });
+      AnsiConsole.WriteLine();
+      AnsiConsole.Write(new Text("RAG • pgvector • Knowledge Keeper • Chairman", new Style(Color.Grey))
+      {
+         Justification = Justify.Center
+      });
+      AnsiConsole.WriteLine();
+      AnsiConsole.Write(new Text("Context Compression • DI • Execution Logging", new Style(Color.Grey))
+      {
+         Justification = Justify.Center
+      });
+      AnsiConsole.WriteLine();
+      AnsiConsole.Write(new Rule().RuleStyle(Style.Parse("green dim")));
+      AnsiConsole.WriteLine();
    }
-
-   // ─── Console observability helpers ─────────────────────────────────────────────
 
    /// <summary>
    ///    Writes a single <see cref="ExecutionLog" /> entry to the console in a
    ///    colour-coded, single-line format. Safe to call from the executor's
    ///    streaming events.
    /// </summary>
+   /// <remarks>
+   ///    Uses <see cref="Console" /> rather than <c>AnsiConsole.MarkupLine</c> because the
+   ///    log text may contain arbitrary model output (including Spectre markup characters)
+   ///    and runs from a non-UI thread where Spectre's single-line writer is not safe.
+   /// </remarks>
    private static void WriteLogEntry(ExecutionLog entry)
    {
       var prev = Console.ForegroundColor;
@@ -668,49 +712,35 @@ public static class Program
    }
 
    /// <summary>
-   ///    Prints a full diagnostic panel for a fatal exception: type, message,
-   ///    full stack trace and the live log transcript captured so far.
+   ///    Prints a full diagnostic panel for a fatal exception using Spectre.Console.
    /// </summary>
    /// <param name="ex">The exception that aborted the run.</param>
    /// <param name="header">Optional header line; defaults to a generic label.</param>
    private static void PrintFatalError(Exception ex, string header = "❌ Unhandled exception")
    {
-      var prev = Console.ForegroundColor;
-      Console.ForegroundColor = ConsoleColor.Red;
-      Console.WriteLine();
-      Console.WriteLine(new string('═', 60));
-      Console.WriteLine($"  {header}");
-      Console.WriteLine(new string('═', 60));
-      Console.WriteLine($"  Type:    {ex.GetType().FullName}");
-      Console.WriteLine($"  Message: {ex.Message}");
-      Console.WriteLine();
-      Console.WriteLine("  ── Stack trace ──");
-      Console.WriteLine(ex.StackTrace);
-      if (ex.InnerException is not null)
-      {
-         Console.WriteLine();
-         Console.WriteLine("  ── Inner exception ──");
-         Console.WriteLine($"  Type:    {ex.InnerException.GetType().FullName}");
-         Console.WriteLine($"  Message: {ex.InnerException.Message}");
-         Console.WriteLine(ex.InnerException.StackTrace);
-      }
+      var content = new Markup(
+         $"[bold]Type:[/] {Markup.Escape(ex.GetType().FullName ?? ex.GetType().Name)}\n" +
+         $"[bold]Message:[/] {Markup.Escape(ex.Message)}\n\n" +
+         $"[bold]Stack trace:[/]\n{Markup.Escape(ex.StackTrace ?? "(none)")}").LeftJustified();
 
-      Console.ForegroundColor = prev;
+      AnsiConsole.Write(
+         new Panel(content)
+         {
+            Header = new PanelHeader(header),
+            Border = BoxBorder.Rounded,
+            BorderStyle = new Style(Color.Red)
+         });
    }
 
    /// <summary>
    ///    Pauses the console so the user can read output before the window closes.
    ///    Honoured in both normal and error paths. When <paramref name="isError" />
-   ///    is <c>true</c> the prompt is shown in red and the exit code is set to 1.
+   ///    is <c>true</c> the exit code is set to 1.
    /// </summary>
    private static void WaitForKeyOnExit(string prompt, bool isError)
    {
-      if (isError)
-         Console.ForegroundColor = ConsoleColor.Red;
-
-      Console.WriteLine();
-      Console.WriteLine(prompt);
-      Console.ResetColor();
+      AnsiConsole.WriteLine();
+      AnsiConsole.MarkupLine(prompt);
 
       try
       {
@@ -719,7 +749,7 @@ public static class Program
       catch (InvalidOperationException)
       {
          // No interactive console (e.g. redirected stdin in CI) — fall back gracefully.
-         Console.WriteLine("(no interactive console available; exiting.)");
+         AnsiConsole.MarkupLine("[grey](no interactive console available; exiting.)[/]");
       }
 
       Environment.ExitCode = isError
@@ -727,7 +757,22 @@ public static class Program
          : 0;
    }
 
-    private static bool FirstLineIsMeaningful(string? frame)
+   private static bool IsInteractiveConsole
+   {
+      get
+      {
+         try
+         {
+            return !Console.IsInputRedirected && !Console.IsOutputRedirected;
+         }
+         catch
+         {
+            return false;
+         }
+      }
+   }
+
+   private static bool FirstLineIsMeaningful(string? frame)
    {
       if (string.IsNullOrWhiteSpace(frame))
          return false;
