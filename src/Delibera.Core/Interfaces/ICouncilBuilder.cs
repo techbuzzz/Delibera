@@ -240,6 +240,26 @@ public interface ICouncilBuilder
     /// <returns>This builder for fluent chaining.</returns>
     ICouncilBuilder WithTelemetry(Action<TelemetryOptions> configure);
 
+    /// <summary>
+    ///    Sets a hard wall-clock timeout for the whole debate. When the timeout
+    ///    elapses, the internal <c>CancellationTokenSource</c> used by
+    ///    <see cref="ICouncilExecutor.ExecuteAsync(CancellationToken)"/> is cancelled,
+    ///    which propagates <see cref="OperationCanceledException"/> through every
+    ///    downstream async operation.
+    /// </summary>
+    /// <param name="timeout">Maximum debate duration. <see cref="Timeout.InfiniteTimeSpan"/> disables.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder WithTimeout(TimeSpan timeout);
+
+    /// <summary>
+    ///    Caps the maximum number of council participants. <see cref="ICouncilBuilder.Build"/>
+    ///    throws <see cref="InvalidOperationException"/> if more members have been added
+    ///    than the limit.
+    /// </summary>
+    /// <param name="maxParticipants">Maximum allowed participants (must be ≥ 1).</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder WithParticipantLimit(int maxParticipants);
+
    /// <summary>
    ///    Applies a pre-built <see cref="CouncilOptions" /> snapshot to the builder.
    ///    All non-default values are transferred. Explicit builder calls made before

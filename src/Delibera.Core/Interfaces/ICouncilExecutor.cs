@@ -36,6 +36,12 @@ public interface ICouncilExecutor
     /// </summary>
     bool IsTelemetryEnabled { get; }
 
+    /// <summary>
+    ///    The configured debate-level wall-clock timeout. <c>null</c> means no timeout.
+    ///    Set via <see cref="ICouncilBuilder.WithTimeout(TimeSpan)"/>.
+    /// </summary>
+    TimeSpan? DebateTimeout { get; }
+
    /// <summary>
    ///    Optional <see cref="ILogger" /> used by the executor to surface progress
    ///    (Chairman actions, rounds, compression, errors, …) to a host's logging pipeline.

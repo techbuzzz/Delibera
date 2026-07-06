@@ -18,6 +18,13 @@ public sealed class CouncilExecutor : ICouncilExecutor
    private readonly string? _outputPath;
    private readonly float _temperature;
    private readonly TelemetryOptions? _telemetryOptions;
+   private readonly TimeSpan? _debateTimeout;
+
+   /// <summary>
+   ///    The configured debate-level wall-clock timeout. <c>null</c> means no timeout.
+   ///    See <see cref="ICouncilBuilder.WithTimeout(TimeSpan)"/>.
+   /// </summary>
+   public TimeSpan? DebateTimeout => _debateTimeout;
 
    /// <summary>
    ///    Whether telemetry instrumentation is active for this executor. When <c>true</c>,
@@ -41,7 +48,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
       Operator? @operator = null,
       DebateExecutionOptions? executionOptions = null,
       AutoChunkingOptions? autoChunkingOptions = null,
-      TelemetryOptions? telemetryOptions = null)
+      TelemetryOptions? telemetryOptions = null,
+      TimeSpan? debateTimeout = null)
    {
       Members = members;
       Chairman = chairman;
@@ -58,6 +66,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
       ExecutionOptions = executionOptions ?? DebateExecutionOptions.Default;
       _autoChunkingOptions = autoChunkingOptions;
       _telemetryOptions = telemetryOptions;
+      _debateTimeout = debateTimeout;
 
       // When telemetry is enabled with a non-default source/meter name, configure the
       // global activity source and meter to honour the user's OpenTelemetry builder setup.
@@ -112,14 +121,41 @@ public sealed class CouncilExecutor : ICouncilExecutor
    /// <inheritdoc />
    public event Action<Exception, string>? OnError;
 
-   /// <summary>
-   ///    Runs the debate and returns the full result.
-   /// </summary>
-   public async Task<DebateResult> ExecuteAsync(CancellationToken ct = default)
-   {
-      _executionLogs.Clear();
+    /// <summary>
+    ///    Runs the debate and returns the full result.
+    /// </summary>
+    public async Task<DebateResult> ExecuteAsync(CancellationToken ct = default)
+    {
+       _executionLogs.Clear();
 
-      var debateStartedAt = DateTime.UtcNow;
+       // When a debate-level timeout is configured (F-10b WithTimeout), link it to the
+       // caller's CT so either signal cancels the whole pipeline. The linked CTS is
+       // disposed in the finally block below.
+       CancellationTokenSource? timeoutCts = null;
+       CancellationTokenSource? linkedCts = null;
+       CancellationToken effectiveToken = ct;
+       if (_debateTimeout is { } timeout && timeout != System.Threading.Timeout.InfiniteTimeSpan)
+       {
+          timeoutCts = new CancellationTokenSource(timeout);
+          linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+          effectiveToken = linkedCts.Token;
+          Log(ExecutionLog.Info("Council", $"Debate timeout configured: {timeout.TotalSeconds:F1}s"));
+       }
+
+       try
+       {
+          return await ExecuteCoreAsync(effectiveToken);
+       }
+       finally
+       {
+          linkedCts?.Dispose();
+          timeoutCts?.Dispose();
+       }
+    }
+
+    private async Task<DebateResult> ExecuteCoreAsync(CancellationToken ct)
+    {
+       var debateStartedAt = DateTime.UtcNow;
       System.Diagnostics.Activity? debateActivity = null;
       if (IsTelemetryEnabled)
       {

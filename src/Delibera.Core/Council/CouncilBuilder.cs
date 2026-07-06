@@ -34,6 +34,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private float _temperature = 0.7f;
    private string _userPrompt = string.Empty;
    private TelemetryOptions? _telemetryOptions;
+   private TimeSpan? _debateTimeout;
+   private int? _maxParticipants;
 
    /// <summary>
    ///    Creates an empty builder. Use <see cref="WithOptions(CouncilOptions)" /> or
@@ -293,6 +295,51 @@ public sealed class CouncilBuilder : ICouncilBuilder
        return this;
     }
 
+    // ── Quick Wins (F-10) ──
+
+    /// <summary>
+    ///    Sets a hard wall-clock timeout for the whole debate. When the timeout
+    ///    elapses, the internal <c>CancellationTokenSource</c> used by
+    ///    <see cref="ICouncilExecutor.ExecuteAsync(CancellationToken)"/> is cancelled,
+    ///    which propagates <see cref="OperationCanceledException"/> through every
+    ///    downstream async operation (LLM calls, RAG queries, MCP tools, file saves).
+    /// </summary>
+    /// <param name="timeout">Maximum debate duration. <see cref="Timeout.InfiniteTimeSpan"/> disables.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    /// <remarks>
+    ///    <para>
+    ///       This is a convenience wrapper over <c>CancellationTokenSource</c>. Callers
+    ///       who already own a token can pass it directly to
+    ///       <see cref="ICouncilExecutor.ExecuteAsync(CancellationToken)"/> instead —
+    ///       the two mechanisms compose via
+    ///       <see cref="CancellationTokenSource.CreateLinkedTokenSource(CancellationToken, CancellationToken)"/>.
+    ///    </para>
+    /// </remarks>
+    public ICouncilBuilder WithTimeout(TimeSpan timeout)
+    {
+       if (timeout == TimeSpan.Zero)
+          throw new ArgumentOutOfRangeException(nameof(timeout), "Use Timeout.InfiniteTimeSpan to disable the timeout, not TimeSpan.Zero.");
+       _debateTimeout = timeout;
+       return this;
+    }
+
+    /// <summary>
+    ///    Caps the maximum number of council participants. When set,
+    ///    <see cref="Build"/> throws <see cref="InvalidOperationException"/> if more
+    ///    members have been added than the limit. Useful in dynamic DI-driven setups
+    ///    where the participant list is built at runtime and a misconfigured source
+    ///    could enqueue dozens of models.
+    /// </summary>
+    /// <param name="maxParticipants">Maximum allowed participants (must be ≥ 1).</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    public ICouncilBuilder WithParticipantLimit(int maxParticipants)
+    {
+       if (maxParticipants < 1)
+          throw new ArgumentOutOfRangeException(nameof(maxParticipants), "Participant limit must be at least 1.");
+       _maxParticipants = maxParticipants;
+       return this;
+    }
+
    // ── Options (bulk configuration) ──
 
    /// <inheritdoc />
@@ -420,12 +467,16 @@ public sealed class CouncilBuilder : ICouncilBuilder
    ///    Validates configuration and builds a <see cref="CouncilExecutor" />.
    /// </summary>
    /// <exception cref="InvalidOperationException">When required configuration is missing.</exception>
-   public CouncilExecutor Build()
-   {
-      if (_members.Count == 0)
-         throw new InvalidOperationException("Council must have at least one member. Use AddMember().");
-      if (string.IsNullOrWhiteSpace(_userPrompt))
-         throw new InvalidOperationException("User prompt is required. Use WithUserPrompt().");
+    public CouncilExecutor Build()
+    {
+       if (_members.Count == 0)
+          throw new InvalidOperationException("Council must have at least one member. Use AddMember().");
+       if (string.IsNullOrWhiteSpace(_userPrompt))
+          throw new InvalidOperationException("User prompt is required. Use WithUserPrompt().");
+       if (_maxParticipants is { } limit && _members.Count > limit)
+          throw new InvalidOperationException(
+             $"Participant limit exceeded: {_members.Count} members added, but limit is {limit}. " +
+             "Use WithParticipantLimit() to raise the limit or remove members.");
 
       var context = new PromptContext
       {
@@ -457,21 +508,22 @@ public sealed class CouncilBuilder : ICouncilBuilder
          _maxDegreeOfParallelism,
          _logger);
 
-       return new CouncilExecutor(
-          _members.AsReadOnly(),
-          _chairman,
-          _knowledgeKeeper,
-          _strategy,
-          context,
-          _maxRounds,
-          _temperature,
-          _outputPath,
-          _compressor,
-          _compressionOptions,
-          _compressionCache,
-          @operator,
-          executionOptions,
-          _autoChunkingOptions,
-          _telemetryOptions);
-    }
+        return new CouncilExecutor(
+           _members.AsReadOnly(),
+           _chairman,
+           _knowledgeKeeper,
+           _strategy,
+           context,
+           _maxRounds,
+           _temperature,
+           _outputPath,
+           _compressor,
+           _compressionOptions,
+           _compressionCache,
+           @operator,
+           executionOptions,
+           _autoChunkingOptions,
+           _telemetryOptions,
+           _debateTimeout);
+     }
 }

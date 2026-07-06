@@ -1,3 +1,5 @@
+using Delibera.Core.Output;
+
 namespace Delibera.Core.Models;
 
 /// <summary>
@@ -207,12 +209,12 @@ public sealed record DebateResult
       return sb.ToString();
    }
 
-   /// <summary>
-   ///    Exports execution logs to Markdown.
-   /// </summary>
-   public string ToLogsMarkdown()
-   {
-      var sb = new StringBuilder();
+    /// <summary>
+    ///    Exports execution logs to Markdown.
+    /// </summary>
+    public string ToLogsMarkdown()
+    {
+       var sb = new StringBuilder();
 
       sb.AppendLine($"# 📋 Execution Logs — {DebateId}");
       sb.AppendLine();
@@ -262,9 +264,37 @@ public sealed record DebateResult
       return sb.ToString();
    }
 
-   // ──────────────────────────────────────────────
-   // File saving
-   // ──────────────────────────────────────────────
+    // ──────────────────────────────────────────────
+    // HTML export (F-10a Quick Win)
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    ///    Exports the full debate result as a self-contained HTML document
+    ///    with inline CSS, collapsible rounds, and a printable layout.
+    /// </summary>
+    /// <param name="options">Optional export customisation (theme, collapsibility, title).</param>
+    /// <returns>A complete HTML document string.</returns>
+    public string ToHtml(HtmlExportOptions? options = null)
+    {
+       return HtmlExporter.ToHtml(this, options);
+    }
+
+    /// <summary>
+    ///    Saves the debate result as a self-contained HTML file.
+    /// </summary>
+    /// <param name="filePath">Path for the HTML file.</param>
+    /// <param name="options">Optional export customisation.</param>
+    /// <param name="ct">Cancellation token; checked at entry and forwarded to the file write.</param>
+    /// <exception cref="OperationCanceledException">The token has been canceled.</exception>
+    public Task SaveToHtmlAsync(string filePath, HtmlExportOptions? options = null, CancellationToken ct = default)
+    {
+       ct.ThrowIfCancellationRequested();
+       return WriteAllTextAsync(filePath, ToHtml(options), ct);
+    }
+
+    // ──────────────────────────────────────────────
+    // File saving
+    // ──────────────────────────────────────────────
 
    /// <summary>
    ///    Saves the debate result (rounds and verdict) to a Markdown file.
