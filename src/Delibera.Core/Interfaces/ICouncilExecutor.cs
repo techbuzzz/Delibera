@@ -1,6 +1,7 @@
 using Delibera.Core.Council;
 using Delibera.Core.Debate;
 using Delibera.Core.Telemetry;
+using Delibera.Core.Voting;
 
 namespace Delibera.Core.Interfaces;
 
@@ -49,6 +50,13 @@ public interface ICouncilExecutor
     ///    <see cref="ICouncilBuilder.WithAdaptiveStrategy(IStrategySelector)"/>.
     /// </summary>
     IStrategySelector? StrategySelector { get; }
+
+    /// <summary>
+    ///    The voting strategy used to tally the final decision, or <c>null</c> when
+    ///    standard Chairman synthesis is used. Set via
+    ///    <see cref="ICouncilBuilder.WithVotingChairman(string, ILLMProvider, IVotingStrategy)"/>.
+    /// </summary>
+    IVotingStrategy? VotingStrategy { get; }
 
     /// <summary>
     ///    The result of the most recent <see cref="StreamDebateAsync"/> call, once the

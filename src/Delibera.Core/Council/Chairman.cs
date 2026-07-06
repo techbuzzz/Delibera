@@ -1,5 +1,7 @@
 namespace Delibera.Core.Council;
 
+using Delibera.Core.Voting;
+
 /// <summary>
 ///    Factory and helper for the Chairman role — the lead moderator of the council.
 ///    The Chairman opens the debate, explains the strategy, moderates each round,
@@ -45,11 +47,47 @@ public static class Chairman
          """);
    }
 
-   /// <summary>Creates a Chairman with a custom persona prompt.</summary>
-   public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt)
-   {
-      return new CouncilMember(modelName, provider, "Chairman", personaPrompt);
-   }
+    /// <summary>Creates a Chairman with a custom persona prompt.</summary>
+    public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt)
+    {
+       return new CouncilMember(modelName, provider, "Chairman", personaPrompt);
+    }
+
+    /// <summary>
+    ///    Creates a voting Chairman that uses an <see cref="IVotingStrategy"/> to reach
+    ///    a decision via structured voting among participants, as an alternative to the
+    ///    single-LLM Chairman synthesis. The strategy instance is attached to the
+    ///    member's <see cref="CouncilMember.PersonaPrompt"/> so the executor can detect
+    ///    it and route the final round through the voting engine.
+    /// </summary>
+    /// <param name="modelName">Chairman model name.</param>
+    /// <param name="provider">LLM provider.</param>
+    /// <param name="votingStrategy">Voting strategy (Majority, BordaCount, Weighted, ...).</param>
+    /// <returns>A Chairman member whose <see cref="CouncilMember.PersonaPrompt"/> encodes the voting strategy.</returns>
+    /// <remarks>
+    ///    The returned member is wired into <see cref="CouncilBuilder.SetChairman(CouncilMember)"/>
+    ///    as usual. <see cref="CouncilExecutor"/> detects the encoded strategy and, after
+    ///    the final round, asks each participant to rank the options, builds
+    ///    <see cref="ParticipantBallot"/>s, and calls <see cref="IVotingStrategy.TallyAsync"/>.
+    ///    The <see cref="VotingResult"/> is attached to <see cref="Models.DebateResult.VotingTally"/>
+    ///    and rendered as a 🗳️ Voting Tally section in the Markdown output.
+    /// </remarks>
+    public static CouncilMember CreateVoting(string modelName, ILLMProvider provider, IVotingStrategy votingStrategy)
+    {
+       ArgumentNullException.ThrowIfNull(votingStrategy);
+       // Encode the strategy as a special marker in the persona prompt so the executor
+       // can detect it without changing the CouncilMember type. The marker is a
+       // well-known prefix that CouncilExecutor checks for.
+       var persona = $"{VotingChairmanMarker}{votingStrategy.MethodName}:{votingStrategy.GetType().FullName}";
+       return new CouncilMember(modelName, provider, "Voting Chairman", persona);
+    }
+
+    /// <summary>
+    ///    Marker prefix that identifies a voting Chairman's persona prompt.
+    ///    <see cref="CouncilExecutor"/> checks for this to decide whether to run the
+    ///    voting engine instead of the standard synthesis.
+    /// </summary>
+    public const string VotingChairmanMarker = "##VOTING##";
 
    // ──────────────────────────────────────────────
    // Specialised Chairman actions (each has its own prompt)

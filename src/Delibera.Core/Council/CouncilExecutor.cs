@@ -2,6 +2,7 @@ using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
 using Delibera.Core.Telemetry;
+using Delibera.Core.Voting;
 using System.Threading.Channels;
 
 namespace Delibera.Core.Council;
@@ -22,6 +23,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
    private readonly TelemetryOptions? _telemetryOptions;
    private readonly TimeSpan? _debateTimeout;
    private readonly IStrategySelector? _strategySelector;
+   private readonly IVotingStrategy? _votingStrategy;
 
    /// <summary>
    ///    The configured debate-level wall-clock timeout. <c>null</c> means no timeout.
@@ -35,6 +37,13 @@ public sealed class CouncilExecutor : ICouncilExecutor
    ///    <see cref="ICouncilBuilder.WithAdaptiveStrategy(IStrategySelector)"/>.
    /// </summary>
    public IStrategySelector? StrategySelector => _strategySelector;
+
+   /// <summary>
+   ///    The voting strategy used to tally the final decision, or <c>null</c> when
+   ///    standard Chairman synthesis is used. Set via
+   ///    <see cref="ICouncilBuilder.WithVotingChairman(string, ILLMProvider, IVotingStrategy)"/>.
+   /// </summary>
+   public IVotingStrategy? VotingStrategy => _votingStrategy;
 
    /// <summary>
    ///    Whether telemetry instrumentation is active for this executor. When <c>true</c>,
@@ -60,7 +69,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
       AutoChunkingOptions? autoChunkingOptions = null,
       TelemetryOptions? telemetryOptions = null,
       TimeSpan? debateTimeout = null,
-      IStrategySelector? strategySelector = null)
+      IStrategySelector? strategySelector = null,
+      IVotingStrategy? votingStrategy = null)
    {
       Members = members;
       Chairman = chairman;
@@ -79,6 +89,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
       _telemetryOptions = telemetryOptions;
       _debateTimeout = debateTimeout;
       _strategySelector = strategySelector;
+      _votingStrategy = votingStrategy;
 
       // When telemetry is enabled with a non-default source/meter name, configure the
       // global activity source and meter to honour the user's OpenTelemetry builder setup.
@@ -342,6 +353,27 @@ public sealed class CouncilExecutor : ICouncilExecutor
          {
             var stampedRounds = result.Rounds.Select(r => r with { StrategyUsed = Strategy }).ToList();
             result = result with { Rounds = stampedRounds };
+         }
+
+         // F-02: Voting engine — when a voting strategy is configured, ask each participant
+         // to rank the options surfaced during the debate, then tally the ballots.
+         if (_votingStrategy is { } votingStrategy)
+         {
+            Log(ExecutionLog.Info("Voting", $"Running voting engine: {votingStrategy.MethodName}"));
+            try
+            {
+               var tally = await RunVotingAsync(votingStrategy, result, ct);
+               if (tally is not null)
+               {
+                  result = result with { VotingTally = tally };
+                  Log(ExecutionLog.Info("Voting",
+                     $"Tally complete — winner: {tally.WinningOption} (score: {tally.Score:F2}) via {tally.Method}"));
+               }
+            }
+            catch (Exception ex)
+            {
+               ReportError(ex, "Voting");
+            }
          }
 
          Log(ExecutionLog.Info("Council", $"Debate completed — {result.Rounds.Count} rounds, duration: {result.TotalDuration.TotalSeconds:F1}s"));
@@ -766,5 +798,127 @@ public sealed class CouncilExecutor : ICouncilExecutor
                 dp[i - 1, j - 1] + cost);
           }
        return dp[m, n];
+    }
+
+    /// <summary>
+    ///    Runs the voting engine (F-02): asks each participant to rank the options
+    ///    surfaced during the debate, builds <see cref="ParticipantBallot"/>s, and
+    ///    tallies them via the configured <see cref="IVotingStrategy"/>.
+    /// </summary>
+    private async Task<VotingResult?> RunVotingAsync(
+        IVotingStrategy votingStrategy,
+        DebateResult result,
+        CancellationToken ct)
+    {
+       // Extract candidate options from the final round's responses. Each distinct
+       // recommendation or position is treated as an option. For simplicity, we ask
+       // the participants to rank the top N options mentioned in the debate.
+       var options = ExtractOptions(result);
+       if (options.Count < 2)
+       {
+          Log(ExecutionLog.Info("Voting", "Fewer than 2 options detected — skipping vote."));
+          return null;
+       }
+
+       // Build the ranking prompt listing the options.
+       var optionsList = string.Join("\n", options.Select((o, i) => $"{i + 1}. {o}"));
+       var rankPrompt = $"""
+                          The council has identified the following options:
+                          {optionsList}
+
+                          Rank ALL options from most preferred (1) to least preferred.
+                          Reply with ONLY a comma-separated list of option NUMBERS in your preferred order,
+                          e.g. "3,1,2" means option 3 is your top choice, then 1, then 2.
+                          Do not include any other text.
+                          """;
+
+       // Ask each member to rank (in parallel, bounded by ExecutionOptions).
+       var parallelOpts = ExecutionOptions.ToParallelOptions(ct);
+       var ballots = new System.Collections.Concurrent.ConcurrentBag<ParticipantBallot>();
+       await Parallel.ForEachAsync(Members, parallelOpts, async (member, token) =>
+       {
+          try
+          {
+             var response = await member.AskAsync(_context.SystemPrompt, rankPrompt, _temperature, token);
+             var rankings = ParseRankings(response, options);
+             if (rankings.Count > 0)
+                ballots.Add(new ParticipantBallot(member.DisplayName, 1.0, rankings));
+           }
+           catch (Exception ex)
+           {
+              Log(ExecutionLog.Warn("Voting", $"{member.DisplayName} failed to rank: {ex.Message}"));
+           }
+       });
+
+       if (ballots.IsEmpty)
+       {
+          Log(ExecutionLog.Warn("Voting", "No valid ballots collected — skipping vote."));
+          return null;
+       }
+
+       return await votingStrategy.TallyAsync(ballots.ToList(), ct);
+    }
+
+    /// <summary>
+    ///    Extracts candidate options from the debate. Uses the final non-verdict round's
+    ///    responses as the source, splitting on numbered/bulleted list markers.
+    /// </summary>
+    private static List<string> ExtractOptions(DebateResult result)
+    {
+       // Find the last non-verdict round with responses.
+       var lastDebateRound = result.Rounds.LastOrDefault(r => !r.IsFinal);
+       if (lastDebateRound is null) return [];
+
+       var options = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+       foreach (var response in lastDebateRound.Responses.Values)
+       {
+          // Split on numbered list markers (1., 2., etc.) or bullet markers (-, *).
+          var lines = response.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries);
+          foreach (var line in lines)
+          {
+             var trimmed = line.Trim();
+             if (trimmed.Length < 3) continue;
+             // Check for numbered list or bullet markers.
+             if (char.IsDigit(trimmed[0]) && trimmed.Contains('.'))
+             {
+                var dotIdx = trimmed.IndexOf('.');
+                if (dotIdx > 0 && dotIdx < trimmed.Length - 1)
+                {
+                   var opt = trimmed[(dotIdx + 1)..].Trim();
+                   if (opt.Length > 2) options.Add(TruncateOpt(opt, 80));
+                }
+             }
+             else if ((trimmed[0] == '-' || trimmed[0] == '*') && trimmed.Length > 2)
+             {
+                var opt = trimmed[1..].Trim();
+                if (opt.Length > 2) options.Add(TruncateOpt(opt, 80));
+             }
+           }
+       }
+       return options.Take(10).ToList();
+    }
+
+    private static string TruncateOpt(string s, int max) => s.Length <= max ? s : s[..max] + "…";
+
+    /// <summary>
+    ///    Parses a member's ranking response (e.g. "3,1,2") into <see cref="RankedOption"/>s.
+    /// </summary>
+    private static List<RankedOption> ParseRankings(string response, List<string> options)
+    {
+       var rankings = new List<RankedOption>();
+       // Extract the first sequence of comma-separated numbers from the response.
+       var match = System.Text.RegularExpressions.Regex.Match(response, @"([\d,\s]+)");
+       if (!match.Success) return rankings;
+       var numbers = match.Groups[1].Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+       var rank = 1;
+       foreach (var numStr in numbers)
+       {
+          if (int.TryParse(numStr, out var num) && num >= 1 && num <= options.Count)
+          {
+             rankings.Add(new RankedOption(options[num - 1], rank));
+             rank++;
+          }
+       }
+       return rankings;
     }
 }

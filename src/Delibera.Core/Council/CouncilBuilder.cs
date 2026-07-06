@@ -4,6 +4,7 @@ using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Providers.Mcp;
 using Delibera.Core.Telemetry;
+using Delibera.Core.Voting;
 
 namespace Delibera.Core.Council;
 
@@ -37,6 +38,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private TimeSpan? _debateTimeout;
    private int? _maxParticipants;
    private IStrategySelector? _strategySelector;
+   private IVotingStrategy? _votingStrategy;
 
    /// <summary>
    ///    Creates an empty builder. Use <see cref="WithOptions(CouncilOptions)" /> or
@@ -371,6 +373,26 @@ public sealed class CouncilBuilder : ICouncilBuilder
        return this;
     }
 
+    // ── Voting engine (F-02) ──
+
+    /// <summary>
+    ///    Configures a voting Chairman that uses an <see cref="IVotingStrategy"/> to
+    ///    reach a decision via structured voting among participants, as an alternative
+    ///    to the single-LLM Chairman synthesis. The strategy is attached to the
+    ///    Chairman member and detected by <see cref="CouncilExecutor"/> at runtime.
+    /// </summary>
+    /// <param name="modelName">Chairman model name.</param>
+    /// <param name="provider">LLM provider for the Chairman (used to ask participants to rank options).</param>
+    /// <param name="votingStrategy">Voting strategy (Majority, BordaCount, Weighted, ...).</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    public ICouncilBuilder WithVotingChairman(string modelName, ILLMProvider provider, IVotingStrategy votingStrategy)
+    {
+       ArgumentNullException.ThrowIfNull(votingStrategy);
+       _votingStrategy = votingStrategy;
+       SetChairman(Chairman.CreateVoting(modelName, provider, votingStrategy));
+       return this;
+    }
+
    // ── Options (bulk configuration) ──
 
    /// <inheritdoc />
@@ -556,6 +578,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
            _autoChunkingOptions,
            _telemetryOptions,
            _debateTimeout,
-           _strategySelector);
+           _strategySelector,
+           _votingStrategy);
      }
 }

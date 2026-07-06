@@ -1,4 +1,5 @@
 using Delibera.Core.Output;
+using Delibera.Core.Voting;
 
 namespace Delibera.Core.Models;
 
@@ -34,8 +35,16 @@ public sealed record DebateResult
    /// <summary>Chairman's opening statement.</summary>
    public string? OpeningStatement { get; init; }
 
-   /// <summary>Chairman's final verdict.</summary>
-   public string? FinalVerdict { get; init; }
+    /// <summary>Chairman's final verdict.</summary>
+    public string? FinalVerdict { get; init; }
+
+    /// <summary>
+    ///    Voting tally produced by an <see cref="IVotingStrategy"/> when the Chairman
+    ///    was created via <see cref="Council.Chairman.CreateVoting"/>. <c>null</c> when
+    ///    the standard Chairman synthesis was used. When non-null, the Markdown output
+    ///    includes a 🗳️ Voting Tally section alongside the Final Verdict.
+    /// </summary>
+    public VotingResult? VotingTally { get; init; }
 
    /// <summary>Timestamp when the debate started.</summary>
    public DateTime StartedAt { get; init; } = DateTime.UtcNow;
@@ -166,6 +175,21 @@ public sealed record DebateResult
          sb.AppendLine("## Final Verdict (Chairman)");
          sb.AppendLine();
          sb.AppendLine(FinalVerdict);
+         sb.AppendLine();
+      }
+
+      // Voting Tally (F-02)
+      if (VotingTally is { } tally)
+      {
+         sb.AppendLine("## 🗳️ Voting Tally");
+         sb.AppendLine();
+         sb.AppendLine($"**Method:** {tally.Method}");
+         sb.AppendLine($"**Winning option:** {tally.WinningOption} (score: {tally.Score:F2})");
+         sb.AppendLine();
+         sb.AppendLine("| Option | Score |");
+         sb.AppendLine("|--------|------:|");
+         foreach (var (option, score) in tally.Scores.OrderByDescending(kv => kv.Value))
+            sb.AppendLine($"| {option} | {score:F2} |");
          sb.AppendLine();
       }
 

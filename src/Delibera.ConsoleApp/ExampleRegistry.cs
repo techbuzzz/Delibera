@@ -52,7 +52,8 @@ public static class ExampleRegistry
          ["QuickWinsExample"] = ("Quick Wins Bundle", "HTML export, timeout, personas, benchmark, participant limit.", "Features", 4, "quick-wins", ["quickwins"]),
          ["TemplatesExample"] = ("Debate Templates", "Pre-configured councils: ArchitectureReview, RiskAssessment, CodeReview, …", "Features", 5, "templates", []),
          ["StreamingCouncilExample"] = ("Streaming Council", "IAsyncEnumerable<DebateRound> — rounds yielded live as they complete.", "Features", 6, "stream", ["streaming"]),
-         ["AdaptiveStrategyExample"] = ("Adaptive Strategy", "Switch debate strategy mid-flight on stagnation (AdaptiveStrategySelector).", "Features", 7, "adaptive-strategy", [])
+         ["AdaptiveStrategyExample"] = ("Adaptive Strategy", "Switch debate strategy mid-flight on stagnation (AdaptiveStrategySelector).", "Features", 7, "adaptive-strategy", []),
+         ["VotingExample"] = ("Voting Engine", "Pluggable vote/consensus: Majority, BordaCount, Weighted strategies.", "Features", 8, "voting", [])
       };
 
    /// <summary>Discovers all examples in the Examples namespace, ordered by category then order.</summary>

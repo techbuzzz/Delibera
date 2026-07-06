@@ -23,7 +23,7 @@ public sealed class CouncilMember(string modelName, ILLMProvider provider, strin
    public string Role { get; set; } = role ?? "Expert";
 
    /// <summary>Optional persona system-prompt that personalises the model's behaviour.</summary>
-   public string? PersonaPrompt { get; set; }
+   public string? PersonaPrompt { get; set; } = personaPrompt;
 
    /// <summary>Sends a request to the underlying model.</summary>
    public Task<string> AskAsync(

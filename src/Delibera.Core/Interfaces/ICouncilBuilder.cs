@@ -3,6 +3,7 @@ using Delibera.Core.Council;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Telemetry;
+using Delibera.Core.Voting;
 
 namespace Delibera.Core.Interfaces;
 
@@ -271,6 +272,17 @@ public interface ICouncilBuilder
     /// <param name="selector">The strategy selector to consult after each round.</param>
     /// <returns>This builder for fluent chaining.</returns>
     ICouncilBuilder WithAdaptiveStrategy(IStrategySelector selector);
+
+    /// <summary>
+    ///    Configures a voting Chairman (F-02) that uses an <see cref="IVotingStrategy"/>
+    ///    to reach a decision via structured voting among participants, as an
+    ///    alternative to single-LLM Chairman synthesis.
+    /// </summary>
+    /// <param name="modelName">Chairman model name.</param>
+    /// <param name="provider">LLM provider.</param>
+    /// <param name="votingStrategy">Voting strategy (Majority, BordaCount, Weighted).</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder WithVotingChairman(string modelName, ILLMProvider provider, IVotingStrategy votingStrategy);
 
    /// <summary>
    ///    Applies a pre-built <see cref="CouncilOptions" /> snapshot to the builder.
