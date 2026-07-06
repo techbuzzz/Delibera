@@ -1,5 +1,6 @@
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
+using Delibera.Core.Telemetry;
 
 namespace Delibera.Core.Council;
 
@@ -16,6 +17,14 @@ public sealed class CouncilExecutor : ICouncilExecutor
    private readonly int _maxRounds;
    private readonly string? _outputPath;
    private readonly float _temperature;
+   private readonly TelemetryOptions? _telemetryOptions;
+
+   /// <summary>
+   ///    Whether telemetry instrumentation is active for this executor. When <c>true</c>,
+   ///    <see cref="ExecuteAsync"/> emits <see cref="System.Diagnostics.Activity"/> spans
+   ///    and records metrics via <see cref="DeliberaMeter"/>.
+   /// </summary>
+   public bool IsTelemetryEnabled => _telemetryOptions?.Enabled ?? false;
 
    internal CouncilExecutor(
       IReadOnlyList<CouncilMember> members,
@@ -31,7 +40,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
       CompressionCache? compressionCache = null,
       Operator? @operator = null,
       DebateExecutionOptions? executionOptions = null,
-      AutoChunkingOptions? autoChunkingOptions = null)
+      AutoChunkingOptions? autoChunkingOptions = null,
+      TelemetryOptions? telemetryOptions = null)
    {
       Members = members;
       Chairman = chairman;
@@ -47,6 +57,17 @@ public sealed class CouncilExecutor : ICouncilExecutor
       CompressionCache = compressionCache;
       ExecutionOptions = executionOptions ?? DebateExecutionOptions.Default;
       _autoChunkingOptions = autoChunkingOptions;
+      _telemetryOptions = telemetryOptions;
+
+      // When telemetry is enabled with a non-default source/meter name, configure the
+      // global activity source and meter to honour the user's OpenTelemetry builder setup.
+      if (_telemetryOptions is { Enabled: true })
+      {
+         if (!string.Equals(_telemetryOptions.ActivitySourceName, DeliberaActivitySource.DefaultName, StringComparison.Ordinal))
+            DeliberaActivitySource.Configure(_telemetryOptions.ActivitySourceName, _telemetryOptions.ServiceVersion);
+         if (!string.Equals(_telemetryOptions.MeterName, DeliberaMeter.DefaultName, StringComparison.Ordinal))
+            DeliberaMeter.Configure(_telemetryOptions.MeterName, _telemetryOptions.ServiceVersion);
+      }
    }
 
    /// <summary>Compression cache (may be <c>null</c>).</summary>
@@ -98,124 +119,170 @@ public sealed class CouncilExecutor : ICouncilExecutor
    {
       _executionLogs.Clear();
 
-      Log(ExecutionLog.Info("Council", $"Starting debate — strategy: {Strategy.StrategyName}, members: {Members.Count}, maxRounds: {_maxRounds}"));
-
-      if (ExecutionOptions.HasResponseLanguage)
-         Log(ExecutionLog.Info("Council", $"Response language enforced: {ExecutionOptions.ResponseLanguage}"));
-
-      if (ExecutionOptions.MaxDegreeOfParallelism > 0)
-         Log(ExecutionLog.Info("Council", $"Parallelism cap: {ExecutionOptions.MaxDegreeOfParallelism}"));
-
-      if (Chairman is not null)
-         Log(ExecutionLog.Info("Chairman", $"Chairman assigned: {Chairman.DisplayName}"));
-
-      if (KnowledgeKeeper is not null)
-         Log(ExecutionLog.Info("KnowledgeKeeper", $"Knowledge Keeper ready: {KnowledgeKeeper.DisplayName} (collection: {KnowledgeKeeper.CollectionName})"));
-
-      // Initialise the Operator (connect to MCP servers, discover tools) before the debate begins.
-      if (Operator is not null)
+      var debateStartedAt = DateTime.UtcNow;
+      System.Diagnostics.Activity? debateActivity = null;
+      if (IsTelemetryEnabled)
       {
-         if (!Operator.IsInitialized)
+         // Use the preliminary debate id; the final result carries the same id.
+         debateActivity = DeliberaTelemetry.StartDebate(
+            debateId: Guid.NewGuid().ToString("N"),
+            strategyName: Strategy.StrategyName,
+            memberCount: Members.Count,
+            maxRounds: _maxRounds);
+      }
+
+      var succeeded = false;
+      try
+      {
+         Log(ExecutionLog.Info("Council", $"Starting debate — strategy: {Strategy.StrategyName}, members: {Members.Count}, maxRounds: {_maxRounds}"));
+
+         if (ExecutionOptions.HasResponseLanguage)
+            Log(ExecutionLog.Info("Council", $"Response language enforced: {ExecutionOptions.ResponseLanguage}"));
+
+         if (ExecutionOptions.MaxDegreeOfParallelism > 0)
+            Log(ExecutionLog.Info("Council", $"Parallelism cap: {ExecutionOptions.MaxDegreeOfParallelism}"));
+
+         if (Chairman is not null)
+            Log(ExecutionLog.Info("Chairman", $"Chairman assigned: {Chairman.DisplayName}"));
+
+         if (KnowledgeKeeper is not null)
+            Log(ExecutionLog.Info("KnowledgeKeeper", $"Knowledge Keeper ready: {KnowledgeKeeper.DisplayName} (collection: {KnowledgeKeeper.CollectionName})"));
+
+         // Initialise the Operator (connect to MCP servers, discover tools) before the debate begins.
+         if (Operator is not null)
          {
-            Log(ExecutionLog.Info("Operator", $"Initialising Operator: {Operator.DisplayName}…"));
-            try
+            if (!Operator.IsInitialized)
             {
-               await Operator.InitializeAsync(ct);
+               Log(ExecutionLog.Info("Operator", $"Initialising Operator: {Operator.DisplayName}…"));
+               try
+               {
+                  await Operator.InitializeAsync(ct);
+               }
+               catch (Exception ex)
+               {
+                  ReportError(ex, "Operator");
+                  DeliberaTelemetry.MarkFailed(debateActivity, $"Operator init failed: {ex.Message}");
+               }
             }
-            catch (Exception ex)
+
+            Log(ExecutionLog.Info("Operator", $"Operator ready: {Operator.DisplayName} ({Operator.AvailableTools.Count} tool(s) available)"));
+         }
+
+         if (Compressor is not null)
+            Log(ExecutionLog.Info("Compression", $"Compression enabled: {Compressor.StrategyName}"));
+
+         foreach (var m in Members)
+            Log(ExecutionLog.Trace("Council", $"Participant registered: {m.DisplayName} [{m.Role}]"));
+
+         // Inject the response-language directive into the system prompt so every downstream
+         // call (participants, Chairman.OpenDebateAsync / SynthesizeVerdictAsync, Knowledge Keeper,
+         // Operator) inherits it.
+         var effectiveContext = ExecutionOptions.HasResponseLanguage
+            ? _context with { SystemPrompt = _context.SystemPrompt + ExecutionOptions.BuildLanguageDirective() }
+            : _context;
+
+         // ── AutoChunking: analyse model capabilities and create chunking plan ──
+         if (_autoChunkingOptions is not null)
+         {
+            Log(ExecutionLog.Info("AutoChunking", "AutoChunking enabled — analysing model context windows…"));
+
+            var orchestrator = new AutoChunkingOrchestrator(_autoChunkingOptions, ExecutionOptions.Logger);
+            effectiveContext = await orchestrator.PrepareContextAsync(
+               effectiveContext, Members, Chairman, ct);
+
+            if (effectiveContext.AutoChunkingEnabled && effectiveContext.ChunkingPlan is { } plan)
             {
-               ReportError(ex, "Operator");
+               Log(ExecutionLog.Info("AutoChunking",
+                  $"Chunking plan created: {plan.TotalChunks} chunks, " +
+                  $"~{plan.EstimatedTokensPerChunk} tokens/chunk, " +
+                  $"recommended {plan.RecommendedRounds} rounds. " +
+                  $"Min context window: {plan.ContextWindowTokens} tokens, " +
+                  $"available per round: {plan.AvailableTokensPerRound} tokens."));
+            }
+            else if (effectiveContext.ChunkingPlan is not null)
+            {
+               Log(ExecutionLog.Info("AutoChunking",
+                  "Knowledge content fits in a single round — chunking not needed."));
+            }
+            else
+            {
+               Log(ExecutionLog.Info("AutoChunking",
+                  "No knowledge content to chunk or context windows could not be determined."));
             }
          }
 
-         Log(ExecutionLog.Info("Operator", $"Operator ready: {Operator.DisplayName} ({Operator.AvailableTools.Count} tool(s) available)"));
+         var result = await Strategy.ExecuteAsync(
+            Members,
+            effectiveContext,
+            Chairman,
+            KnowledgeKeeper,
+            Operator,
+            ExecutionOptions,
+            _maxRounds,
+            _temperature,
+            round =>
+            {
+               Log(ExecutionLog.Info("Council", $"Round {round.RoundNumber} completed: {round.RoundName} ({round.Duration.TotalSeconds:F1}s, {round.Responses.Count} responses)"));
+
+               // Telemetry: per-round duration histogram.
+               if (IsTelemetryEnabled)
+                  DeliberaTelemetry.RecordRoundDuration(round.RoundNumber, round.Duration.TotalMilliseconds);
+
+               // Log knowledge interactions
+               foreach (var ki in round.KnowledgeInteractions)
+                  Log(ExecutionLog.Info("KnowledgeKeeper", $"Query: \"{Truncate(ki.Query, 100)}\" → {ki.SourceChunks} chunks"));
+
+               // Log operator interactions
+               foreach (var oi in round.OperatorInteractions)
+                  Log(ExecutionLog.Info("Operator", $"{oi.RequesterName} → \"{Truncate(oi.Task, 100)}\" ({oi.ToolCallCount} tool call(s))"));
+
+               // Log participant responses
+               foreach (var (member, response) in round.Responses)
+                  Log(ExecutionLog.Trace("Participant", $"{member} responded ({response.Length} chars)"));
+
+               OnRoundCompleted?.Invoke(round);
+            },
+            ct);
+
+         Log(ExecutionLog.Info("Council", $"Debate completed — {result.Rounds.Count} rounds, duration: {result.TotalDuration.TotalSeconds:F1}s"));
+
+         if (result.TokenStats is not null)
+         {
+            Log(ExecutionLog.Info("Compression", $"Token stats — original: {result.TokenStats.TotalOriginalTokens:N0}, compressed: {result.TokenStats.TotalCompressedTokens:N0}, saved: {result.TokenStats.SavedPercent:F1}%"));
+
+            if (IsTelemetryEnabled)
+            {
+               // Record aggregate token usage. We map original → input, response → output
+               // so downstream Prometheus queries can split by direction.
+               DeliberaTelemetry.RecordTokens("council", "input", result.TokenStats.TotalOriginalTokens);
+               DeliberaTelemetry.RecordTokens("council", "output", result.TokenStats.TotalResponseTokens);
+               if (result.TokenStats.TotalOriginalTokens > 0)
+                  DeliberaTelemetry.RecordCompressionRatio(
+                     (double)result.TokenStats.TotalCompressedTokens / result.TokenStats.TotalOriginalTokens);
+            }
+         }
+
+         if (!string.IsNullOrWhiteSpace(_outputPath))
+         {
+            await result.SaveToFileAsync(_outputPath, ct);
+            Log(ExecutionLog.Info("Output", $"Result saved to: {_outputPath}"));
+         }
+
+         // Return result with execution logs attached
+         var finalResult = result with { ExecutionLogs = _executionLogs.AsReadOnly() };
+         succeeded = true;
+         DeliberaTelemetry.MarkSucceeded(debateActivity);
+         return finalResult;
       }
-
-      if (Compressor is not null)
-         Log(ExecutionLog.Info("Compression", $"Compression enabled: {Compressor.StrategyName}"));
-
-      foreach (var m in Members)
-         Log(ExecutionLog.Trace("Council", $"Participant registered: {m.DisplayName} [{m.Role}]"));
-
-      // Inject the response-language directive into the system prompt so every downstream
-      // call (participants, Chairman.OpenDebateAsync / SynthesizeVerdictAsync, Knowledge Keeper,
-      // Operator) inherits it.
-      var effectiveContext = ExecutionOptions.HasResponseLanguage
-         ? _context with { SystemPrompt = _context.SystemPrompt + ExecutionOptions.BuildLanguageDirective() }
-         : _context;
-
-      // ── AutoChunking: analyse model capabilities and create chunking plan ──
-      if (_autoChunkingOptions is not null)
+      finally
       {
-         Log(ExecutionLog.Info("AutoChunking", "AutoChunking enabled — analysing model context windows…"));
-
-         var orchestrator = new AutoChunkingOrchestrator(_autoChunkingOptions, ExecutionOptions.Logger);
-         effectiveContext = await orchestrator.PrepareContextAsync(
-            effectiveContext, Members, Chairman, ct);
-
-         if (effectiveContext.AutoChunkingEnabled && effectiveContext.ChunkingPlan is { } plan)
+         if (IsTelemetryEnabled)
          {
-            Log(ExecutionLog.Info("AutoChunking",
-               $"Chunking plan created: {plan.TotalChunks} chunks, " +
-               $"~{plan.EstimatedTokensPerChunk} tokens/chunk, " +
-               $"recommended {plan.RecommendedRounds} rounds. " +
-               $"Min context window: {plan.ContextWindowTokens} tokens, " +
-               $"available per round: {plan.AvailableTokensPerRound} tokens."));
-         }
-         else if (effectiveContext.ChunkingPlan is not null)
-         {
-            Log(ExecutionLog.Info("AutoChunking",
-               "Knowledge content fits in a single round — chunking not needed."));
-         }
-         else
-         {
-            Log(ExecutionLog.Info("AutoChunking",
-               "No knowledge content to chunk or context windows could not be determined."));
+            var totalMs = (DateTime.UtcNow - debateStartedAt).TotalMilliseconds;
+            DeliberaTelemetry.RecordDebateCompleted(totalMs, Strategy.StrategyName, succeeded);
+            debateActivity?.Dispose();
          }
       }
-
-      var result = await Strategy.ExecuteAsync(
-         Members,
-         effectiveContext,
-         Chairman,
-         KnowledgeKeeper,
-         Operator,
-         ExecutionOptions,
-         _maxRounds,
-         _temperature,
-         round =>
-         {
-            Log(ExecutionLog.Info("Council", $"Round {round.RoundNumber} completed: {round.RoundName} ({round.Duration.TotalSeconds:F1}s, {round.Responses.Count} responses)"));
-
-            // Log knowledge interactions
-            foreach (var ki in round.KnowledgeInteractions)
-               Log(ExecutionLog.Info("KnowledgeKeeper", $"Query: \"{Truncate(ki.Query, 100)}\" → {ki.SourceChunks} chunks"));
-
-            // Log operator interactions
-            foreach (var oi in round.OperatorInteractions)
-               Log(ExecutionLog.Info("Operator", $"{oi.RequesterName} → \"{Truncate(oi.Task, 100)}\" ({oi.ToolCallCount} tool call(s))"));
-
-            // Log participant responses
-            foreach (var (member, response) in round.Responses)
-               Log(ExecutionLog.Trace("Participant", $"{member} responded ({response.Length} chars)"));
-
-            OnRoundCompleted?.Invoke(round);
-         },
-         ct);
-
-      Log(ExecutionLog.Info("Council", $"Debate completed — {result.Rounds.Count} rounds, duration: {result.TotalDuration.TotalSeconds:F1}s"));
-
-      if (result.TokenStats is not null)
-         Log(ExecutionLog.Info("Compression", $"Token stats — original: {result.TokenStats.TotalOriginalTokens:N0}, compressed: {result.TokenStats.TotalCompressedTokens:N0}, saved: {result.TokenStats.SavedPercent:F1}%"));
-
-      if (!string.IsNullOrWhiteSpace(_outputPath))
-      {
-         await result.SaveToFileAsync(_outputPath, ct);
-         Log(ExecutionLog.Info("Output", $"Result saved to: {_outputPath}"));
-      }
-
-      // Return result with execution logs attached
-      return result with { ExecutionLogs = _executionLogs.AsReadOnly() };
    }
 
    /// <summary>
@@ -239,8 +306,32 @@ public sealed class CouncilExecutor : ICouncilExecutor
       }
 
       Log(ExecutionLog.Trace("Compression", $"Compressing {text.Length} chars with {Compressor.StrategyName}..."));
-      var result = await Compressor.CompressAsync(text, _compressionOptions, ct);
+      System.Diagnostics.Activity? compressionActivity = null;
+      if (IsTelemetryEnabled)
+         compressionActivity = DeliberaTelemetry.StartCompression(Compressor.StrategyName);
+
+      CompressedContext result;
+      try
+      {
+         result = await Compressor.CompressAsync(text, _compressionOptions, ct);
+         DeliberaTelemetry.MarkSucceeded(compressionActivity);
+      }
+      catch (Exception ex)
+      {
+         DeliberaTelemetry.MarkFailed(compressionActivity, ex.Message);
+         throw;
+      }
+      finally
+      {
+         compressionActivity?.Dispose();
+      }
+
       Log(ExecutionLog.Info("Compression", $"Compressed: {result.OriginalTokens:N0} → {result.CompressedTokens:N0} tokens ({result.TokensSavedPercent:F1}% saved) via {result.StrategyUsed}"));
+
+      // Telemetry: record compression ratio.
+      if (IsTelemetryEnabled && result.OriginalTokens > 0)
+         DeliberaTelemetry.RecordCompressionRatio(
+            (double)result.CompressedTokens / result.OriginalTokens);
 
       // Store in cache
       CompressionCache?.Set(text, Compressor.StrategyName, result);
@@ -318,6 +409,15 @@ public sealed class CouncilExecutor : ICouncilExecutor
          sb.AppendLine($"    Max chunks/round: {_autoChunkingOptions.MaxChunksPerRound}");
          sb.AppendLine($"    Map-Reduce: {(_autoChunkingOptions.EnableMapReduce ? "enabled" : "disabled")}");
          sb.AppendLine($"    Progressive disclosure: {(_autoChunkingOptions.EnableProgressiveDisclosure ? "enabled" : "disabled")}");
+      }
+
+      if (IsTelemetryEnabled)
+      {
+         sb.AppendLine();
+         sb.AppendLine("  ── Telemetry ──");
+         sb.AppendLine($"    📊 ActivitySource: {_telemetryOptions!.ActivitySourceName}");
+         sb.AppendLine($"    📊 Meter: {_telemetryOptions.MeterName}");
+         sb.AppendLine($"    Version: {_telemetryOptions.ServiceVersion}");
       }
 
       sb.AppendLine();

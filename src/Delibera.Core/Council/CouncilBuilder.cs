@@ -3,6 +3,7 @@ using Delibera.Core.Compression;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Providers.Mcp;
+using Delibera.Core.Telemetry;
 
 namespace Delibera.Core.Council;
 
@@ -32,6 +33,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private string _systemPrompt = "You are a helpful AI assistant participating in a council debate.";
    private float _temperature = 0.7f;
    private string _userPrompt = string.Empty;
+   private TelemetryOptions? _telemetryOptions;
 
    /// <summary>
    ///    Creates an empty builder. Use <see cref="WithOptions(CouncilOptions)" /> or
@@ -251,12 +253,45 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
-   /// <inheritdoc />
-   public ICouncilBuilder WithModelContextWindow(string modelNamePattern, int contextWindowTokens)
-   {
-      ModelContextWindowRegistry.Register(modelNamePattern, contextWindowTokens);
-      return this;
-   }
+    /// <inheritdoc />
+    public ICouncilBuilder WithModelContextWindow(string modelNamePattern, int contextWindowTokens)
+    {
+       ModelContextWindowRegistry.Register(modelNamePattern, contextWindowTokens);
+       return this;
+    }
+
+    // ── Telemetry (OpenTelemetry-style observability) ──
+
+    /// <summary>
+    ///    Enables OpenTelemetry-style observability. When enabled, the
+    ///    <see cref="CouncilExecutor"/> emits <see cref="System.Diagnostics.Activity"/>
+    ///    spans via <see cref="DeliberaActivitySource"/> and records metrics via
+    ///    <see cref="DeliberaMeter"/>. See <see cref="TelemetryOptions"/> for the
+    ///    activity-source / meter naming convention.
+    /// </summary>
+    /// <param name="options">
+    ///    Telemetry configuration. Pass <c>null</c> to use defaults
+    ///    (<see cref="TelemetryOptions.Enabled"/> = <c>true</c>, default source/meter names).
+    /// </param>
+    /// <returns>This builder for fluent chaining.</returns>
+    public ICouncilBuilder WithTelemetry(TelemetryOptions? options = null)
+    {
+       _telemetryOptions = options ?? new TelemetryOptions { Enabled = true };
+       return this;
+    }
+
+    /// <summary>
+    ///    Enables OpenTelemetry-style observability with a configuration delegate.
+    /// </summary>
+    /// <param name="configure">Delegate that populates a fresh <see cref="TelemetryOptions"/>.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    public ICouncilBuilder WithTelemetry(Action<TelemetryOptions> configure)
+    {
+       ArgumentNullException.ThrowIfNull(configure);
+       _telemetryOptions = new TelemetryOptions { Enabled = true };
+       configure(_telemetryOptions);
+       return this;
+    }
 
    // ── Options (bulk configuration) ──
 
@@ -332,14 +367,18 @@ public sealed class CouncilBuilder : ICouncilBuilder
             _compressionCache = new CompressionCache(options.Compression.MaxCacheEntries);
       }
 
-      // AutoChunking
-      if (options.AutoChunking is { Enabled: true } && _autoChunkingOptions is null)
-         _autoChunkingOptions = options.AutoChunking.ToOptions();
+       // AutoChunking
+       if (options.AutoChunking is { Enabled: true } && _autoChunkingOptions is null)
+          _autoChunkingOptions = options.AutoChunking.ToOptions();
 
-      // Output
-      if (options.Output is { Directory: { Length: > 0 } dir } && dir != "./debate_results")
-         _outputPath = dir;
-   }
+       // Telemetry
+       if (options.Telemetry is { Enabled: true } && _telemetryOptions is null)
+          _telemetryOptions = options.Telemetry;
+
+       // Output
+       if (options.Output is { Directory: { Length: > 0 } dir } && dir != "./debate_results")
+          _outputPath = dir;
+    }
 
    /// <inheritdoc />
    ICouncilExecutor ICouncilBuilder.Build()
@@ -418,20 +457,21 @@ public sealed class CouncilBuilder : ICouncilBuilder
          _maxDegreeOfParallelism,
          _logger);
 
-      return new CouncilExecutor(
-         _members.AsReadOnly(),
-         _chairman,
-         _knowledgeKeeper,
-         _strategy,
-         context,
-         _maxRounds,
-         _temperature,
-         _outputPath,
-         _compressor,
-         _compressionOptions,
-         _compressionCache,
-         @operator,
-         executionOptions,
-         _autoChunkingOptions);
-   }
+       return new CouncilExecutor(
+          _members.AsReadOnly(),
+          _chairman,
+          _knowledgeKeeper,
+          _strategy,
+          context,
+          _maxRounds,
+          _temperature,
+          _outputPath,
+          _compressor,
+          _compressionOptions,
+          _compressionCache,
+          @operator,
+          executionOptions,
+          _autoChunkingOptions,
+          _telemetryOptions);
+    }
 }

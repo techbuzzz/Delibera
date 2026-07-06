@@ -47,7 +47,8 @@ public static class ExampleRegistry
          ["OperatorExample"] = ("Operator (MCP)", "Operator micro-agent delegating tasks to MCP tools.", "Advanced", 0, "operator", []),
          ["OperatorMcpToolsExample"] = ("Operator + MCP Tools", "Full MCP tool wiring with the Operator role.", "Advanced", 1, "operator-mcp", ["operator-mcp-tools"]),
          ["MicrosoftExtensionsAiExample"] = ("M.E.AI Integration", "IChatClient ↔ ILLMProvider bridges + middleware + council.", "Microsoft.Extensions.AI", 0, "msai", ["microsoft-extensions-ai"]),
-         ["ChatClientLLMProviderExample"] = ("ChatClientLLMProvider", "OpenAI/Azure/Ollama via Microsoft.Extensions.AI + streaming.", "Microsoft.Extensions.AI", 1, "chatclient", ["chat-client-llm-provider"])
+         ["ChatClientLLMProviderExample"] = ("ChatClientLLMProvider", "OpenAI/Azure/Ollama via Microsoft.Extensions.AI + streaming.", "Microsoft.Extensions.AI", 1, "chatclient", ["chat-client-llm-provider"]),
+         ["TelemetryExample"] = ("Telemetry (OpenTelemetry)", "In-process ActivityListener + MeterListener printing spans & metrics.", "Observability", 0, "telemetry", [])
       };
 
    /// <summary>Discovers all examples in the Examples namespace, ordered by category then order.</summary>

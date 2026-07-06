@@ -2,6 +2,7 @@ using Delibera.Core.Chunking;
 using Delibera.Core.Council;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
+using Delibera.Core.Telemetry;
 
 namespace Delibera.Core.Interfaces;
 
@@ -214,9 +215,30 @@ public interface ICouncilBuilder
    /// <param name="modelNamePattern">
    ///    Substring pattern (e.g. "my-fine-tuned-llama" matches "my-fine-tuned-llama:v2").
    /// </param>
-   /// <param name="contextWindowTokens">Context window size in tokens.</param>
-   /// <returns>This builder for fluent chaining.</returns>
-   ICouncilBuilder WithModelContextWindow(string modelNamePattern, int contextWindowTokens);
+    /// <param name="contextWindowTokens">Context window size in tokens.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder WithModelContextWindow(string modelNamePattern, int contextWindowTokens);
+
+    /// <summary>
+    ///    Enables OpenTelemetry-style observability. When enabled, the
+    ///    <see cref="Council.CouncilExecutor"/> emits <see cref="System.Diagnostics.Activity"/>
+    ///    spans via <see cref="DeliberaActivitySource"/> and records metrics via
+    ///    <see cref="DeliberaMeter"/>. See <see cref="TelemetryOptions"/> for the
+    ///    activity-source / meter naming convention.
+    /// </summary>
+    /// <param name="options">
+    ///    Telemetry configuration. Pass <c>null</c> to use defaults
+    ///    (<see cref="TelemetryOptions.Enabled"/> = <c>true</c>, default source/meter names).
+    /// </param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder WithTelemetry(TelemetryOptions? options = null);
+
+    /// <summary>
+    ///    Enables OpenTelemetry-style observability with a configuration delegate.
+    /// </summary>
+    /// <param name="configure">Delegate that populates a fresh <see cref="TelemetryOptions"/>.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder WithTelemetry(Action<TelemetryOptions> configure);
 
    /// <summary>
    ///    Applies a pre-built <see cref="CouncilOptions" /> snapshot to the builder.

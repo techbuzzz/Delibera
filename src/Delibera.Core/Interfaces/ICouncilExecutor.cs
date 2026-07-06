@@ -1,4 +1,5 @@
 using Delibera.Core.Council;
+using Delibera.Core.Telemetry;
 
 namespace Delibera.Core.Interfaces;
 
@@ -23,8 +24,17 @@ public interface ICouncilExecutor
    /// <summary>Debate strategy.</summary>
    IDebateStrategy Strategy { get; }
 
-   /// <summary>Context compressor (may be <c>null</c> if compression is disabled).</summary>
-   IContextCompressor? Compressor { get; }
+    /// <summary>Context compressor (may be <c>null</c> if compression is disabled).</summary>
+    IContextCompressor? Compressor { get; }
+
+    /// <summary>
+    ///    Whether OpenTelemetry-style instrumentation is active for this executor. When
+    ///    <c>true</c>, <see cref="ExecuteAsync"/> emits <see cref="System.Diagnostics.Activity"/>
+    ///    spans via <see cref="DeliberaActivitySource"/> and records metrics via
+    ///    <see cref="DeliberaMeter"/>. Default is <c>false</c> unless
+    ///    <see cref="ICouncilBuilder.WithTelemetry(TelemetryOptions?)"/> was called.
+    /// </summary>
+    bool IsTelemetryEnabled { get; }
 
    /// <summary>
    ///    Optional <see cref="ILogger" /> used by the executor to surface progress

@@ -1,4 +1,5 @@
 using Delibera.Core.Chunking;
+using Delibera.Core.Telemetry;
 
 namespace Delibera.Core.DependencyInjection;
 
@@ -74,8 +75,16 @@ public sealed class CouncilOptions
    /// </summary>
    public ResilienceOptions Resilience { get; set; } = new();
 
-   /// <summary>AutoChunking configuration options.</summary>
-   public AutoChunkingConfig AutoChunking { get; set; } = new();
+    /// <summary>AutoChunking configuration options.</summary>
+    public AutoChunkingConfig AutoChunking { get; set; } = new();
+
+    /// <summary>
+    ///    OpenTelemetry-style observability configuration.
+    ///    When <see cref="TelemetryOptions.Enabled"/> is <c>true</c>, the council executor
+    ///    emits <see cref="System.Diagnostics.Activity"/> spans (trace) and records metrics
+    ///    via <see cref="Telemetry.DeliberaMeter"/>. Default is <c>disabled</c>.
+    /// </summary>
+    public TelemetryOptions Telemetry { get; set; } = new();
 }
 
 /// <summary>
