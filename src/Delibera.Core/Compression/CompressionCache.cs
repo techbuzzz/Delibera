@@ -26,15 +26,19 @@ namespace Delibera.Core.Compression;
 /// </remarks>
 public sealed class CompressionCache(int maxEntries = 256)
 {
+   private readonly ConcurrentDictionary<string, LruNode> _cache = new();
+   private readonly int _evictionTarget = Math.Max(1, (int)Math.Ceiling(Math.Max(1, maxEntries) * 0.0625)); // ~6.25% each time
+
+   private readonly ReaderWriterLockSlim _lruLock = new();
+
    // Keep one slot free so we can add first, then evict, avoiding a write lock on reads.
    private readonly int _maxEntries = Math.Max(1, maxEntries);
-   private readonly int _evictionTarget = Math.Max(1, (int)Math.Ceiling(Math.Max(1, maxEntries) * 0.0625)); // ~6.25% each time
-   private readonly ConcurrentDictionary<string, LruNode> _cache = new();
-   private readonly ReaderWriterLockSlim _lruLock = new();
    private LruNode? _head; // most recently used
-   private LruNode? _tail; // least recently used
    private long _hitCount;
+
+   private long _listVersion;
    private long _missCount;
+   private LruNode? _tail; // least recently used
 
    /// <summary>Number of entries currently in the cache.</summary>
    public int Count => _cache.Count;
@@ -205,8 +209,6 @@ public sealed class CompressionCache(int maxEntries = 256)
          _lruLock.ExitWriteLock();
       }
    }
-
-   private long _listVersion;
 
    private void AddToHead(LruNode node)
    {

@@ -164,7 +164,17 @@ public sealed class CritiqueDebate : DebateScenario
          try
          {
             var round4StartedAt = DateTime.UtcNow;
-            var verdict = await Chairman.SynthesizeVerdictAsync(chairman, builder.Context, builder.Rounds, knowledgeKeeper, temperature, ct);
+            // The Judge's final verdict is the single most important output of the
+            // debate. If the caller's budget CT fired mid-round we still want a real
+            // verdict (not the "[JUDGE ERROR: …]" placeholder). Switch to
+            // CancellationToken.None so an exhausted wall-clock budget doesn't kill
+            // the synthesis. If the *caller* genuinely wants to cancel (not just the
+            // internal budget), the caller's CT will surface as a thrown
+            // OperationCanceledException higher up — the debate itself never throws.
+            var verdictCt = ct.IsCancellationRequested
+               ? CancellationToken.None
+               : ct;
+            var verdict = await Chairman.SynthesizeVerdictAsync(chairman, builder.Context, builder.Rounds, knowledgeKeeper, temperature, verdictCt);
             builder.SetFinalVerdict(verdict);
 
             var round4 = CreateRound(4, "Judge's Verdict", "The Chairman judges the debate.",
@@ -172,6 +182,12 @@ public sealed class CritiqueDebate : DebateScenario
                startedAt: round4StartedAt);
             builder.AddRound(round4);
             onRoundCompleted?.Invoke(round4);
+         }
+         catch (OperationCanceledException) when (ct.IsCancellationRequested)
+         {
+            // Genuine caller cancellation — let it propagate; no point producing a
+            // verdict the caller is no longer interested in.
+            throw;
          }
          catch (Exception ex)
          {

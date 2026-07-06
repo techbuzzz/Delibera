@@ -1,12 +1,10 @@
 using System.Text;
 using Delibera.Core.Chunking;
 using Delibera.Core.Council;
-using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Knowledge;
 using Delibera.Core.Models;
-using Delibera.Core.Providers;
 using Delibera.Core.Providers.LLM;
 
 namespace Delibera.ConsoleApp.Examples;
@@ -86,8 +84,12 @@ public static class AutoChunkingExample
          return;
       }
 
-      var provider = localAvailable ? ollamaLocal : ollamaCloud;
-      var providerLabel = localAvailable ? "Ollama Local" : "Ollama Cloud";
+      var provider = localAvailable
+         ? ollamaLocal
+         : ollamaCloud;
+      var providerLabel = localAvailable
+         ? "Ollama Local"
+         : "Ollama Cloud";
 
       Console.WriteLine($"  Using: {providerLabel}\n");
 

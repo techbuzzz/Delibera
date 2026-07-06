@@ -147,7 +147,6 @@ public static class AutoChunker
 
       List<DocumentChunk> chunks;
       if (fitsInSingle)
-      {
          chunks =
          [
             new DocumentChunk
@@ -160,16 +159,13 @@ public static class AutoChunker
                EndChar = document.Length
             }
          ];
-      }
       else
-      {
          chunks = strategy switch
          {
             ChunkingStrategy.SlidingWindow => ChunkBySlidingWindow(document, availableTokens),
             ChunkingStrategy.FixedSize => ChunkByFixedSize(document, availableTokens),
             _ => ChunkBySemanticBoundaries(document, availableTokens)
          };
-      }
 
       // Recommend rounds: aim for ~3 chunks per round, minimum 1.
       var recommendedRounds = Math.Max(1, (int)Math.Ceiling((double)chunks.Count / 3));
@@ -239,7 +235,12 @@ public static class AutoChunker
          {
             var hashCount = 1;
             var j = i + 1;
-            while (j < span.Length && span[j] == '#') { hashCount++; j++; }
+            while (j < span.Length && span[j] == '#')
+            {
+               hashCount++;
+               j++;
+            }
+
             // Must be followed by a space to be a valid Markdown header.
             if (j < span.Length && span[j] == ' ' && hashCount <= 6)
             {
@@ -321,10 +322,7 @@ public static class AutoChunker
          }
 
          var chunk = doc[pos..end].Trim();
-         if (chunk.Length > 0)
-         {
-            chunks.Add(MakeChunk(index++, chunk, $"Part {index}", pos, end));
-         }
+         if (chunk.Length > 0) chunks.Add(MakeChunk(index++, chunk, $"Part {index}", pos, end));
 
          if (end >= doc.Length) break;
          pos = end;
@@ -356,10 +354,7 @@ public static class AutoChunker
          }
 
          var chunk = doc[pos..end].Trim();
-         if (chunk.Length > 0)
-         {
-            chunks.Add(MakeChunk(index++, chunk, $"Window {index}", pos, end));
-         }
+         if (chunk.Length > 0) chunks.Add(MakeChunk(index++, chunk, $"Window {index}", pos, end));
 
          if (end >= doc.Length) break;
          pos = Math.Max(pos + step, pos + 1);
@@ -419,7 +414,9 @@ public static class AutoChunker
             parts.Add(trimmed);
       }
 
-      return parts.Count > 0 ? parts : [text.Trim()];
+      return parts.Count > 0
+         ? parts
+         : [text.Trim()];
    }
 
    /// <summary>

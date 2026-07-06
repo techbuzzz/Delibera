@@ -1,6 +1,7 @@
 using Delibera.Core.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Polly;
 
 namespace Delibera.Core.Resilience;
@@ -30,7 +31,7 @@ public static class DeliberaResilienceServiceCollectionExtensions
 
       services.TryAddSingleton<IDeliberaResiliencePipelineProvider>(sp =>
       {
-         var monitor = sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<ResilienceOptions>>();
+         var monitor = sp.GetRequiredService<IOptionsMonitor<ResilienceOptions>>();
          var collection = sp.GetRequiredService<DeliberaResiliencePipelineCollection>();
          var sequences = new List<KeyValuePair<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>>(collection.Snapshot());
          if (customPipelines is not null)
@@ -80,30 +81,36 @@ public static class DeliberaResilienceServiceCollectionExtensions
 }
 
 /// <summary>
-///    Marker singleton returned by <see cref="DeliberaResilienceServiceCollectionExtensions.AddDeliberaResiliencePipeline" />.
+///    Marker singleton returned by
+///    <see cref="DeliberaResilienceServiceCollectionExtensions.AddDeliberaResiliencePipeline" />.
 ///    Side-effect (mutating the shared collection) is the goal; the instance is discarded.
 /// </summary>
 internal sealed record DeliberaResiliencePipelineRegistration(string Name);
 
 /// <summary>
 ///    Internal mutable collection of consumer-registered resilience pipelines.
-///    Held as a singleton so multiple <see cref="DeliberaResilienceServiceCollectionExtensions.AddDeliberaResiliencePipeline" />
+///    Held as a singleton so multiple
+///    <see cref="DeliberaResilienceServiceCollectionExtensions.AddDeliberaResiliencePipeline" />
 ///    calls accumulate their entries before the provider factory consumes them.
 /// </summary>
 internal sealed class DeliberaResiliencePipelineCollection
 {
-   private readonly object _gate = new();
    private readonly List<KeyValuePair<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>> _entries = [];
+   private readonly object _gate = new();
 
    public void Add(string name, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>> build)
    {
       lock (_gate)
-         _entries.Add(new(name, build));
+      {
+         _entries.Add(new KeyValuePair<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>(name, build));
+      }
    }
 
    public IReadOnlyList<KeyValuePair<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>> Snapshot()
    {
       lock (_gate)
+      {
          return _entries.ToList();
+      }
    }
 }

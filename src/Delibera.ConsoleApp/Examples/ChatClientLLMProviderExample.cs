@@ -34,7 +34,7 @@ public static class ChatClientLLMProviderExample
       const string model = "gpt-oss";
 
       using var ollama = new OllamaProvider(endpoint);
-      IChatClient chatClient = ollama.AsChatClient();
+      var chatClient = ollama.AsChatClient();
       Console.WriteLine($"  ✦ Backend IChatClient: {ollama.ProviderName}");
 
       // ──────────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ public static class ChatClientLLMProviderExample
       // ──────────────────────────────────────────────────────────────
       // WithMiddleware adds function-invocation + logging around the inner client.
       // (Pass an ILoggerFactory to enable console logging.)
-      var decoratedClient = chatClient.WithMiddleware(enableFunctionInvocation: true);
+      var decoratedClient = chatClient.WithMiddleware(true);
       Console.WriteLine("  ✦ Middleware: function invocation enabled");
 
       // ──────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ public static class ChatClientLLMProviderExample
       // Two equivalent forms:
       //    var llmProvider = new ChatClientLLMProvider(decoratedClient);
       //    var llmProvider = decoratedClient.AsLLMProvider();
-       var llmProvider = new ChatClientLLMProvider(decoratedClient, "Ollama (via ChatClientLLMProvider)");
+      var llmProvider = new ChatClientLLMProvider(decoratedClient, "Ollama (via ChatClientLLMProvider)");
       Console.WriteLine($"  ✦ ILLMProvider: {llmProvider.ProviderName}");
 
       // ──────────────────────────────────────────────────────────────
@@ -83,10 +83,9 @@ public static class ChatClientLLMProviderExample
       try
       {
          var response = await llmProvider.ChatAsync(
-            model: model,
-            systemPrompt: "You are a helpful assistant.",
-            userPrompt: "What is the capital of France?",
-            temperature: 0.7f);
+            model,
+            "You are a helpful assistant.",
+            "What is the capital of France?");
          Console.WriteLine($"    {response}");
       }
       catch (Exception ex)

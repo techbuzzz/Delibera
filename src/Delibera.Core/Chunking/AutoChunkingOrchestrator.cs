@@ -24,8 +24,8 @@ namespace Delibera.Core.Chunking;
 /// </remarks>
 public sealed class AutoChunkingOrchestrator
 {
-   private readonly AutoChunkingOptions _options;
    private readonly ILogger? _logger;
+   private readonly AutoChunkingOptions _options;
 
    /// <summary>
    ///    Creates a new orchestrator with the specified options.
@@ -69,7 +69,7 @@ public sealed class AutoChunkingOrchestrator
 
       // Collect all models that will receive prompts.
       var allModels = members
-         .Select(m => (m.ModelName, Provider: m.Provider, m.DisplayName))
+         .Select(m => (m.ModelName, m.Provider, m.DisplayName))
          .ToList();
 
       if (chairman is not null)
@@ -169,8 +169,8 @@ public sealed class AutoChunkingOrchestrator
       {
          sb.AppendLine("### Previously Reviewed (Summary):");
          sb.AppendLine($"(Rounds 1–{roundNumber - 1} covered chunks 1–" +
-            $"{Math.Min((roundNumber - 1) * _options.MaxChunksPerRound, plan.TotalChunks)} " +
-            $"of {plan.TotalChunks})");
+                       $"{Math.Min((roundNumber - 1) * _options.MaxChunksPerRound, plan.TotalChunks)} " +
+                       $"of {plan.TotalChunks})");
          sb.AppendLine();
       }
 
@@ -263,16 +263,12 @@ public sealed class AutoChunkingOrchestrator
       string? minModel = null;
 
       foreach (var (window, displayName) in results)
-      {
          if (window is { } w and > 0)
-         {
             if (minWindow is null || w < minWindow.Value)
             {
                minWindow = w;
                minModel = displayName;
             }
-         }
-      }
 
       return (minWindow, minModel);
    }

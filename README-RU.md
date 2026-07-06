@@ -52,6 +52,22 @@
 | **🤝 Microsoft.Extensions.AI**     | Поддержка `IChatClient` / `IEmbeddingGenerator` — подключайте OpenAI, Azure OpenAI, Ollama и любые совместимые бэкенды, с middleware (function calling, логирование) |
 | **🧱 Современный C# 15 (preview)** | Построено на .NET 10 с `LangVersion=preview`, file-scoped namespaces, records, span/SIMD горячие пути |
 
+### 🆕 Что нового в v10.2.6
+
+| Возможность | Описание |
+| --- | --- |
+| **🌊 Асинхронный потоковый совет** | `ICouncilExecutor.StreamDebateAsync` отдаёт каждый `DebateRound` по мере завершения через внутренний мост `Channel<DebateRound>` — идеально для ASP.NET Core SSE, WebSocket, Blazor и CLI в реальном времени. Включены метаданные `DebateRound.Total` + `IsFinal` + `LastStreamedResult`. |
+| **🗳️ Подключаемый движок голосования** | `IVotingStrategy` со встроенными `MajorityVotingStrategy`, `BordaCountVotingStrategy`, `WeightedVotingStrategy` (повеса по участникам `MemberWeights`). `Chairman.CreateVoting(...)` подменяет синтез Chairman на верифицируемый подсчёт, который отображается как секция 🗳️ Voting Tally в Markdown-выводе. |
+| **💾 Персистентность и возобновление дебатов** | `IDebateStore` + `FileDebateStore` (атомарная запись JSON с rename, `RetentionDays`) + `InMemoryDebateStore`. `CouncilBuilder.WithPersistence(...)` сохраняет чекпоинт после каждого раунда; `ResumeFrom(debateId)` продолжает с последнего завершённого раунда после сбоя или паузы. |
+| **🧠 Память агентов** | `IAgentMemory` с реализациями `InMemoryAgentMemory` (схожесть Жаккара), `QdrantAgentMemory` (отдельная коллекция на агента), `PgVectorAgentMemory` (общая таблица с фильтром `agent_name`). `CouncilBuilder.WithAgentMemory(...)` подгружает контекст до и сохраняет выводы после каждого совета. |
+| **📊 OpenTelemetry-стиль наблюдаемости** | `DeliberaActivitySource` + `DeliberaMeter` с гистограммами, счётчиками и gauge для спанов `delibera.council.execute`, `delibera.council.round`, `delibera.compression` и т.д. Нулевые накладные расходы, когда слушатель не подключён. Включается через `CouncilBuilder.WithTelemetry(...)`. |
+| **📋 Структурированный вывод** | `IStructuredOutputSerializer` + `JsonSchemaOutputSerializer` (использует .NET 10 `JsonSchemaExporter`). `ICouncilExecutor.ExecuteTypedAsync<TVerdict>` возвращает строго типизированный вердикт, десериализованный из ответа Chairman. Одна автоматическая повторная попытка при ошибке десериализации. |
+| **🔄 Адаптивная смена стратегии** | `IStrategySelector` + `AdaptiveStrategySelector` меняют стратегию дебатов на лету при стагнации ответов (`StagnationThreshold` подряд идущих раундов с низким разнообразием, fallback на Левенштейна при отсутствии embedding-провайдера). |
+| **📋 Шаблоны дебатов** | 6 встроенных шаблонов (`DebateTemplate.ArchitectureReview`, `RiskAssessment`, `CodeReview`, `ProductDecision`, `SecurityAudit`, `DataArchitecture`) с преднастроенными участниками, персонами, стратегиями и Chairman. |
+| **⚡ Quick Wins** | `DebateResult.ToHtml()` + `SaveToHtmlAsync()`; `CouncilBuilder.WithTimeout(TimeSpan)`; пресеты `Persona`; `CouncilBenchmark` для сравнения моделей; `WithParticipantLimit(int)` как защитный гард. |
+
+> Полные release notes v10.2.6 смотрите в [CHANGELOG.md](CHANGELOG.md), оригинальный roadmap — в [docs/v10.2.6.md](docs/v10.2.6.md).
+
 ---
 
 ## 📑 Содержание

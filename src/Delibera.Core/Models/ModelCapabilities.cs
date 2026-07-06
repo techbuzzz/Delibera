@@ -49,5 +49,8 @@ public sealed record ModelCapabilities
    ///    Creates a placeholder instance for a model whose capabilities are unknown.
    ///    All optional fields are left at their default (<c>null</c> / <c>false</c>).
    /// </summary>
-   public static ModelCapabilities Unknown(string modelName) => new() { ModelName = modelName };
+   public static ModelCapabilities Unknown(string modelName)
+   {
+      return new ModelCapabilities { ModelName = modelName };
+   }
 }
