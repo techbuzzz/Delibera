@@ -427,3 +427,4 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+/src/debate_results/separate_files_demo
