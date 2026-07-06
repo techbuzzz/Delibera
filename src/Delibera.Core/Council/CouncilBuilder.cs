@@ -2,6 +2,7 @@ using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
+using Delibera.Core.Memory;
 using Delibera.Core.Output;
 using Delibera.Core.Persistence;
 using Delibera.Core.Providers.Mcp;
@@ -46,6 +47,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private IDebateStore? _debateStore;
    private string? _resumeFromDebateId;
    private CouncilOptions? _persistedOptionsSnapshot;
+   private IAgentMemory? _agentMemory;
 
    /// <summary>
    ///    Creates an empty builder. Use <see cref="WithOptions(CouncilOptions)" /> or
@@ -453,6 +455,22 @@ public sealed class CouncilBuilder : ICouncilBuilder
        return this;
     }
 
+    // ── Agent memory (F-04) ──
+
+    /// <summary>
+    ///    Attaches an <see cref="IAgentMemory"/> so council members can recall
+    ///    context from previous sessions and persist their conclusions after each
+    ///    debate. The default is <see cref="InMemoryAgentMemory"/> (no persistence)
+    ///    when not configured.
+    /// </summary>
+    /// <param name="memory">Memory backend. <c>null</c> disables memory.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    public ICouncilBuilder WithAgentMemory(IAgentMemory? memory = null)
+    {
+       _agentMemory = memory ?? new InMemoryAgentMemory();
+       return this;
+    }
+
    // ── Options (bulk configuration) ──
 
    /// <inheritdoc />
@@ -643,6 +661,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
            _structuredOutputSerializer,
            _structuredOutputType,
            _debateStore,
-           _resumeFromDebateId);
+           _resumeFromDebateId,
+           _agentMemory);
      }
 }

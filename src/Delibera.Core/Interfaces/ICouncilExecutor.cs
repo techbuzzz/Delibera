@@ -1,5 +1,6 @@
 using Delibera.Core.Council;
 using Delibera.Core.Debate;
+using Delibera.Core.Memory;
 using Delibera.Core.Output;
 using Delibera.Core.Persistence;
 using Delibera.Core.Telemetry;
@@ -85,6 +86,12 @@ public interface ICouncilExecutor
     ///    Set via <see cref="ICouncilBuilder.ResumeFrom(string)"/>.
     /// </summary>
     string? ResumeFromDebateId { get; }
+
+    /// <summary>
+    ///    The agent memory backend, or <c>null</c> when agent memory is disabled.
+    ///    Set via <see cref="ICouncilBuilder.WithAgentMemory(IAgentMemory?)"/>.
+    /// </summary>
+    IAgentMemory? AgentMemory { get; }
 
     /// <summary>
     ///    The result of the most recent <see cref="StreamDebateAsync"/> call, once the

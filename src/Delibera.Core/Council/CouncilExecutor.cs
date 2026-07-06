@@ -2,6 +2,7 @@ using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
+using Delibera.Core.Memory;
 using Delibera.Core.Output;
 using Delibera.Core.Persistence;
 using Delibera.Core.Telemetry;
@@ -32,6 +33,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
    private readonly Type? _structuredOutputType;
    private readonly IDebateStore? _debateStore;
    private readonly string? _resumeFromDebateId;
+   private readonly IAgentMemory? _agentMemory;
 
    /// <summary>
    ///    The configured debate-level wall-clock timeout. <c>null</c> means no timeout.
@@ -79,6 +81,12 @@ public sealed class CouncilExecutor : ICouncilExecutor
    public string? ResumeFromDebateId => _resumeFromDebateId;
 
    /// <summary>
+   ///    The agent memory backend, or <c>null</c> when agent memory is disabled.
+   ///    Set via <see cref="ICouncilBuilder.WithAgentMemory(IAgentMemory?)"/>.
+   /// </summary>
+   public IAgentMemory? AgentMemory => _agentMemory;
+
+   /// <summary>
    ///    Whether telemetry instrumentation is active for this executor. When <c>true</c>,
    ///    <see cref="ExecuteAsync"/> emits <see cref="System.Diagnostics.Activity"/> spans
    ///    and records metrics via <see cref="DeliberaMeter"/>.
@@ -107,7 +115,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
       IStructuredOutputSerializer? structuredOutputSerializer = null,
       Type? structuredOutputType = null,
       IDebateStore? debateStore = null,
-      string? resumeFromDebateId = null)
+      string? resumeFromDebateId = null,
+      IAgentMemory? agentMemory = null)
    {
       Members = members;
       Chairman = chairman;
@@ -131,6 +140,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
       _structuredOutputType = structuredOutputType;
       _debateStore = debateStore;
       _resumeFromDebateId = resumeFromDebateId;
+      _agentMemory = agentMemory;
 
       // When telemetry is enabled with a non-default source/meter name, configure the
       // global activity source and meter to honour the user's OpenTelemetry builder setup.
@@ -336,12 +346,51 @@ public sealed class CouncilExecutor : ICouncilExecutor
          foreach (var m in Members)
             Log(ExecutionLog.Trace("Council", $"Participant registered: {m.DisplayName} [{m.Role}]"));
 
-         // Inject the response-language directive into the system prompt so every downstream
-         // call (participants, Chairman.OpenDebateAsync / SynthesizeVerdictAsync, Knowledge Keeper,
-         // Operator) inherits it.
-         var effectiveContext = ExecutionOptions.HasResponseLanguage
-            ? _context with { SystemPrompt = _context.SystemPrompt + ExecutionOptions.BuildLanguageDirective() }
-            : _context;
+          // Inject the response-language directive into the system prompt so every downstream
+          // call (participants, Chairman.OpenDebateAsync / SynthesizeVerdictAsync, Knowledge Keeper,
+          // Operator) inherits it.
+          var effectiveContext = ExecutionOptions.HasResponseLanguage
+             ? _context with { SystemPrompt = _context.SystemPrompt + ExecutionOptions.BuildLanguageDirective() }
+             : _context;
+
+          // F-04: Augment the system prompt with each member's recalled memories.
+          // Memories are recalled per-member, joined into a single block, and
+          // prepended to the system prompt so all participants see them.
+          if (_agentMemory is { } memory)
+          {
+             var allMemories = new System.Collections.Generic.List<MemoryEntry>();
+             var seenIds = new System.Collections.Generic.HashSet<string>();
+             foreach (var member in Members)
+             {
+                try
+                {
+                   var recalled = await memory.RecallAsync(member.DisplayName, _context.UserPrompt, limit: 3, ct).ConfigureAwait(false);
+                   foreach (var m in recalled)
+                   {
+                      var key = m.Content;
+                      if (seenIds.Add(key))
+                         allMemories.Add(m);
+                   }
+                }
+                catch (Exception ex)
+                {
+                   ReportError(ex, "AgentMemory");
+                }
+             }
+             if (allMemories.Count > 0)
+             {
+                var memoryBlock = string.Join("\n", allMemories.Select(m => $"- {m.Content}"));
+                var augmented = $"""
+                                  ── Memory from previous sessions ──
+                                  {memoryBlock}
+                                  ── End of memory ──
+
+                                  {effectiveContext.SystemPrompt}
+                                  """;
+                effectiveContext = effectiveContext with { SystemPrompt = augmented };
+                Log(ExecutionLog.Info("AgentMemory", $"Recalled {allMemories.Count} memory entries from previous sessions."));
+             }
+          }
 
          // ── AutoChunking: analyse model capabilities and create chunking plan ──
          if (_autoChunkingOptions is not null)
@@ -510,6 +559,62 @@ public sealed class CouncilExecutor : ICouncilExecutor
          {
             await result.SaveToFileAsync(_outputPath, ct);
             Log(ExecutionLog.Info("Output", $"Result saved to: {_outputPath}"));
+         }
+
+         // F-04: Store each member's final response (and the Chairman's verdict)
+         // as a memory entry tagged with the debate id, so future sessions can
+         // recall conclusions.
+         if (_agentMemory is { } mem)
+         {
+            string? debateId = null;
+            if (_debateStore is not null)
+            {
+               try
+               {
+                  var list = await _debateStore.ListAsync(ct).ConfigureAwait(false);
+                  debateId = list.FirstOrDefault(m => m.OriginalQuestion == _context.UserPrompt)?.DebateId;
+               }
+               catch (Exception ex) { ReportError(ex, "AgentMemory"); }
+            }
+            var stored = 0;
+            // Collect each member's last response across all rounds.
+            var memberResponses = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var round in result.Rounds)
+            {
+               foreach (var (member, response) in round.Responses)
+                  memberResponses[member] = response; // last write wins
+            }
+            foreach (var (member, response) in memberResponses)
+            {
+               try
+               {
+                  var meta = new Dictionary<string, string> { ["role"] = member };
+                  if (debateId is not null) meta["debate_id"] = debateId;
+                  await mem.StoreAsync(member, new MemoryEntry(
+                     response, DateTimeOffset.UtcNow, meta), ct).ConfigureAwait(false);
+                  stored++;
+               }
+               catch (Exception ex)
+               {
+                  ReportError(ex, "AgentMemory");
+               }
+            }
+            if (result.FinalVerdict is { Length: > 0 })
+            {
+               try
+               {
+                  var meta = new Dictionary<string, string> { ["role"] = "Chairman" };
+                  if (debateId is not null) meta["debate_id"] = debateId;
+                  await mem.StoreAsync("Chairman", new MemoryEntry(
+                     result.FinalVerdict, DateTimeOffset.UtcNow, meta), ct).ConfigureAwait(false);
+                  stored++;
+               }
+               catch (Exception ex)
+               {
+                  ReportError(ex, "AgentMemory");
+               }
+            }
+            Log(ExecutionLog.Info("AgentMemory", $"Stored {stored} memory entries for this debate."));
          }
 
          // Return result with execution logs attached

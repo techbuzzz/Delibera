@@ -2,6 +2,7 @@ using Delibera.Core.Chunking;
 using Delibera.Core.Council;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
+using Delibera.Core.Memory;
 using Delibera.Core.Output;
 using Delibera.Core.Persistence;
 using Delibera.Core.Telemetry;
@@ -318,6 +319,15 @@ public interface ICouncilBuilder
     /// <param name="debateId">The debate identifier to resume.</param>
     /// <returns>This builder for fluent chaining.</returns>
     ICouncilBuilder ResumeFrom(string debateId);
+
+    /// <summary>
+    ///    Attaches an <see cref="IAgentMemory"/> (F-04) so council members can recall
+    ///    context from previous sessions and persist their conclusions after each
+    ///    debate. Default is <see cref="InMemoryAgentMemory"/> (no persistence).
+    /// </summary>
+    /// <param name="memory">Memory backend. <c>null</c> uses <see cref="InMemoryAgentMemory"/>.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder WithAgentMemory(IAgentMemory? memory = null);
 
    /// <summary>
    ///    Applies a pre-built <see cref="CouncilOptions" /> snapshot to the builder.

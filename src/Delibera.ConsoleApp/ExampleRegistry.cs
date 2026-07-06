@@ -55,7 +55,8 @@ public static class ExampleRegistry
          ["AdaptiveStrategyExample"] = ("Adaptive Strategy", "Switch debate strategy mid-flight on stagnation (AdaptiveStrategySelector).", "Features", 7, "adaptive-strategy", []),
          ["VotingExample"] = ("Voting Engine", "Pluggable vote/consensus: Majority, BordaCount, Weighted strategies.", "Features", 8, "voting", []),
          ["StructuredOutputExample"] = ("Structured Output", "JSON-schema-validated typed verdicts from the Chairman.", "Features", 9, "structured-output", []),
-         ["PersistenceExample"] = ("Debate Persistence", "Checkpoint after every round; resume from last completed round.", "Features", 10, "persistence", [])
+         ["PersistenceExample"] = ("Debate Persistence", "Checkpoint after every round; resume from last completed round.", "Features", 10, "persistence", []),
+         ["AgentMemoryExample"] = ("Agent Memory", "Council members recall + persist conclusions across sessions.", "Features", 11, "agent-memory", [])
       };
 
    /// <summary>Discovers all examples in the Examples namespace, ordered by category then order.</summary>
