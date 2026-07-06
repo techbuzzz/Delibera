@@ -59,6 +59,7 @@ well-reasoned outcomes** rather than single-model guesses.
   - [Minimal Example](#minimal-example)
   - [Run](#run)
 - [Dependency Injection](#-dependency-injection)
+- [Pluggable LLM Backends (Microsoft.Extensions.AI)](#-pluggable-llm-backends-microsoftextensionsai)
 - [Context Compression](#-context-compression)
 - [RAG Integration](#-rag-integration)
 - [Debate Strategies](#-debate-strategies)
@@ -239,6 +240,77 @@ console app — see [ConsoleApp Examples](#-consoleapp-examples)).
 
 ---
 
+## 🔌 Pluggable LLM Backends (Microsoft.Extensions.AI)
+
+Delibera's `ChatClientLLMProvider` wraps **any** `Microsoft.Extensions.AI.IChatClient` and
+exposes it as a standard `ILLMProvider`. Because every modern .NET LLM SDK ships an
+`IChatClient`, you can plug **OpenAI, Azure OpenAI, Anthropic, Ollama, GitHub Copilot,
+Microsoft Foundry, LM Studio, vLLM, LocalAI, ONNX**, and more into a Delibera council
+without writing a bespoke provider for each one.
+
+```csharp
+using Microsoft.Extensions.AI;
+using OpenAI;
+using Delibera.Core.Providers.LLM;
+
+var openAi = new OpenAIClient(Environment.GetEnvironmentVariable("OPENAI_API_KEY")!);
+IChatClient chatClient = openAi.GetChatClient("gpt-4o-mini").AsIChatClient();
+
+var llmProvider = new ChatClientLLMProvider(chatClient, "OpenAI");
+
+string response = await llmProvider.ChatAsync(
+    "gpt-4o-mini",
+    "You are a helpful assistant.",
+    "What is the capital of France?",
+    0.7f);
+```
+
+### Supported providers
+
+| Provider                        | NuGet package                                          | Notes                                               |
+| ------------------------------- | ------------------------------------------------------ | --------------------------------------------------- |
+| **OpenAI**                      | `Microsoft.Extensions.AI.OpenAI`                       | `OpenAIClient.GetChatClient(...).AsIChatClient()`   |
+| **Azure OpenAI**                | `Azure.AI.OpenAI` + `Microsoft.Extensions.AI.OpenAI`   | `AzureOpenAIClient.GetChatClient(deploy).AsIChatClient()` |
+| **Microsoft Foundry**           | `Microsoft.Extensions.AI.AzureAIInference`             | Foundry endpoint + key                              |
+| **Anthropic Claude**            | `Microsoft.Extensions.AI.Anthropic` *(community/port)* | Claude models with function tools + streaming        |
+| **Ollama** (local or Cloud)     | `OllamaSharp` *(already a Delibera dependency)*         | `OllamaProvider.AsChatClient()` — no extra package   |
+| **GitHub Copilot**              | `Microsoft.Extensions.AI.GitHubCopilot`                | GitHub token                                         |
+| **LM Studio / vLLM / LocalAI**  | `Microsoft.Extensions.AI.OpenAI`                       | OpenAI-compatible HTTP API (any string key)          |
+| **ONNX Runtime GenAI**           | `Microsoft.ML.GenAI` / `Microsoft.Extensions.AI.ONNX` | Local model path                                     |
+| **Custom `IChatClient`**        | —                                                      | Implement `IChatClient` or derive from `DelegatingChatClient` |
+
+### Interop bridge (`MicrosoftAIExtensions`)
+
+| From → To                                                  | Helper                                                      |
+| ---------------------------------------------------------- | ----------------------------------------------------------- |
+| `IChatClient` → `ILLMProvider`                             | `.AsLLMProvider()` / `new ChatClientLLMProvider(...)`        |
+| `IEmbeddingGenerator<string, Embedding<float>>` → `IEmbeddingProvider` | `.AsEmbeddingProvider()`               |
+| `ILLMProvider` → `IChatClient`                             | `.AsChatClient()` (returns the inner client when wrapped)   |
+| Compose middleware (function invocation, logging)         | `.WithMiddleware(enableFunctionInvocation, loggerFactory)`  |
+
+```csharp
+using Delibera.Core.Extensions;
+
+// Decorate with Microsoft.Extensions.AI middleware, then adopt as a Delibera provider
+var llmProvider = chatClient
+    .WithMiddleware(enableFunctionInvocation: true)
+    .AsLLMProvider("OpenAI");
+```
+
+### Runnable example
+
+```bash
+cd src/Delibera.ConsoleApp
+dotnet run -- --chatclient     # ChatClientLLMProvider + Microsoft.Extensions.AI demo
+dotnet run -- --msai           # Full M.E.AI integration with a council
+```
+
+📄 **Full provider list, interop details, OpenAI/Azure/Ollama/OpenAI-compatible examples,
+streaming, embeddings, DI registration and limitations:**
+[docs/ChatClientLLMProvider.md](docs/ChatClientLLMProvider.md)
+
+---
+
 ## 🗜️ Context Compression
 
 Automatically compress context between deliberation rounds — save **30–70% of tokens** without losing meaning.
@@ -406,6 +478,8 @@ dotnet run -- --compression        # Context compression demo
 dotnet run -- --multiprovider      # Multi-provider (cloud + local) council
 dotnet run -- --rag                # Qdrant-backed RAG with Knowledge Keeper
 dotnet run -- --pgvector           # pgvector-backed RAG
+dotnet run -- --chatclient         # ChatClientLLMProvider (Microsoft.Extensions.AI) demo
+dotnet run -- --msai               # Full M.E.AI integration with a council
 
 # Or run the full default demo (reads appsettings.json)
 dotnet run
@@ -477,7 +551,8 @@ docker exec -it <container> psql -U postgres -d council_vectors -c "CREATE EXTEN
 
 | Package                  | Purpose                          |
 | ------------------------ | -------------------------------- |
-| `OllamaSharp`            | Ollama API client                |
+| `Microsoft.Extensions.AI` | `IChatClient` / `IEmbeddingGenerator` abstractions + middleware |
+| `OllamaSharp`            | Ollama API client (natively implements `IChatClient`) |
 | `Qdrant.Client`          | Qdrant vector DB gRPC client     |
 | `Npgsql`                 | PostgreSQL ADO.NET provider      |
 | `Pgvector`               | pgvector type support for Npgsql |

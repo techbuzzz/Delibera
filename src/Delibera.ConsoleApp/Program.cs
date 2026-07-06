@@ -118,11 +118,17 @@ public static class Program
          return;
       }
 
-      if (args.Contains("--msai"))
-      {
-         await MicrosoftExtensionsAiExample.RunAsync();
-         return;
-      }
+       if (args.Contains("--msai"))
+       {
+          await MicrosoftExtensionsAiExample.RunAsync();
+          return;
+       }
+
+       if (args.Contains("--chatclient"))
+       {
+          await ChatClientLLMProviderExample.RunAsync();
+          return;
+       }
 
       if (args.Contains("--resilience"))
       {
@@ -143,11 +149,12 @@ public static class Program
       }
 
       // Quick DI showcase before main demo
-      Console.WriteLine("🆕 v3.1 DI Quick Demo:");
-      Console.WriteLine("   Run with --di for full DI example");
-      Console.WriteLine("   Run with --separate-files for file output demo");
-      Console.WriteLine("   Run with --autochunking for AutoChunking demo (large documents)");
-      Console.WriteLine("   Run with --cancellation for cooperative cancellation demo (Ctrl+C)\n");
+       Console.WriteLine("🆕 v3.1 DI Quick Demo:");
+       Console.WriteLine("   Run with --di for full DI example");
+       Console.WriteLine("   Run with --separate-files for file output demo");
+       Console.WriteLine("   Run with --autochunking for AutoChunking demo (large documents)");
+       Console.WriteLine("   Run with --cancellation for cooperative cancellation demo (Ctrl+C)");
+       Console.WriteLine("   Run with --chatclient for ChatClientLLMProvider (M.E.AI) demo\n");
 
       // ═══════════════════════════════════════════════
       // 1. Load configuration
