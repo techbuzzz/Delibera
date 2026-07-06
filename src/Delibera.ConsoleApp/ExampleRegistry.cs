@@ -75,8 +75,7 @@ public static class ExampleRegistry
          if (type.Name.StartsWith('<') || type.Name.StartsWith("<>")) continue;
          if (type.Namespace is null || !type.Namespace.StartsWith(examplesNamespace, StringComparison.Ordinal)) continue;
 
-         var method = type.GetMethod("RunAsync", BindingFlags.Public | BindingFlags.Static, null, [typeof(CancellationToken)], null)
-                      ?? type.GetMethod("RunAsync", BindingFlags.Public | BindingFlags.Static, null, [], null);
+         var method = type.GetMethod("RunAsync", BindingFlags.Public | BindingFlags.Static, null, [typeof(CancellationToken)], null) ?? type.GetMethod("RunAsync", BindingFlags.Public | BindingFlags.Static, null, [], null);
          if (method is null) continue;
          if (method.ReturnType != typeof(Task) && method.ReturnType != typeof(ValueTask)) continue;
 
@@ -139,6 +138,7 @@ public static class ExampleRegistry
             sb.Append('-');
          sb.Append(char.ToLowerInvariant(c));
       }
+
       return sb.ToString();
    }
 
@@ -153,6 +153,7 @@ public static class ExampleRegistry
             sb.Append(' ');
          sb.Append(c);
       }
+
       return sb.ToString();
    }
 }

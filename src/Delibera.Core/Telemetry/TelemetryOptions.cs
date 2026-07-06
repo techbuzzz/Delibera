@@ -23,27 +23,27 @@ namespace Delibera.Core.Telemetry;
 /// </remarks>
 public sealed class TelemetryOptions
 {
-    /// <summary>Whether telemetry instrumentation is enabled. Default is <c>false</c>.</summary>
-    public bool Enabled { get; set; }
+   /// <summary>Whether telemetry instrumentation is enabled. Default is <c>false</c>.</summary>
+   public bool Enabled { get; set; }
 
-    /// <summary>
-    ///    The <see cref="System.Diagnostics.ActivitySource.Name" /> used to emit trace spans.
-    ///    Match this name in <c>OpenTelemetry.WithTracing(b =&gt; b.AddSource(...))</c>.
-    ///    Default is <c>"Delibera.Council"</c>.
-    /// </summary>
-    public string ActivitySourceName { get; set; } = DeliberaActivitySource.DefaultName;
+   /// <summary>
+   ///    The <see cref="System.Diagnostics.ActivitySource.Name" /> used to emit trace spans.
+   ///    Match this name in <c>OpenTelemetry.WithTracing(b =&gt; b.AddSource(...))</c>.
+   ///    Default is <c>"Delibera.Council"</c>.
+   /// </summary>
+   public string ActivitySourceName { get; set; } = DeliberaActivitySource.DefaultName;
 
-    /// <summary>
-    ///    The <see cref="System.Diagnostics.Metrics.Meter.Name" /> used to emit metrics.
-    ///    Match this name in <c>OpenTelemetry.WithMetrics(b =&gt; b.AddMeter(...))</c>.
-    ///    Default is <c>"Delibera.Metrics"</c>.
-    /// </summary>
-    public string MeterName { get; set; } = DeliberaMeter.DefaultName;
+   /// <summary>
+   ///    The <see cref="System.Diagnostics.Metrics.Meter.Name" /> used to emit metrics.
+   ///    Match this name in <c>OpenTelemetry.WithMetrics(b =&gt; b.AddMeter(...))</c>.
+   ///    Default is <c>"Delibera.Metrics"</c>.
+   /// </summary>
+   public string MeterName { get; set; } = DeliberaMeter.DefaultName;
 
-    /// <summary>
-    ///    Optional service version stamped onto every emitted span and metric instrument
-    ///    via <see cref="System.Diagnostics.ActivitySource.Version" /> and
-    ///    <see cref="System.Diagnostics.Metrics.Meter.Version" />. Default is <c>"1.0.0"</c>.
-    /// </summary>
-    public string ServiceVersion { get; set; } = "1.0.0";
+   /// <summary>
+   ///    Optional service version stamped onto every emitted span and metric instrument
+   ///    via <see cref="System.Diagnostics.ActivitySource.Version" /> and
+   ///    <see cref="System.Diagnostics.Metrics.Meter.Version" />. Default is <c>"1.0.0"</c>.
+   /// </summary>
+   public string ServiceVersion { get; set; } = "1.0.0";
 }

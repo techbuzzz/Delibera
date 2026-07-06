@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Resilience;
@@ -5,6 +7,7 @@ using Microsoft.Extensions.AI;
 using OllamaSharp;
 using OllamaSharp.Models;
 using OllamaSharp.Models.Chat;
+using Polly;
 using ChatRole = OllamaSharp.Models.Chat.ChatRole;
 
 namespace Delibera.Core.Providers.LLM;
@@ -27,8 +30,8 @@ public enum OllamaConnectionMode
 /// </summary>
 /// <remarks>
 ///    <para>
-///    Use <c>ForLocal</c> for a local server (e.g. <c>http://localhost:11434</c>) and
-///    <c>ForCloud</c> for Ollama Cloud (e.g. <c>https://api.ollama.com</c>) with an API key.
+///       Use <c>ForLocal</c> for a local server (e.g. <c>http://localhost:11434</c>) and
+///       <c>ForCloud</c> for Ollama Cloud (e.g. <c>https://api.ollama.com</c>) with an API key.
 ///    </para>
 ///    <para>
 ///       Transient failures are retried by a Polly v8
@@ -51,25 +54,27 @@ public sealed class OllamaProvider : ILLMProvider
 
    private readonly IHttpClientFactory? _httpClientFactory;
    private readonly string? _httpClientName;
-   private readonly Polly.ResiliencePipeline? _pipeline;
    private readonly int _maxOutputTokens;
+   private readonly ResiliencePipeline? _pipeline;
    private bool _disposed;
 
    /// <summary>
    ///    Creates an Ollama provider. The mode is inferred from <paramref name="apiKey" />: non-empty selects cloud.
-   /// <para>
-   ///    <paramref name="maxOutputTokens" /> (default <c>-1</c> = infinite generation) overrides the
-   ///    OllamaSharp-<c>NumPredict</c> default of <c>128</c>, which truncates long responses (chairman
-   ///    council verdicts, schema discovery, summaries) mid-JSON and breaks downstream parsers. Pass
-   ///    a positive value to cap output per call, or <c>-1</c> to let the model/provider ceiling apply.
-   /// </para>
+   ///    <para>
+   ///       <paramref name="maxOutputTokens" /> (default <c>-1</c> = infinite generation) overrides the
+   ///       OllamaSharp-<c>NumPredict</c> default of <c>128</c>, which truncates long responses (chairman
+   ///       council verdicts, schema discovery, summaries) mid-JSON and breaks downstream parsers. Pass
+   ///       a positive value to cap output per call, or <c>-1</c> to let the model/provider ceiling apply.
+   ///    </para>
    /// </summary>
    public OllamaProvider(string endpoint, string apiKey = "", TimeSpan? timeout = null,
       int maxOutputTokens = -1)
-      : this(endpoint, apiKey, timeout, httpClientFactory: null, resilienceProvider: null,
-         httpClientName: null, pipelineName: null,
-         mode: string.IsNullOrWhiteSpace(apiKey) ? OllamaConnectionMode.Local : OllamaConnectionMode.Cloud,
-         maxOutputTokens: maxOutputTokens)
+      : this(endpoint, apiKey, timeout, null, null,
+         null, null,
+         string.IsNullOrWhiteSpace(apiKey)
+            ? OllamaConnectionMode.Local
+            : OllamaConnectionMode.Cloud,
+         maxOutputTokens)
    {
    }
 
@@ -106,17 +111,23 @@ public sealed class OllamaProvider : ILLMProvider
       ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
 
       var uri = new Uri(endpoint.TrimEnd('/'));
-      Mode = mode ?? (string.IsNullOrWhiteSpace(apiKey) ? OllamaConnectionMode.Local : OllamaConnectionMode.Cloud);
-      var effectiveTimeout = timeout ?? (Mode == OllamaConnectionMode.Cloud ? DefaultCloudTimeout : DefaultLocalTimeout);
+      Mode = mode ??
+             (string.IsNullOrWhiteSpace(apiKey)
+                ? OllamaConnectionMode.Local
+                : OllamaConnectionMode.Cloud);
+      var effectiveTimeout = timeout ??
+                             (Mode == OllamaConnectionMode.Cloud
+                                ? DefaultCloudTimeout
+                                : DefaultLocalTimeout);
 
       var resolvedHttpClientName = !string.IsNullOrWhiteSpace(httpClientName)
          ? httpClientName
          : $"Delibera.Ollama.{Mode}";
       var resolvedPipelineName = !string.IsNullOrWhiteSpace(pipelineName)
          ? pipelineName
-         : (Mode == OllamaConnectionMode.Cloud
+         : Mode == OllamaConnectionMode.Cloud
             ? ResilienceOptions.CloudPipelineName
-            : ResilienceOptions.LocalPipelineName);
+            : ResilienceOptions.LocalPipelineName;
 
       OllamaApiClient client;
       if (httpClientFactory is not null)
@@ -133,7 +144,7 @@ public sealed class OllamaProvider : ILLMProvider
          http.BaseAddress ??= uri;
          http.Timeout = effectiveTimeout;
          if (Mode == OllamaConnectionMode.Cloud && !string.IsNullOrWhiteSpace(apiKey))
-            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey.Trim());
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
 
          client = new OllamaApiClient(http);
       }
@@ -213,9 +224,9 @@ public sealed class OllamaProvider : ILLMProvider
          // 3. Determine model family from the model info.
          var family = response.Info?.Architecture ?? response.Details?.Family;
 
-          // 4. Check capabilities for vision support.
-          var supportsVision = response.Capabilities is not null &&
-             response.Capabilities.Any(c => c.Contains("vision", StringComparison.OrdinalIgnoreCase));
+         // 4. Check capabilities for vision support.
+         var supportsVision = response.Capabilities is not null &&
+                              response.Capabilities.Any(c => c.Contains("vision", StringComparison.OrdinalIgnoreCase));
 
          return new ModelCapabilities
          {
@@ -229,7 +240,7 @@ public sealed class OllamaProvider : ILLMProvider
       catch (Exception ex)
       {
          // If the API call fails, fall back to the static registry.
-         System.Diagnostics.Debug.WriteLine(
+         Debug.WriteLine(
             $"OllamaProvider: failed to get capabilities for '{model}': {ex.Message}");
 
          var window = ModelContextWindowRegistry.GetContextWindow(model);
@@ -237,24 +248,6 @@ public sealed class OllamaProvider : ILLMProvider
             ? new ModelCapabilities { ModelName = model, ContextWindowTokens = window }
             : null;
       }
-   }
-
-   /// <summary>
-   ///    Extracts the <c>num_ctx</c> parameter from an Ollama Modelfile parameters string.
-   ///    The parameters string looks like:
-   ///    <c>num_keep 24\nstop "&lt;|start_header_id|&gt;"\nnum_ctx 131072\n...</c>
-   /// </summary>
-   private static int? ExtractContextWindowFromParameters(string? parameters)
-   {
-      if (string.IsNullOrWhiteSpace(parameters))
-         return null;
-
-      // Match "num_ctx <number>" in the parameters string.
-      var match = Regex.Match(parameters, @"num_ctx\s+(\d+)", RegexOptions.IgnoreCase);
-      if (match.Success && int.TryParse(match.Groups[1].Value, out var ctx))
-         return ctx;
-
-      return null;
    }
 
    /// <inheritdoc />
@@ -273,19 +266,19 @@ public sealed class OllamaProvider : ILLMProvider
          messages.Add(new Message(ChatRole.System, systemPrompt));
       messages.Add(new Message(ChatRole.User, userPrompt));
 
-       var request = new ChatRequest
-       {
-          Model = model,
-          Messages = messages,
-          // NumPredict: -1 (infinite) overrides the OllamaSharp default of 128 tokens, which
-          // truncates long responses (chairman council verdicts, schema discovery, summaries)
-          // mid-JSON and breaks downstream parsers. The provider ctor's maxOutputTokens
-          // (default -1) is the per-instance cap; pass a positive value to budget a call.
-          // NumCtx is intentionally left unset — Ollama reads the native context window from
-          // /api/show Modelfile (see GetModelCapabilitiesAsync), so hardcoding 8192 would
-          // shrink the context for large models (gpt-oss:120b-cloud = 128K, yandexgpt-5-pro = 32K).
-          Options = new RequestOptions { Temperature = temperature, NumPredict = _maxOutputTokens }
-       };
+      var request = new ChatRequest
+      {
+         Model = model,
+         Messages = messages,
+         // NumPredict: -1 (infinite) overrides the OllamaSharp default of 128 tokens, which
+         // truncates long responses (chairman council verdicts, schema discovery, summaries)
+         // mid-JSON and breaks downstream parsers. The provider ctor's maxOutputTokens
+         // (default -1) is the per-instance cap; pass a positive value to budget a call.
+         // NumCtx is intentionally left unset — Ollama reads the native context window from
+         // /api/show Modelfile (see GetModelCapabilitiesAsync), so hardcoding 8192 would
+         // shrink the context for large models (gpt-oss:120b-cloud = 128K, yandexgpt-5-pro = 32K).
+         Options = new RequestOptions { Temperature = temperature, NumPredict = _maxOutputTokens }
+      };
 
       // The chat operation is owned by OllamaSharp (it streams response chunks).
       // When a Polly v8 pipeline is configured we wrap the entire streaming
@@ -323,7 +316,7 @@ public sealed class OllamaProvider : ILLMProvider
          // exceptions in a ResilienceException only when the pipeline
          // re-throws after exhausting retries; HttpRequestException and
          // TaskCanceledException pass straight through unchanged.
-         var context = Polly.ResilienceContextPool.Shared.Get(ct);
+         var context = ResilienceContextPool.Shared.Get(ct);
          try
          {
             await _pipeline.ExecuteAsync<ChatState>(
@@ -339,7 +332,7 @@ public sealed class OllamaProvider : ILLMProvider
          }
          finally
          {
-            Polly.ResilienceContextPool.Shared.Return(context);
+            ResilienceContextPool.Shared.Return(context);
          }
 
          return captured ?? throw new InvalidOperationException($"Empty response from model '{model}'.");
@@ -351,10 +344,6 @@ public sealed class OllamaProvider : ILLMProvider
       catch (HttpRequestException ex)
       {
          throw new InvalidOperationException($"HTTP error talking to Ollama (model: {model}): {ex.Message}", ex);
-      }
-      catch (TimeoutException)
-      {
-         throw;
       }
    }
 
@@ -369,81 +358,99 @@ public sealed class OllamaProvider : ILLMProvider
          Client.Dispose();
    }
 
-    /// <summary>Creates a provider for a local Ollama server (e.g. <c>http://localhost:11434</c>).</summary>
-    /// <param name="endpoint">Ollama endpoint URL.</param>
-    /// <param name="timeout">HTTP timeout (null = local default).</param>
-    /// <param name="maxOutputTokens">Per-call output token cap; <c>-1</c> = infinite generation (default).</param>
-    public static OllamaProvider ForLocal(string endpoint, TimeSpan? timeout = null,
-       int maxOutputTokens = -1)
-    {
-       ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
-       return new OllamaProvider(endpoint, "", timeout, null, null,
-          httpClientName: null, pipelineName: null,
-          mode: OllamaConnectionMode.Local,
-          maxOutputTokens: maxOutputTokens);
-    }
+   /// <summary>
+   ///    Extracts the <c>num_ctx</c> parameter from an Ollama Modelfile parameters string.
+   ///    The parameters string looks like:
+   ///    <c>num_keep 24\nstop "&lt;|start_header_id|&gt;"\nnum_ctx 131072\n...</c>
+   /// </summary>
+   private static int? ExtractContextWindowFromParameters(string? parameters)
+   {
+      if (string.IsNullOrWhiteSpace(parameters))
+         return null;
 
-    /// <summary>Creates a provider for Ollama Cloud (e.g. <c>https://api.ollama.com</c>) with an API key.</summary>
-    /// <param name="endpoint">Ollama endpoint URL.</param>
-    /// <param name="apiKey">Ollama Cloud API key.</param>
-    /// <param name="timeout">HTTP timeout (null = cloud default).</param>
-    /// <param name="maxOutputTokens">Per-call output token cap; <c>-1</c> = infinite generation (default).</param>
-    public static OllamaProvider ForCloud(string endpoint, string apiKey, TimeSpan? timeout = null,
-       int maxOutputTokens = -1)
-    {
-       ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
-       ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
-       return new OllamaProvider(endpoint, apiKey, timeout, null, null,
-          httpClientName: null, pipelineName: null,
-          mode: OllamaConnectionMode.Cloud,
-          maxOutputTokens: maxOutputTokens);
-    }
+      // Match "num_ctx <number>" in the parameters string.
+      var match = Regex.Match(parameters, @"num_ctx\s+(\d+)", RegexOptions.IgnoreCase);
+      if (match.Success && int.TryParse(match.Groups[1].Value, out var ctx))
+         return ctx;
 
-    /// <summary>
-    ///    Creates a DI-friendly local Ollama provider with handler pooling and the local retry pipeline.
-    /// </summary>
-    public static OllamaProvider ForLocal(
-       string endpoint,
-       IHttpClientFactory httpClientFactory,
-       IDeliberaResiliencePipelineProvider resilienceProvider,
-       string? httpClientName = null,
-       string? pipelineName = null,
-       TimeSpan? timeout = null,
-       int maxOutputTokens = -1)
-    {
-       ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
-       ArgumentNullException.ThrowIfNull(httpClientFactory);
-       ArgumentNullException.ThrowIfNull(resilienceProvider);
-       return new OllamaProvider(endpoint, "", timeout,
-          httpClientFactory, resilienceProvider,
-          httpClientName, pipelineName,
-          mode: OllamaConnectionMode.Local,
-          maxOutputTokens: maxOutputTokens);
-    }
+      return null;
+   }
 
-    /// <summary>
-    ///    Creates a DI-friendly cloud Ollama provider with handler pooling and the cloud retry pipeline.
-    /// </summary>
-    public static OllamaProvider ForCloud(
-       string endpoint,
-       string apiKey,
-       IHttpClientFactory httpClientFactory,
-       IDeliberaResiliencePipelineProvider resilienceProvider,
-       string? httpClientName = null,
-       string? pipelineName = null,
-       TimeSpan? timeout = null,
-       int maxOutputTokens = -1)
-    {
-       ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
-       ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
-       ArgumentNullException.ThrowIfNull(httpClientFactory);
-       ArgumentNullException.ThrowIfNull(resilienceProvider);
-       return new OllamaProvider(endpoint, apiKey, timeout,
-          httpClientFactory, resilienceProvider,
-          httpClientName, pipelineName,
-          mode: OllamaConnectionMode.Cloud,
-          maxOutputTokens: maxOutputTokens);
-    }
+   /// <summary>Creates a provider for a local Ollama server (e.g. <c>http://localhost:11434</c>).</summary>
+   /// <param name="endpoint">Ollama endpoint URL.</param>
+   /// <param name="timeout">HTTP timeout (null = local default).</param>
+   /// <param name="maxOutputTokens">Per-call output token cap; <c>-1</c> = infinite generation (default).</param>
+   public static OllamaProvider ForLocal(string endpoint, TimeSpan? timeout = null,
+      int maxOutputTokens = -1)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
+      return new OllamaProvider(endpoint, "", timeout, null, null,
+         null, null,
+         OllamaConnectionMode.Local,
+         maxOutputTokens);
+   }
+
+   /// <summary>Creates a provider for Ollama Cloud (e.g. <c>https://api.ollama.com</c>) with an API key.</summary>
+   /// <param name="endpoint">Ollama endpoint URL.</param>
+   /// <param name="apiKey">Ollama Cloud API key.</param>
+   /// <param name="timeout">HTTP timeout (null = cloud default).</param>
+   /// <param name="maxOutputTokens">Per-call output token cap; <c>-1</c> = infinite generation (default).</param>
+   public static OllamaProvider ForCloud(string endpoint, string apiKey, TimeSpan? timeout = null,
+      int maxOutputTokens = -1)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
+      ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
+      return new OllamaProvider(endpoint, apiKey, timeout, null, null,
+         null, null,
+         OllamaConnectionMode.Cloud,
+         maxOutputTokens);
+   }
+
+   /// <summary>
+   ///    Creates a DI-friendly local Ollama provider with handler pooling and the local retry pipeline.
+   /// </summary>
+   public static OllamaProvider ForLocal(
+      string endpoint,
+      IHttpClientFactory httpClientFactory,
+      IDeliberaResiliencePipelineProvider resilienceProvider,
+      string? httpClientName = null,
+      string? pipelineName = null,
+      TimeSpan? timeout = null,
+      int maxOutputTokens = -1)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
+      ArgumentNullException.ThrowIfNull(httpClientFactory);
+      ArgumentNullException.ThrowIfNull(resilienceProvider);
+      return new OllamaProvider(endpoint, "", timeout,
+         httpClientFactory, resilienceProvider,
+         httpClientName, pipelineName,
+         OllamaConnectionMode.Local,
+         maxOutputTokens);
+   }
+
+   /// <summary>
+   ///    Creates a DI-friendly cloud Ollama provider with handler pooling and the cloud retry pipeline.
+   /// </summary>
+   public static OllamaProvider ForCloud(
+      string endpoint,
+      string apiKey,
+      IHttpClientFactory httpClientFactory,
+      IDeliberaResiliencePipelineProvider resilienceProvider,
+      string? httpClientName = null,
+      string? pipelineName = null,
+      TimeSpan? timeout = null,
+      int maxOutputTokens = -1)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
+      ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
+      ArgumentNullException.ThrowIfNull(httpClientFactory);
+      ArgumentNullException.ThrowIfNull(resilienceProvider);
+      return new OllamaProvider(endpoint, apiKey, timeout,
+         httpClientFactory, resilienceProvider,
+         httpClientName, pipelineName,
+         OllamaConnectionMode.Cloud,
+         maxOutputTokens);
+   }
 
    /// <summary>
    ///    Exposes the underlying OllamaSharp client as a Microsoft.Extensions.AI

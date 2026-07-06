@@ -93,10 +93,8 @@ public sealed class ChatClientLLMProvider : ILLMProvider
    {
       var window = ModelContextWindowRegistry.GetContextWindow(model);
       if (window is not null)
-      {
          return Task.FromResult<ModelCapabilities?>(
             new ModelCapabilities { ModelName = model, ContextWindowTokens = window });
-      }
 
       return Task.FromResult<ModelCapabilities?>(null);
    }
@@ -155,12 +153,12 @@ public sealed class ChatClientLLMProvider : ILLMProvider
    }
 
    /// <inheritdoc />
-    public void Dispose()
-    {
-       if (_disposed) return;
-       _disposed = true;
-       if (_ownsClient) ChatClient.Dispose();
-    }
+   public void Dispose()
+   {
+      if (_disposed) return;
+      _disposed = true;
+      if (_ownsClient) ChatClient.Dispose();
+   }
 
    private static List<ChatMessage> BuildMessages(string systemPrompt, string userPrompt)
    {

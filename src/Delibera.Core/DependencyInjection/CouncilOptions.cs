@@ -1,5 +1,4 @@
 using Delibera.Core.Chunking;
-using Delibera.Core.Persistence;
 using Delibera.Core.Telemetry;
 
 namespace Delibera.Core.DependencyInjection;
@@ -76,24 +75,24 @@ public sealed class CouncilOptions
    /// </summary>
    public ResilienceOptions Resilience { get; set; } = new();
 
-    /// <summary>AutoChunking configuration options.</summary>
-    public AutoChunkingConfig AutoChunking { get; set; } = new();
+   /// <summary>AutoChunking configuration options.</summary>
+   public AutoChunkingConfig AutoChunking { get; set; } = new();
 
-    /// <summary>
-    ///    OpenTelemetry-style observability configuration.
-    ///    When <see cref="TelemetryOptions.Enabled"/> is <c>true</c>, the council executor
-    ///    emits <see cref="System.Diagnostics.Activity"/> spans (trace) and records metrics
-    ///    via <see cref="Telemetry.DeliberaMeter"/>. Default is <c>disabled</c>.
-    /// </summary>
-    public TelemetryOptions Telemetry { get; set; } = new();
+   /// <summary>
+   ///    OpenTelemetry-style observability configuration.
+   ///    When <see cref="TelemetryOptions.Enabled" /> is <c>true</c>, the council executor
+   ///    emits <see cref="System.Diagnostics.Activity" /> spans (trace) and records metrics
+   ///    via <see cref="Telemetry.DeliberaMeter" />. Default is <c>disabled</c>.
+   /// </summary>
+   public TelemetryOptions Telemetry { get; set; } = new();
 
-    /// <summary>
-    ///    Debate persistence configuration (F-03). When <see cref="PersistenceOptions.Enabled"/>
-    ///    is <c>true</c>, the council executor saves a checkpoint after every round
-    ///    (via <see cref="Persistence.IDebateStore"/>) so the debate can be resumed
-    ///    after a crash or intentional pause.
-    /// </summary>
-    public PersistenceOptions Persistence { get; set; } = new();
+   /// <summary>
+   ///    Debate persistence configuration (F-03). When <see cref="PersistenceOptions.Enabled" />
+   ///    is <c>true</c>, the council executor saves a checkpoint after every round
+   ///    (via <see cref="Persistence.IDebateStore" />) so the debate can be resumed
+   ///    after a crash or intentional pause.
+   /// </summary>
+   public PersistenceOptions Persistence { get; set; } = new();
 }
 
 /// <summary>
@@ -102,34 +101,34 @@ public sealed class CouncilOptions
 /// </summary>
 public sealed class PersistenceOptions
 {
-    /// <summary>Whether persistence is enabled. Default is <c>false</c>.</summary>
-    public bool Enabled { get; set; }
+   /// <summary>Whether persistence is enabled. Default is <c>false</c>.</summary>
+   public bool Enabled { get; set; }
 
-    /// <summary>
-    ///    The store type to use: <c>"File"</c> (default) or <c>"InMemory"</c>.
-    ///    When <c>"File"</c>, <see cref="Directory"/> is required.
-    /// </summary>
-    public string Store { get; set; } = "File";
+   /// <summary>
+   ///    The store type to use: <c>"File"</c> (default) or <c>"InMemory"</c>.
+   ///    When <c>"File"</c>, <see cref="Directory" /> is required.
+   /// </summary>
+   public string Store { get; set; } = "File";
 
-    /// <summary>
-    ///    Directory for file-based checkpoints (used when <see cref="Store"/> is <c>"File"</c>).
-    ///    The directory is created if it does not exist.
-    /// </summary>
-    public string Directory { get; set; } = "./checkpoints";
+   /// <summary>
+   ///    Directory for file-based checkpoints (used when <see cref="Store" /> is <c>"File"</c>).
+   ///    The directory is created if it does not exist.
+   /// </summary>
+   public string Directory { get; set; } = "./checkpoints";
 
-    /// <summary>
-    ///    Optional retention period in days. When set, checkpoints older than the
-    ///    period are deleted lazily on <see cref="Persistence.IDebateStore.ListAsync"/>.
-    ///    <c>null</c> (default) means no retention sweep.
-    /// </summary>
-    public int? RetentionDays { get; set; }
+   /// <summary>
+   ///    Optional retention period in days. When set, checkpoints older than the
+   ///    period are deleted lazily on <see cref="Persistence.IDebateStore.ListAsync" />.
+   ///    <c>null</c> (default) means no retention sweep.
+   /// </summary>
+   public int? RetentionDays { get; set; }
 
-    /// <summary>
-    ///    When set, the council executor resumes from this debate identifier instead
-    ///    of starting a fresh debate. The corresponding checkpoint must exist in
-    ///    the configured store.
-    /// </summary>
-    public string? ResumeFromDebateId { get; set; }
+   /// <summary>
+   ///    When set, the council executor resumes from this debate identifier instead
+   ///    of starting a fresh debate. The corresponding checkpoint must exist in
+   ///    the configured store.
+   /// </summary>
+   public string? ResumeFromDebateId { get; set; }
 }
 
 /// <summary>
@@ -419,7 +418,7 @@ public sealed class AutoChunkingConfig
 
       return new AutoChunkingOptions
       {
-         Strategy = Enum.TryParse<ChunkingStrategy>(Strategy, ignoreCase: true, out var s)
+         Strategy = Enum.TryParse<ChunkingStrategy>(Strategy, true, out var s)
             ? s
             : ChunkingStrategy.SemanticBoundary,
          SafetyMargin = Math.Clamp(SafetyMargin, 0.0, 0.5),

@@ -84,8 +84,8 @@ public interface ILLMProvider : IDisposable
    ///    A <see cref="Models.ModelCapabilities" /> instance, or <c>null</c> when the
    ///    provider cannot determine capabilities for this model.
    /// </returns>
-   Task<Models.ModelCapabilities?> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
+   Task<ModelCapabilities?> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
    {
-      return Task.FromResult<Models.ModelCapabilities?>(null);
+      return Task.FromResult<ModelCapabilities?>(null);
    }
 }

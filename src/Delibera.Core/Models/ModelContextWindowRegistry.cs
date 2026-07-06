@@ -81,7 +81,7 @@ public static class ModelContextWindowRegistry
       ["nomic"] = 8_192,
       ["mxbai"] = 32_768,
       ["tinyllama"] = 2_048,
-      ["stable-code"] = 16_384,
+      ["stable-code"] = 16_384
    };
 
    /// <summary>
@@ -121,5 +121,8 @@ public static class ModelContextWindowRegistry
    /// <summary>
    ///    Returns a read-only snapshot of all registered model patterns and their context windows.
    /// </summary>
-   public static IReadOnlyDictionary<string, int> GetAll() => KnownWindows.AsReadOnly();
+   public static IReadOnlyDictionary<string, int> GetAll()
+   {
+      return KnownWindows.AsReadOnly();
+   }
 }

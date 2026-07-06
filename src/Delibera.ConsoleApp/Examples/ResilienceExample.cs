@@ -1,5 +1,4 @@
 using Delibera.Core.DependencyInjection;
-using Delibera.Core.Interfaces;
 using Delibera.Core.Resilience;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,7 +28,7 @@ public static class ResilienceExample
 
       var configuration = new ConfigurationBuilder()
          .SetBasePath(Directory.GetCurrentDirectory())
-         .AddJsonFile("appsettings.json", optional: true)
+         .AddJsonFile("appsettings.json", true)
          .Build();
 
       var services = new ServiceCollection();
@@ -57,8 +56,8 @@ public static class ResilienceExample
             MaxRetryAttempts = 6,
             Delay = TimeSpan.FromMilliseconds(500),
             UseJitter = true,
-            BackoffType = Polly.DelayBackoffType.Exponential,
-            ShouldHandle = new Polly.PredicateBuilder<HttpResponseMessage>()
+            BackoffType = DelayBackoffType.Exponential,
+            ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
                .Handle<HttpRequestException>()
          })
          .Build());
@@ -68,15 +67,16 @@ public static class ResilienceExample
       // 4. Resolve the pipeline registry and confirm each named pipeline is available.
       var registry = sp.GetRequiredService<IDeliberaResiliencePipelineProvider>();
       Console.WriteLine("✅ Pipelines registered:");
-      foreach (var name in new[] {
-         ResilienceOptions.DefaultPipelineName,
-         ResilienceOptions.LocalPipelineName,
-         ResilienceOptions.CloudPipelineName,
-         "Delibera.Custom"
-      })
+      foreach (var name in new[]
+               {
+                  ResilienceOptions.DefaultPipelineName,
+                  ResilienceOptions.LocalPipelineName,
+                  ResilienceOptions.CloudPipelineName,
+                  "Delibera.Custom"
+               })
       {
          var p = registry.GetPipeline(name);
-         Console.WriteLine($"   • {name,-30} → resolved: {!ReferenceEquals(p, Polly.ResiliencePipeline<HttpResponseMessage>.Empty)}");
+         Console.WriteLine($"   • {name,-30} → resolved: {!ReferenceEquals(p, ResiliencePipeline<HttpResponseMessage>.Empty)}");
       }
 
       // 5. Resolve the named HttpClient.
@@ -87,7 +87,7 @@ public static class ResilienceExample
       // 6. Demonstrate the cloud pipeline config (no actual request to keep the demo offline).
       var optsMonitor = sp.GetRequiredService<IOptionsMonitor<ResilienceOptions>>();
       var cloudOpts = optsMonitor.Get(ResilienceOptions.CloudPipelineName);
-      Console.WriteLine($"\n✅ Cloud pipeline config snapshot:");
+      Console.WriteLine("\n✅ Cloud pipeline config snapshot:");
       Console.WriteLine($"   MaxRetryAttempts: {cloudOpts.MaxRetryAttempts}");
       Console.WriteLine($"   BaseDelay:        {cloudOpts.BaseDelay}");
       Console.WriteLine($"   MaxDelay:         {cloudOpts.MaxDelay}");

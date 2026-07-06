@@ -26,6 +26,22 @@ public sealed class Operator : IOperator
       MaxDepth = 32
    };
 
+   // ──────────────────────────────────────────────
+   // Micro-agent internals
+   // ──────────────────────────────────────────────
+
+   private static readonly string PlannerSystemPrompt = """
+                                                        You are the Operator's planner — a tool-routing micro-agent.
+                                                        Given a task and a list of available MCP tools, decide which tools to call.
+                                                        Respond with STRICT JSON only, no prose, in exactly this shape:
+                                                        {"tool_calls":[{"server":"<server>","tool":"<tool>","arguments":{ ... }}]}
+                                                        Rules:
+                                                        - Use only tools from the provided list (match server and tool names exactly).
+                                                        - Provide arguments that satisfy each tool's input schema.
+                                                        - If no tool is appropriate, return {"tool_calls":[]}.
+                                                        - Do not wrap the JSON in markdown fences.
+                                                        """;
+
    private readonly CompressionOptions? _compressionOptions;
    private readonly IContextCompressor? _compressor;
    private readonly List<OperatorInteraction> _interactions = [];
@@ -214,22 +230,6 @@ public sealed class Operator : IOperator
             // ignore disposal errors
          }
    }
-
-   // ──────────────────────────────────────────────
-   // Micro-agent internals
-   // ──────────────────────────────────────────────
-
-   private static readonly string PlannerSystemPrompt = """
-                                                        You are the Operator's planner — a tool-routing micro-agent.
-                                                        Given a task and a list of available MCP tools, decide which tools to call.
-                                                        Respond with STRICT JSON only, no prose, in exactly this shape:
-                                                        {"tool_calls":[{"server":"<server>","tool":"<tool>","arguments":{ ... }}]}
-                                                        Rules:
-                                                        - Use only tools from the provided list (match server and tool names exactly).
-                                                        - Provide arguments that satisfy each tool's input schema.
-                                                        - If no tool is appropriate, return {"tool_calls":[]}.
-                                                        - Do not wrap the JSON in markdown fences.
-                                                        """;
 
    private async Task<IReadOnlyList<OperatorToolCall>> PlanToolCallsAsync(string task, CancellationToken ct)
    {

@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Delibera.Core.Resilience;
+using Polly;
 
 namespace Delibera.Core.Providers.LLM;
 
@@ -39,11 +40,11 @@ public sealed class YandexGptProvider : ILLMProvider
    private readonly string _endpoint;
    private readonly string _folderId;
    private readonly HttpClient _http;
-   private readonly Polly.ResiliencePipeline<HttpResponseMessage>? _pipeline;
    private readonly IHttpClientFactory? _httpClientFactory;
    private readonly string? _httpClientName;
    private readonly string _legacyEndpoint;
    private readonly int _maxOutputTokens;
+   private readonly ResiliencePipeline<HttpResponseMessage>? _pipeline;
    private bool _disposed;
 
    /// <summary>
@@ -64,7 +65,7 @@ public sealed class YandexGptProvider : ILLMProvider
       float temperature = 0.3f,
       int maxOutputTokens = 4000)
       : this(apiKey, folderId, endpoint, legacyEndpoint, temperature, maxOutputTokens,
-         httpClientFactory: null, resilienceProvider: null, httpClientName: null, pipelineName: null)
+         null, null, null, null)
    {
    }
 
@@ -115,8 +116,10 @@ public sealed class YandexGptProvider : ILLMProvider
       _maxOutputTokens = maxOutputTokens;
       _ = temperature; // accepted for API compatibility; per-call temperature is passed to ChatAsync
 
-      var name = string.IsNullOrWhiteSpace(httpClientName) ? "Delibera.YandexGPT" : httpClientName;
-      var pipeline = resilienceProvider?.GetPipeline(pipelineName) ?? Polly.ResiliencePipeline<HttpResponseMessage>.Empty;
+      var name = string.IsNullOrWhiteSpace(httpClientName)
+         ? "Delibera.YandexGPT"
+         : httpClientName;
+      var pipeline = resilienceProvider?.GetPipeline(pipelineName) ?? ResiliencePipeline<HttpResponseMessage>.Empty;
 
       if (httpClientFactory is not null)
       {
@@ -201,10 +204,8 @@ public sealed class YandexGptProvider : ILLMProvider
    {
       var window = ModelContextWindowRegistry.GetContextWindow(model);
       if (window is not null)
-      {
          return Task.FromResult<ModelCapabilities?>(
             new ModelCapabilities { ModelName = model, ContextWindowTokens = window });
-      }
 
       return Task.FromResult<ModelCapabilities?>(null);
    }
@@ -303,7 +304,7 @@ public sealed class YandexGptProvider : ILLMProvider
    }
 
    /// <inheritdoc />
-    public void Dispose()
+   public void Dispose()
    {
       if (_disposed) return;
       _disposed = true;
@@ -377,5 +378,4 @@ public sealed class YandexGptProvider : ILLMProvider
                 .GetString() ??
              "{}";
    }
-
 }

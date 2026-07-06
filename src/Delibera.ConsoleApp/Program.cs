@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Text;
-using Delibera.ConsoleApp.Examples;
 using Delibera.Core.Compression;
 using Delibera.Core.Council;
 using Delibera.Core.Debate;
@@ -22,6 +21,21 @@ namespace Delibera.ConsoleApp;
 /// </summary>
 public static class Program
 {
+   private static bool IsInteractiveConsole
+   {
+      get
+      {
+         try
+         {
+            return !Console.IsInputRedirected && !Console.IsOutputRedirected;
+         }
+         catch
+         {
+            return false;
+         }
+      }
+   }
+
    public static async Task Main(string[] args)
    {
       Console.OutputEncoding = Encoding.UTF8;
@@ -36,7 +50,14 @@ public static class Program
          if (!appCts.IsCancellationRequested)
          {
             AnsiConsole.MarkupLine("\n[yellow]⚠️  Ctrl+C detected — canceling the debate...[/]");
-            try { appCts.Cancel(); } catch (ObjectDisposedException) { /* race */ }
+            try
+            {
+               appCts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+               /* race */
+            }
          }
       };
 
@@ -47,11 +68,11 @@ public static class Program
       catch (Exception ex)
       {
          PrintFatalError(ex);
-         WaitForKeyOnExit("[red]Press any key to exit…[/]", isError: true);
+         WaitForKeyOnExit("[red]Press any key to exit…[/]", true);
          return;
       }
 
-      WaitForKeyOnExit("\n[green]🏁 Delibera session complete. Press any key to exit…[/]", isError: false);
+      WaitForKeyOnExit("\n[green]🏁 Delibera session complete. Press any key to exit…[/]", false);
    }
 
    private static async Task RunAsync(string[] args, CancellationToken ct)
@@ -140,6 +161,7 @@ public static class Program
             choices.Add($"── {ex.Category} ──");
             lastCategory = ex.Category;
          }
+
          var label = $"  {ex.Title}";
          choices.Add(label);
          choiceToEntry[label] = ex;
@@ -159,7 +181,9 @@ public static class Program
       if (selected.Contains("Full Council Debate", StringComparison.OrdinalIgnoreCase))
          return null;
 
-      return choiceToEntry.TryGetValue(selected, out var entry) ? entry : null;
+      return choiceToEntry.TryGetValue(selected, out var entry)
+         ? entry
+         : null;
    }
 
    private static void PrintExampleCatalog(IReadOnlyList<ExampleEntry> examples)
@@ -343,10 +367,6 @@ public static class Program
             catch (FileNotFoundException)
             {
                AnsiConsole.MarkupLine($"  [yellow]⚠️  Not found: {file}[/]");
-            }
-            catch (OperationCanceledException)
-            {
-               throw;
             }
 
          if (kb.DocumentCount > 0)
@@ -602,7 +622,7 @@ public static class Program
          try
          {
             var separateDir = Path.Combine(outputDir, $"debate_{DateTime.UtcNow:yyyyMMdd_HHmmss}");
-            var (rp, sp, lp) = await result.SaveAllAsync(separateDir, filePrefix: null, ct: ct);
+            var (rp, sp, lp) = await result.SaveAllAsync(separateDir, null, ct);
             AnsiConsole.MarkupLine($"    Result:      {rp}");
             AnsiConsole.MarkupLine($"    Statistics:  {sp}");
             AnsiConsole.MarkupLine($"    Logs:        {lp}");
@@ -755,21 +775,6 @@ public static class Program
       Environment.ExitCode = isError
          ? 1
          : 0;
-   }
-
-   private static bool IsInteractiveConsole
-   {
-      get
-      {
-         try
-         {
-            return !Console.IsInputRedirected && !Console.IsOutputRedirected;
-         }
-         catch
-         {
-            return false;
-         }
-      }
    }
 
    private static bool FirstLineIsMeaningful(string? frame)

@@ -1,6 +1,5 @@
 using Delibera.Core.Output;
 using Delibera.Core.Voting;
-using System.Text.Json;
 
 namespace Delibera.Core.Models;
 
@@ -36,45 +35,23 @@ public sealed record DebateResult
    /// <summary>Chairman's opening statement.</summary>
    public string? OpeningStatement { get; init; }
 
-    /// <summary>Chairman's final verdict.</summary>
-    public string? FinalVerdict { get; init; }
+   /// <summary>Chairman's final verdict.</summary>
+   public string? FinalVerdict { get; init; }
 
-    /// <summary>
-    ///    Voting tally produced by an <see cref="IVotingStrategy"/> when the Chairman
-    ///    was created via <see cref="Council.Chairman.CreateVoting"/>. <c>null</c> when
-    ///    the standard Chairman synthesis was used. When non-null, the Markdown output
-    ///    includes a 🗳️ Voting Tally section alongside the Final Verdict.
-    /// </summary>
-    public VotingResult? VotingTally { get; init; }
+   /// <summary>
+   ///    Voting tally produced by an <see cref="IVotingStrategy" /> when the Chairman
+   ///    was created via <see cref="Council.Chairman.CreateVoting" />. <c>null</c> when
+   ///    the standard Chairman synthesis was used. When non-null, the Markdown output
+   ///    includes a 🗳️ Voting Tally section alongside the Final Verdict.
+   /// </summary>
+   public VotingResult? VotingTally { get; init; }
 
-    /// <summary>
-    ///    When <see cref="ICouncilBuilder.WithStructuredOutput{TVerdict}"/> was used,
-    ///    holds the typed verdict deserialised from <see cref="FinalVerdict"/>.
-    ///    <c>null</c> when structured output was not configured or deserialisation failed.
-    /// </summary>
-    public object? TypedVerdict { get; init; }
-
-    /// <summary>
-    ///    Deserialises <see cref="FinalVerdict"/> into <typeparamref name="TVerdict"/>
-    ///    using a <see cref="JsonSchemaOutputSerializer"/>. Returns <c>null</c> on
-    ///    failure. Used by <see cref="Interfaces.ICouncilExecutor.ExecuteTypedAsync{TVerdict}"/>.
-    /// </summary>
-    /// <typeparam name="TVerdict">The target verdict type.</typeparam>
-    /// <returns>The deserialised verdict, or <c>null</c> on failure.</returns>
-    public TVerdict? GetTypedVerdict<TVerdict>() where TVerdict : class
-    {
-        if (TypedVerdict is TVerdict typed) return typed;
-        if (string.IsNullOrWhiteSpace(FinalVerdict)) return null;
-        try
-        {
-            var serializer = new JsonSchemaOutputSerializer();
-            return serializer.Deserialize<TVerdict>(FinalVerdict);
-        }
-        catch
-        {
-            return null;
-        }
-    }
+   /// <summary>
+   ///    When <see cref="ICouncilBuilder.WithStructuredOutput{TVerdict}" /> was used,
+   ///    holds the typed verdict deserialised from <see cref="FinalVerdict" />.
+   ///    <c>null</c> when structured output was not configured or deserialisation failed.
+   /// </summary>
+   public object? TypedVerdict { get; init; }
 
    /// <summary>Timestamp when the debate started.</summary>
    public DateTime StartedAt { get; init; } = DateTime.UtcNow;
@@ -96,6 +73,28 @@ public sealed record DebateResult
 
    /// <summary>Execution logs captured during debate execution.</summary>
    public IReadOnlyList<ExecutionLog> ExecutionLogs { get; init; } = [];
+
+   /// <summary>
+   ///    Deserialises <see cref="FinalVerdict" /> into <typeparamref name="TVerdict" />
+   ///    using a <see cref="JsonSchemaOutputSerializer" />. Returns <c>null</c> on
+   ///    failure. Used by <see cref="Interfaces.ICouncilExecutor.ExecuteTypedAsync{TVerdict}" />.
+   /// </summary>
+   /// <typeparam name="TVerdict">The target verdict type.</typeparam>
+   /// <returns>The deserialised verdict, or <c>null</c> on failure.</returns>
+   public TVerdict? GetTypedVerdict<TVerdict>() where TVerdict : class
+   {
+      if (TypedVerdict is TVerdict typed) return typed;
+      if (string.IsNullOrWhiteSpace(FinalVerdict)) return null;
+      try
+      {
+         var serializer = new JsonSchemaOutputSerializer();
+         return serializer.Deserialize<TVerdict>(FinalVerdict);
+      }
+      catch
+      {
+         return null;
+      }
+   }
 
    // ──────────────────────────────────────────────
    // Markdown export
@@ -263,12 +262,12 @@ public sealed record DebateResult
       return sb.ToString();
    }
 
-    /// <summary>
-    ///    Exports execution logs to Markdown.
-    /// </summary>
-    public string ToLogsMarkdown()
-    {
-       var sb = new StringBuilder();
+   /// <summary>
+   ///    Exports execution logs to Markdown.
+   /// </summary>
+   public string ToLogsMarkdown()
+   {
+      var sb = new StringBuilder();
 
       sb.AppendLine($"# 📋 Execution Logs — {DebateId}");
       sb.AppendLine();
@@ -318,37 +317,37 @@ public sealed record DebateResult
       return sb.ToString();
    }
 
-    // ──────────────────────────────────────────────
-    // HTML export (F-10a Quick Win)
-    // ──────────────────────────────────────────────
+   // ──────────────────────────────────────────────
+   // HTML export (F-10a Quick Win)
+   // ──────────────────────────────────────────────
 
-    /// <summary>
-    ///    Exports the full debate result as a self-contained HTML document
-    ///    with inline CSS, collapsible rounds, and a printable layout.
-    /// </summary>
-    /// <param name="options">Optional export customisation (theme, collapsibility, title).</param>
-    /// <returns>A complete HTML document string.</returns>
-    public string ToHtml(HtmlExportOptions? options = null)
-    {
-       return HtmlExporter.ToHtml(this, options);
-    }
+   /// <summary>
+   ///    Exports the full debate result as a self-contained HTML document
+   ///    with inline CSS, collapsible rounds, and a printable layout.
+   /// </summary>
+   /// <param name="options">Optional export customisation (theme, collapsibility, title).</param>
+   /// <returns>A complete HTML document string.</returns>
+   public string ToHtml(HtmlExportOptions? options = null)
+   {
+      return HtmlExporter.ToHtml(this, options);
+   }
 
-    /// <summary>
-    ///    Saves the debate result as a self-contained HTML file.
-    /// </summary>
-    /// <param name="filePath">Path for the HTML file.</param>
-    /// <param name="options">Optional export customisation.</param>
-    /// <param name="ct">Cancellation token; checked at entry and forwarded to the file write.</param>
-    /// <exception cref="OperationCanceledException">The token has been canceled.</exception>
-    public Task SaveToHtmlAsync(string filePath, HtmlExportOptions? options = null, CancellationToken ct = default)
-    {
-       ct.ThrowIfCancellationRequested();
-       return WriteAllTextAsync(filePath, ToHtml(options), ct);
-    }
+   /// <summary>
+   ///    Saves the debate result as a self-contained HTML file.
+   /// </summary>
+   /// <param name="filePath">Path for the HTML file.</param>
+   /// <param name="options">Optional export customisation.</param>
+   /// <param name="ct">Cancellation token; checked at entry and forwarded to the file write.</param>
+   /// <exception cref="OperationCanceledException">The token has been canceled.</exception>
+   public Task SaveToHtmlAsync(string filePath, HtmlExportOptions? options = null, CancellationToken ct = default)
+   {
+      ct.ThrowIfCancellationRequested();
+      return WriteAllTextAsync(filePath, ToHtml(options), ct);
+   }
 
-    // ──────────────────────────────────────────────
-    // File saving
-    // ──────────────────────────────────────────────
+   // ──────────────────────────────────────────────
+   // File saving
+   // ──────────────────────────────────────────────
 
    /// <summary>
    ///    Saves the debate result (rounds and verdict) to a Markdown file.

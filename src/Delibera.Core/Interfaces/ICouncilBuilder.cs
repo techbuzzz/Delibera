@@ -219,115 +219,115 @@ public interface ICouncilBuilder
    /// <param name="modelNamePattern">
    ///    Substring pattern (e.g. "my-fine-tuned-llama" matches "my-fine-tuned-llama:v2").
    /// </param>
-    /// <param name="contextWindowTokens">Context window size in tokens.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithModelContextWindow(string modelNamePattern, int contextWindowTokens);
+   /// <param name="contextWindowTokens">Context window size in tokens.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithModelContextWindow(string modelNamePattern, int contextWindowTokens);
 
-    /// <summary>
-    ///    Enables OpenTelemetry-style observability. When enabled, the
-    ///    <see cref="Council.CouncilExecutor"/> emits <see cref="System.Diagnostics.Activity"/>
-    ///    spans via <see cref="DeliberaActivitySource"/> and records metrics via
-    ///    <see cref="DeliberaMeter"/>. See <see cref="TelemetryOptions"/> for the
-    ///    activity-source / meter naming convention.
-    /// </summary>
-    /// <param name="options">
-    ///    Telemetry configuration. Pass <c>null</c> to use defaults
-    ///    (<see cref="TelemetryOptions.Enabled"/> = <c>true</c>, default source/meter names).
-    /// </param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithTelemetry(TelemetryOptions? options = null);
+   /// <summary>
+   ///    Enables OpenTelemetry-style observability. When enabled, the
+   ///    <see cref="Council.CouncilExecutor" /> emits <see cref="System.Diagnostics.Activity" />
+   ///    spans via <see cref="DeliberaActivitySource" /> and records metrics via
+   ///    <see cref="DeliberaMeter" />. See <see cref="TelemetryOptions" /> for the
+   ///    activity-source / meter naming convention.
+   /// </summary>
+   /// <param name="options">
+   ///    Telemetry configuration. Pass <c>null</c> to use defaults
+   ///    (<see cref="TelemetryOptions.Enabled" /> = <c>true</c>, default source/meter names).
+   /// </param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithTelemetry(TelemetryOptions? options = null);
 
-    /// <summary>
-    ///    Enables OpenTelemetry-style observability with a configuration delegate.
-    /// </summary>
-    /// <param name="configure">Delegate that populates a fresh <see cref="TelemetryOptions"/>.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithTelemetry(Action<TelemetryOptions> configure);
+   /// <summary>
+   ///    Enables OpenTelemetry-style observability with a configuration delegate.
+   /// </summary>
+   /// <param name="configure">Delegate that populates a fresh <see cref="TelemetryOptions" />.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithTelemetry(Action<TelemetryOptions> configure);
 
-    /// <summary>
-    ///    Sets a hard wall-clock timeout for the whole debate. When the timeout
-    ///    elapses, the internal <c>CancellationTokenSource</c> used by
-    ///    <see cref="ICouncilExecutor.ExecuteAsync(CancellationToken)"/> is cancelled,
-    ///    which propagates <see cref="OperationCanceledException"/> through every
-    ///    downstream async operation.
-    /// </summary>
-    /// <param name="timeout">Maximum debate duration. <see cref="Timeout.InfiniteTimeSpan"/> disables.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithTimeout(TimeSpan timeout);
+   /// <summary>
+   ///    Sets a hard wall-clock timeout for the whole debate. When the timeout
+   ///    elapses, the internal <c>CancellationTokenSource</c> used by
+   ///    <see cref="ICouncilExecutor.ExecuteAsync(CancellationToken)" /> is cancelled,
+   ///    which propagates <see cref="OperationCanceledException" /> through every
+   ///    downstream async operation.
+   /// </summary>
+   /// <param name="timeout">Maximum debate duration. <see cref="Timeout.InfiniteTimeSpan" /> disables.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithTimeout(TimeSpan timeout);
 
-    /// <summary>
-    ///    Caps the maximum number of council participants. <see cref="ICouncilBuilder.Build"/>
-    ///    throws <see cref="InvalidOperationException"/> if more members have been added
-    ///    than the limit.
-    /// </summary>
-    /// <param name="maxParticipants">Maximum allowed participants (must be ≥ 1).</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithParticipantLimit(int maxParticipants);
+   /// <summary>
+   ///    Caps the maximum number of council participants. <see cref="ICouncilBuilder.Build" />
+   ///    throws <see cref="InvalidOperationException" /> if more members have been added
+   ///    than the limit.
+   /// </summary>
+   /// <param name="maxParticipants">Maximum allowed participants (must be ≥ 1).</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithParticipantLimit(int maxParticipants);
 
-    /// <summary>
-    ///    Enables adaptive strategy switching (F-09). After each round,
-    ///    <see cref="ICouncilExecutor"/> calls
-    ///    <see cref="IStrategySelector.SelectNextAsync"/>; if it returns a non-null
-    ///    strategy, the executor swaps <see cref="ICouncilExecutor.Strategy"/> before
-    ///    the next round. Use <see cref="AdaptiveStrategySelector"/> for the built-in
-    ///    stalemate detector.
-    /// </summary>
-    /// <param name="selector">The strategy selector to consult after each round.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithAdaptiveStrategy(IStrategySelector selector);
+   /// <summary>
+   ///    Enables adaptive strategy switching (F-09). After each round,
+   ///    <see cref="ICouncilExecutor" /> calls
+   ///    <see cref="IStrategySelector.SelectNextAsync" />; if it returns a non-null
+   ///    strategy, the executor swaps <see cref="ICouncilExecutor.Strategy" /> before
+   ///    the next round. Use <see cref="AdaptiveStrategySelector" /> for the built-in
+   ///    stalemate detector.
+   /// </summary>
+   /// <param name="selector">The strategy selector to consult after each round.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithAdaptiveStrategy(IStrategySelector selector);
 
-    /// <summary>
-    ///    Configures a voting Chairman (F-02) that uses an <see cref="IVotingStrategy"/>
-    ///    to reach a decision via structured voting among participants, as an
-    ///    alternative to single-LLM Chairman synthesis.
-    /// </summary>
-    /// <param name="modelName">Chairman model name.</param>
-    /// <param name="provider">LLM provider.</param>
-    /// <param name="votingStrategy">Voting strategy (Majority, BordaCount, Weighted).</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithVotingChairman(string modelName, ILLMProvider provider, IVotingStrategy votingStrategy);
+   /// <summary>
+   ///    Configures a voting Chairman (F-02) that uses an <see cref="IVotingStrategy" />
+   ///    to reach a decision via structured voting among participants, as an
+   ///    alternative to single-LLM Chairman synthesis.
+   /// </summary>
+   /// <param name="modelName">Chairman model name.</param>
+   /// <param name="provider">LLM provider.</param>
+   /// <param name="votingStrategy">Voting strategy (Majority, BordaCount, Weighted).</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithVotingChairman(string modelName, ILLMProvider provider, IVotingStrategy votingStrategy);
 
-    /// <summary>
-    ///    Enables structured JSON output (F-05). The Chairman's synthesis prompt is
-    ///    augmented with a JSON schema generated from <typeparamref name="TVerdict"/>,
-    ///    and <see cref="ICouncilExecutor.ExecuteTypedAsync{TVerdict}"/> deserialises
-    ///    the response into a strongly-typed verdict. One automatic retry with a
-    ///    correction prompt is performed on deserialisation failure.
-    /// </summary>
-    /// <typeparam name="TVerdict">The target verdict type (typically a C# record).</typeparam>
-    /// <param name="serializer">
-    ///    Optional custom serializer. <c>null</c> uses <see cref="JsonSchemaOutputSerializer"/>
-    ///    with default options.
-    /// </param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null) where TVerdict : class;
+   /// <summary>
+   ///    Enables structured JSON output (F-05). The Chairman's synthesis prompt is
+   ///    augmented with a JSON schema generated from <typeparamref name="TVerdict" />,
+   ///    and <see cref="ICouncilExecutor.ExecuteTypedAsync{TVerdict}" /> deserialises
+   ///    the response into a strongly-typed verdict. One automatic retry with a
+   ///    correction prompt is performed on deserialisation failure.
+   /// </summary>
+   /// <typeparam name="TVerdict">The target verdict type (typically a C# record).</typeparam>
+   /// <param name="serializer">
+   ///    Optional custom serializer. <c>null</c> uses <see cref="JsonSchemaOutputSerializer" />
+   ///    with default options.
+   /// </param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null) where TVerdict : class;
 
-    /// <summary>
-    ///    Attaches an <see cref="IDebateStore"/> so a checkpoint is saved after every
-    ///    round (F-03). The debate can be resumed from the last completed round via
-    ///    <see cref="ResumeFrom"/>.
-    /// </summary>
-    /// <param name="store">The store to persist checkpoints to.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithPersistence(IDebateStore store);
+   /// <summary>
+   ///    Attaches an <see cref="IDebateStore" /> so a checkpoint is saved after every
+   ///    round (F-03). The debate can be resumed from the last completed round via
+   ///    <see cref="ResumeFrom" />.
+   /// </summary>
+   /// <param name="store">The store to persist checkpoints to.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithPersistence(IDebateStore store);
 
-    /// <summary>
-    ///    Resumes a debate from the given <paramref name="debateId"/> (F-03). The
-    ///    corresponding checkpoint must exist in the configured
-    ///    <see cref="IDebateStore"/>.
-    /// </summary>
-    /// <param name="debateId">The debate identifier to resume.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder ResumeFrom(string debateId);
+   /// <summary>
+   ///    Resumes a debate from the given <paramref name="debateId" /> (F-03). The
+   ///    corresponding checkpoint must exist in the configured
+   ///    <see cref="IDebateStore" />.
+   /// </summary>
+   /// <param name="debateId">The debate identifier to resume.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder ResumeFrom(string debateId);
 
-    /// <summary>
-    ///    Attaches an <see cref="IAgentMemory"/> (F-04) so council members can recall
-    ///    context from previous sessions and persist their conclusions after each
-    ///    debate. Default is <see cref="InMemoryAgentMemory"/> (no persistence).
-    /// </summary>
-    /// <param name="memory">Memory backend. <c>null</c> uses <see cref="InMemoryAgentMemory"/>.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithAgentMemory(IAgentMemory? memory = null);
+   /// <summary>
+   ///    Attaches an <see cref="IAgentMemory" /> (F-04) so council members can recall
+   ///    context from previous sessions and persist their conclusions after each
+   ///    debate. Default is <see cref="InMemoryAgentMemory" /> (no persistence).
+   /// </summary>
+   /// <param name="memory">Memory backend. <c>null</c> uses <see cref="InMemoryAgentMemory" />.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithAgentMemory(IAgentMemory? memory = null);
 
    /// <summary>
    ///    Applies a pre-built <see cref="CouncilOptions" /> snapshot to the builder.
@@ -346,7 +346,7 @@ public interface ICouncilBuilder
    /// <param name="configure">Delegate that populates the options.</param>
    /// <returns>This builder for fluent chaining.</returns>
    /// <example>
-   /// <code>
+   ///    <code>
    /// builder.WithOptions(o =>
    /// {
    ///     o.Strategy = "Critique";

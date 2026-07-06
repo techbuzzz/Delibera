@@ -1,144 +1,156 @@
 using Delibera.Core.Council;
-using Delibera.Core.Debate;
 
 namespace Delibera.Core.Benchmarking;
 
 /// <summary>
-///    Side-by-side comparison report produced by <see cref="CouncilBenchmark.RunAsync"/>.
-///    Holds one <see cref="BenchmarkEntry"/> per named configuration and renders a
+///    Side-by-side comparison report produced by <see cref="CouncilBenchmark.RunAsync" />.
+///    Holds one <see cref="BenchmarkEntry" /> per named configuration and renders a
 ///    Markdown table comparing verdicts, token usage, and latency.
 /// </summary>
 public sealed class BenchmarkReport
 {
-    private readonly List<BenchmarkEntry> _entries = [];
+   private readonly List<BenchmarkEntry> _entries = [];
 
-    /// <summary>The common question that every configuration was asked.</summary>
-    public string Question { get; init; } = string.Empty;
+   /// <summary>The common question that every configuration was asked.</summary>
+   public string Question { get; init; } = string.Empty;
 
-    /// <summary>Maximum rounds used for every configuration.</summary>
-    public int MaxRounds { get; init; }
+   /// <summary>Maximum rounds used for every configuration.</summary>
+   public int MaxRounds { get; init; }
 
-    /// <summary>All results collected during the benchmark run, in completion order.</summary>
-    public IReadOnlyList<BenchmarkEntry> Entries => _entries;
+   /// <summary>All results collected during the benchmark run, in completion order.</summary>
+   public IReadOnlyList<BenchmarkEntry> Entries => _entries;
 
-    internal void Add(BenchmarkEntry entry) => _entries.Add(entry);
+   internal void Add(BenchmarkEntry entry)
+   {
+      _entries.Add(entry);
+   }
 
-    /// <summary>
-    ///    Renders the comparison report as a Markdown document with a side-by-side
-    ///    verdicts table, a token-usage table, and a latency table.
-    /// </summary>
-    public string ToMarkdown()
-    {
-        var sb = new StringBuilder();
+   /// <summary>
+   ///    Renders the comparison report as a Markdown document with a side-by-side
+   ///    verdicts table, a token-usage table, and a latency table.
+   /// </summary>
+   public string ToMarkdown()
+   {
+      var sb = new StringBuilder();
 
-        sb.AppendLine("# 🏋️ Delibera Council Benchmark");
-        sb.AppendLine();
-        sb.AppendLine($"**Question:** {Question}");
-        sb.AppendLine($"**Max rounds:** {MaxRounds}");
-        sb.AppendLine($"**Configurations:** {_entries.Count}");
-        sb.AppendLine();
+      sb.AppendLine("# 🏋️ Delibera Council Benchmark");
+      sb.AppendLine();
+      sb.AppendLine($"**Question:** {Question}");
+      sb.AppendLine($"**Max rounds:** {MaxRounds}");
+      sb.AppendLine($"**Configurations:** {_entries.Count}");
+      sb.AppendLine();
 
-        // Verdicts side-by-side
-        sb.AppendLine("## Verdicts");
-        sb.AppendLine();
-        sb.AppendLine("| Configuration | Strategy | Rounds | Verdict (truncated) |");
-        sb.AppendLine("|---------------|----------|--------|---------------------|");
-        foreach (var e in _entries)
-        {
-            var verdict = e.Result?.FinalVerdict ?? "(no verdict)";
-            if (verdict.Length > 200) verdict = verdict[..200] + "…";
-            var strat = e.Result?.StrategyName ?? "(failed)";
-            var roundsCount = e.Result?.Rounds.Count ?? 0;
-            sb.AppendLine($"| {e.Name} | {strat} | {roundsCount} | {verdict.Replace("\n", " ")} |");
-        }
-        sb.AppendLine();
+      // Verdicts side-by-side
+      sb.AppendLine("## Verdicts");
+      sb.AppendLine();
+      sb.AppendLine("| Configuration | Strategy | Rounds | Verdict (truncated) |");
+      sb.AppendLine("|---------------|----------|--------|---------------------|");
+      foreach (var e in _entries)
+      {
+         var verdict = e.Result?.FinalVerdict ?? "(no verdict)";
+         if (verdict.Length > 200) verdict = verdict[..200] + "…";
+         var strat = e.Result?.StrategyName ?? "(failed)";
+         var roundsCount = e.Result?.Rounds.Count ?? 0;
+         sb.AppendLine($"| {e.Name} | {strat} | {roundsCount} | {verdict.Replace("\n", " ")} |");
+      }
 
-        // Token usage
-        sb.AppendLine("## Token Usage");
-        sb.AppendLine();
-        sb.AppendLine("| Configuration | Original | Compressed | Response | Total | Duration |");
-        sb.AppendLine("|---------------|----------|------------|----------|-------|----------|");
-        foreach (var e in _entries)
-        {
-            var ts = e.Result?.TokenStats;
-            var total = ts?.GrandTotal ?? 0;
-            var dur = e.Result?.TotalDuration.TotalSeconds ?? 0;
-            sb.AppendLine($"| {e.Name} | {ts?.TotalOriginalTokens ?? 0:N0} | {ts?.TotalCompressedTokens ?? 0:N0} | {ts?.TotalResponseTokens ?? 0:N0} | {total:N0} | {dur:F1}s |");
-        }
-        sb.AppendLine();
+      sb.AppendLine();
 
-        // Latency
-        sb.AppendLine("## Latency");
-        sb.AppendLine();
-        sb.AppendLine("| Configuration | Total (s) | Rounds | Avg round (s) |");
-        sb.AppendLine("|---------------|-----------|--------|---------------|");
-        foreach (var e in _entries)
-        {
-            var roundsCount = e.Result?.Rounds.Count ?? 0;
-            var totalSec = e.Result?.TotalDuration.TotalSeconds ?? 0;
-            var avgRound = roundsCount > 0 ? totalSec / roundsCount : 0;
-            sb.AppendLine($"| {e.Name} | {totalSec:F1} | {roundsCount} | {avgRound:F1} |");
-        }
-        sb.AppendLine();
+      // Token usage
+      sb.AppendLine("## Token Usage");
+      sb.AppendLine();
+      sb.AppendLine("| Configuration | Original | Compressed | Response | Total | Duration |");
+      sb.AppendLine("|---------------|----------|------------|----------|-------|----------|");
+      foreach (var e in _entries)
+      {
+         var ts = e.Result?.TokenStats;
+         var total = ts?.GrandTotal ?? 0;
+         var dur = e.Result?.TotalDuration.TotalSeconds ?? 0;
+         sb.AppendLine($"| {e.Name} | {ts?.TotalOriginalTokens ?? 0:N0} | {ts?.TotalCompressedTokens ?? 0:N0} | {ts?.TotalResponseTokens ?? 0:N0} | {total:N0} | {dur:F1}s |");
+      }
 
-        // Per-round breakdown (each config in its own subsection)
-        sb.AppendLine("## Per-Configuration Round Breakdown");
-        sb.AppendLine();
-        foreach (var e in _entries)
-        {
-            sb.AppendLine($"### {e.Name}");
+      sb.AppendLine();
+
+      // Latency
+      sb.AppendLine("## Latency");
+      sb.AppendLine();
+      sb.AppendLine("| Configuration | Total (s) | Rounds | Avg round (s) |");
+      sb.AppendLine("|---------------|-----------|--------|---------------|");
+      foreach (var e in _entries)
+      {
+         var roundsCount = e.Result?.Rounds.Count ?? 0;
+         var totalSec = e.Result?.TotalDuration.TotalSeconds ?? 0;
+         var avgRound = roundsCount > 0
+            ? totalSec / roundsCount
+            : 0;
+         sb.AppendLine($"| {e.Name} | {totalSec:F1} | {roundsCount} | {avgRound:F1} |");
+      }
+
+      sb.AppendLine();
+
+      // Per-round breakdown (each config in its own subsection)
+      sb.AppendLine("## Per-Configuration Round Breakdown");
+      sb.AppendLine();
+      foreach (var e in _entries)
+      {
+         sb.AppendLine($"### {e.Name}");
+         sb.AppendLine();
+         if (e.Error is not null)
+         {
+            sb.AppendLine($"❌ **Failed:** {e.Error}");
             sb.AppendLine();
-            if (e.Error is not null)
-            {
-                sb.AppendLine($"❌ **Failed:** {e.Error}");
-                sb.AppendLine();
-                continue;
-            }
-            sb.AppendLine("| Round | Name | Duration (s) | Responses |");
-            sb.AppendLine("|-------|------|--------------|-----------|");
-            if (e.Result is { Rounds: { } rounds })
-                foreach (var r in rounds)
-                    sb.AppendLine($"| {r.RoundNumber} | {r.RoundName} | {r.Duration.TotalSeconds:F1} | {r.Responses.Count} |");
-            sb.AppendLine();
-        }
+            continue;
+         }
 
-        sb.AppendLine("---");
-        sb.AppendLine($"*Generated by Delibera Benchmark at {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss UTC}*");
-        return sb.ToString();
-    }
+         sb.AppendLine("| Round | Name | Duration (s) | Responses |");
+         sb.AppendLine("|-------|------|--------------|-----------|");
+         if (e.Result is { Rounds: { } rounds })
+            foreach (var r in rounds)
+               sb.AppendLine($"| {r.RoundNumber} | {r.RoundName} | {r.Duration.TotalSeconds:F1} | {r.Responses.Count} |");
+         sb.AppendLine();
+      }
 
-    /// <summary>
-    ///    Saves the comparison report to a Markdown file.
-    /// </summary>
-    /// <param name="filePath">Path for the output Markdown file.</param>
-    /// <param name="ct">Cancellation token; checked at entry and forwarded to the file write.</param>
-    /// <exception cref="OperationCanceledException">The token has been canceled.</exception>
-    public async Task SaveComparisonAsync(string filePath, CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-        var dir = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
-        await File.WriteAllTextAsync(filePath, ToMarkdown(), ct).ConfigureAwait(false);
-    }
+      sb.AppendLine("---");
+      sb.AppendLine($"*Generated by Delibera Benchmark at {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss UTC}*");
+      return sb.ToString();
+   }
+
+   /// <summary>
+   ///    Saves the comparison report to a Markdown file.
+   /// </summary>
+   /// <param name="filePath">Path for the output Markdown file.</param>
+   /// <param name="ct">Cancellation token; checked at entry and forwarded to the file write.</param>
+   /// <exception cref="OperationCanceledException">The token has been canceled.</exception>
+   public async Task SaveComparisonAsync(string filePath, CancellationToken ct = default)
+   {
+      ct.ThrowIfCancellationRequested();
+      var dir = Path.GetDirectoryName(filePath);
+      if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+         Directory.CreateDirectory(dir);
+      await File.WriteAllTextAsync(filePath, ToMarkdown(), ct).ConfigureAwait(false);
+   }
 }
 
 /// <summary>
-///    A single configuration's result within a <see cref="BenchmarkReport"/>.
+///    A single configuration's result within a <see cref="BenchmarkReport" />.
 /// </summary>
 /// <param name="Name">User-supplied configuration name (e.g. "Small", "Standard").</param>
-/// <param name="Result">The completed debate result, or <c>null</c> if <paramref name="Error"/> is set.</param>
+/// <param name="Result">The completed debate result, or <c>null</c> if <paramref name="Error" /> is set.</param>
 /// <param name="Error">Error message if the configuration failed to complete; otherwise <c>null</c>.</param>
 public sealed record BenchmarkEntry(
-    string Name,
-    DebateResult? Result,
-    string? Error)
+   string Name,
+   DebateResult? Result,
+   string? Error)
 {
-    internal static BenchmarkEntry FromResult(string name, DebateResult result) =>
-        new(name, result, null);
+   internal static BenchmarkEntry FromResult(string name, DebateResult result)
+   {
+      return new BenchmarkEntry(name, result, null);
+   }
 
-    internal static BenchmarkEntry FromError(string name, Exception ex) =>
-        new(name, null, ex.Message);
+   internal static BenchmarkEntry FromError(string name, Exception ex)
+   {
+      return new BenchmarkEntry(name, null, ex.Message);
+   }
 }
 
 /// <summary>
@@ -148,90 +160,90 @@ public sealed record BenchmarkEntry(
 /// </summary>
 /// <remarks>
 ///    <para>
-///       Configurations are registered via <see cref="AddConfiguration(string, Action{CouncilBuilder})"/>
-///       and executed sequentially by <see cref="RunAsync"/>. Sequential execution keeps
+///       Configurations are registered via <see cref="AddConfiguration(string, Action{CouncilBuilder})" />
+///       and executed sequentially by <see cref="RunAsync" />. Sequential execution keeps
 ///       the report deterministic and avoids provider rate limits skewing the latency
 ///       comparison.
 ///    </para>
 ///    <para>
-///       Each configuration gets a fresh <see cref="CouncilBuilder"/>, so providers,
+///       Each configuration gets a fresh <see cref="CouncilBuilder" />, so providers,
 ///       members, chairman, compression, RAG, and all other settings can vary freely.
 ///       The shared question and max-rounds count are applied to every configuration.
 ///    </para>
 /// </remarks>
 public sealed class CouncilBenchmark
 {
-    private readonly List<(string Name, Action<CouncilBuilder> Configure)> _configs = [];
-    private string _question = string.Empty;
-    private int _maxRounds = 3;
+   private readonly List<(string Name, Action<CouncilBuilder> Configure)> _configs = [];
+   private int _maxRounds = 3;
+   private string _question = string.Empty;
 
-    /// <summary>
-    ///    Registers a named council configuration. The <paramref name="configure"/>
-    ///    delegate receives a fresh <see cref="CouncilBuilder"/> and is expected to add
-    ///    members and (optionally) a chairman, strategy, compression, etc. The shared
-    ///    question and max-rounds are applied after the delegate runs.
-    /// </summary>
-    /// <param name="name">Display name for the configuration (e.g. "Small", "Standard").</param>
-    /// <param name="configure">Delegate that populates a fresh <see cref="CouncilBuilder"/>.</param>
-    /// <returns>This benchmark instance for fluent chaining.</returns>
-    public CouncilBenchmark AddConfiguration(string name, Action<CouncilBuilder> configure)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentNullException.ThrowIfNull(configure);
-        _configs.Add((name, configure));
-        return this;
-    }
+   /// <summary>
+   ///    Registers a named council configuration. The <paramref name="configure" />
+   ///    delegate receives a fresh <see cref="CouncilBuilder" /> and is expected to add
+   ///    members and (optionally) a chairman, strategy, compression, etc. The shared
+   ///    question and max-rounds are applied after the delegate runs.
+   /// </summary>
+   /// <param name="name">Display name for the configuration (e.g. "Small", "Standard").</param>
+   /// <param name="configure">Delegate that populates a fresh <see cref="CouncilBuilder" />.</param>
+   /// <returns>This benchmark instance for fluent chaining.</returns>
+   public CouncilBenchmark AddConfiguration(string name, Action<CouncilBuilder> configure)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(name);
+      ArgumentNullException.ThrowIfNull(configure);
+      _configs.Add((name, configure));
+      return this;
+   }
 
-    /// <summary>Sets the shared question asked of every configuration.</summary>
-    public CouncilBenchmark WithQuestion(string question)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(question);
-        _question = question;
-        return this;
-    }
+   /// <summary>Sets the shared question asked of every configuration.</summary>
+   public CouncilBenchmark WithQuestion(string question)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(question);
+      _question = question;
+      return this;
+   }
 
-    /// <summary>Sets the max-rounds count applied to every configuration. Default is 3.</summary>
-    public CouncilBenchmark WithMaxRounds(int maxRounds)
-    {
-        _maxRounds = Math.Clamp(maxRounds, 1, 10);
-        return this;
-    }
+   /// <summary>Sets the max-rounds count applied to every configuration. Default is 3.</summary>
+   public CouncilBenchmark WithMaxRounds(int maxRounds)
+   {
+      _maxRounds = Math.Clamp(maxRounds, 1, 10);
+      return this;
+   }
 
-    /// <summary>
-    ///    Runs every registered configuration sequentially and produces a
-    ///    <see cref="BenchmarkReport"/>. A failure in one configuration does not abort
-    ///    the rest — the failed entry is recorded with its error message.
-    /// </summary>
-    /// <param name="ct">Cancellation token applied to every configuration run.</param>
-    /// <returns>A report with one entry per configuration.</returns>
-    public async Task<BenchmarkReport> RunAsync(CancellationToken ct = default)
-    {
-        if (_configs.Count == 0)
-            throw new InvalidOperationException("No configurations registered. Use AddConfiguration().");
-        if (string.IsNullOrWhiteSpace(_question))
-            throw new InvalidOperationException("Question is required. Use WithQuestion().");
+   /// <summary>
+   ///    Runs every registered configuration sequentially and produces a
+   ///    <see cref="BenchmarkReport" />. A failure in one configuration does not abort
+   ///    the rest — the failed entry is recorded with its error message.
+   /// </summary>
+   /// <param name="ct">Cancellation token applied to every configuration run.</param>
+   /// <returns>A report with one entry per configuration.</returns>
+   public async Task<BenchmarkReport> RunAsync(CancellationToken ct = default)
+   {
+      if (_configs.Count == 0)
+         throw new InvalidOperationException("No configurations registered. Use AddConfiguration().");
+      if (string.IsNullOrWhiteSpace(_question))
+         throw new InvalidOperationException("Question is required. Use WithQuestion().");
 
-        var report = new BenchmarkReport { Question = _question, MaxRounds = _maxRounds };
+      var report = new BenchmarkReport { Question = _question, MaxRounds = _maxRounds };
 
-        foreach (var (name, configure) in _configs)
-        {
-            ct.ThrowIfCancellationRequested();
-            try
-            {
-                var builder = new CouncilBuilder();
-                builder.WithUserPrompt(_question);
-                builder.WithMaxRounds(_maxRounds);
-                configure(builder);
-                var executor = builder.Build();
-                var result = await executor.ExecuteAsync(ct).ConfigureAwait(false);
-                report.Add(BenchmarkEntry.FromResult(name, result));
-            }
-            catch (Exception ex)
-            {
-                report.Add(BenchmarkEntry.FromError(name, ex));
-            }
-        }
+      foreach (var (name, configure) in _configs)
+      {
+         ct.ThrowIfCancellationRequested();
+         try
+         {
+            var builder = new CouncilBuilder();
+            builder.WithUserPrompt(_question);
+            builder.WithMaxRounds(_maxRounds);
+            configure(builder);
+            var executor = builder.Build();
+            var result = await executor.ExecuteAsync(ct).ConfigureAwait(false);
+            report.Add(BenchmarkEntry.FromResult(name, result));
+         }
+         catch (Exception ex)
+         {
+            report.Add(BenchmarkEntry.FromError(name, ex));
+         }
+      }
 
-        return report;
-    }
+      return report;
+   }
 }

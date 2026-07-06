@@ -18,8 +18,14 @@ namespace Delibera.Core.Resilience;
 ///       three pipelines out of the box:
 ///       <list type="bullet">
 ///          <item><see cref="ResilienceOptions.LocalPipelineName" /> — retries only connection-level failures.</item>
-///          <item><see cref="ResilienceOptions.CloudPipelineName" /> — retries transient HTTP responses (429, 524, 5xx) plus timeouts.</item>
-///          <item><see cref="ResilienceOptions.DefaultPipelineName" /> — convenience alias for the cloud pipeline (the more permissive of the two).</item>
+///          <item>
+///             <see cref="ResilienceOptions.CloudPipelineName" /> — retries transient HTTP responses (429, 524, 5xx)
+///             plus timeouts.
+///          </item>
+///          <item>
+///             <see cref="ResilienceOptions.DefaultPipelineName" /> — convenience alias for the cloud pipeline (the
+///             more permissive of the two).
+///          </item>
 ///       </list>
 ///    </para>
 ///    <para>
@@ -61,11 +67,12 @@ public interface IDeliberaResiliencePipelineProvider
 /// </summary>
 public sealed class DeliberaResiliencePipelineProvider : IDeliberaResiliencePipelineProvider
 {
-   private readonly IOptionsMonitor<ResilienceOptions> _options;
-   private readonly Dictionary<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>> _customBuilders;
+   private static readonly int[] DefaultCloudStatusCodes = [408, 429, 500, 502, 503, 504, 524];
    private readonly Dictionary<string, ResiliencePipeline<HttpResponseMessage>> _built;
    private readonly Dictionary<string, ResiliencePipeline> _builtOperation;
+   private readonly Dictionary<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>> _customBuilders;
    private readonly object _gate = new();
+   private readonly IOptionsMonitor<ResilienceOptions> _options;
 
    /// <summary>Builds the provider from DI options + custom pipeline factories.</summary>
    /// <param name="options">Bound resilience configuration.</param>
@@ -101,6 +108,23 @@ public sealed class DeliberaResiliencePipelineProvider : IDeliberaResiliencePipe
          ResilienceOptions.CloudPipelineName => GetOrBuildBuilt(ResilienceOptions.CloudPipelineName, BuildCloud),
          _ => GetOrBuildBuilt(ResilienceOptions.DefaultPipelineName, BuildCloud)
       };
+   }
+
+   /// <inheritdoc />
+   public ResiliencePipeline? GetOperationPipeline(string? name)
+   {
+      var key = string.IsNullOrWhiteSpace(name)
+         ? ResilienceOptions.DefaultPipelineName
+         : name;
+      lock (_gate)
+      {
+         if (_builtOperation.TryGetValue(key, out var cached))
+            return cached;
+         var opts = _options.Get(key);
+         var pipeline = BuildOperationPipeline(opts);
+         _builtOperation[key] = pipeline;
+         return pipeline;
+      }
    }
 
    private ResiliencePipeline<HttpResponseMessage> GetOrBuildCustom(string key)
@@ -178,23 +202,6 @@ public sealed class DeliberaResiliencePipelineProvider : IDeliberaResiliencePipe
       return new ResiliencePipelineBuilder<HttpResponseMessage>()
          .AddRetry(retry)
          .Build();
-   }
-
-   private static readonly int[] DefaultCloudStatusCodes = [408, 429, 500, 502, 503, 504, 524];
-
-   /// <inheritdoc />
-   public ResiliencePipeline? GetOperationPipeline(string? name)
-   {
-      var key = string.IsNullOrWhiteSpace(name) ? ResilienceOptions.DefaultPipelineName : name;
-      lock (_gate)
-      {
-         if (_builtOperation.TryGetValue(key, out var cached))
-            return cached;
-         var opts = _options.Get(key);
-         var pipeline = BuildOperationPipeline(opts);
-         _builtOperation[key] = pipeline;
-         return pipeline;
-      }
    }
 
    private static ResiliencePipeline BuildOperationPipeline(ResilienceOptions opts)

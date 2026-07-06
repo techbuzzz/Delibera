@@ -20,9 +20,17 @@ namespace Delibera.Core.Compression;
 /// </remarks>
 public sealed class TokenCounter
 {
+   private const int _evictionBatchSize = 64; // evict 64 entries at a time when over capacity
+
    private static readonly Lazy<TokenCounter> DefaultInstance = new(
       () => new TokenCounter(),
       LazyThreadSafetyMode.ExecutionAndPublication);
+
+   // ──────────────────────────────────────────────
+
+   private readonly ConcurrentDictionary<string, int> _memo = new();
+   private readonly object _memoLock = new();
+   private readonly LinkedList<string> _memoOrder = new(); // LRU access order
 
    /// <summary>Gets the shared default <see cref="TokenCounter" /> instance.</summary>
    public static TokenCounter Default => DefaultInstance.Value;
@@ -150,13 +158,6 @@ public sealed class TokenCounter
 
       return text[..cutoff].TrimEnd() + "…";
    }
-
-   // ──────────────────────────────────────────────
-
-   private readonly ConcurrentDictionary<string, int> _memo = new();
-   private readonly LinkedList<string> _memoOrder = new(); // LRU access order
-   private readonly object _memoLock = new();
-   private const int _evictionBatchSize = 64; // evict 64 entries at a time when over capacity
 
    private void TrackMemoEntry(string key)
    {

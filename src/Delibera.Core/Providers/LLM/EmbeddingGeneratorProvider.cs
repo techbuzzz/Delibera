@@ -53,12 +53,12 @@ public sealed class EmbeddingGeneratorProvider : IEmbeddingProvider, IDisposable
    public IEmbeddingGenerator<string, Embedding<float>> Generator { get; }
 
    /// <inheritdoc />
-    public void Dispose()
-    {
-       if (_disposed) return;
-       _disposed = true;
-       if (_ownsGenerator) Generator.Dispose();
-    }
+   public void Dispose()
+   {
+      if (_disposed) return;
+      _disposed = true;
+      if (_ownsGenerator) Generator.Dispose();
+   }
 
    /// <inheritdoc />
    public string EmbeddingModelName { get; }

@@ -16,38 +16,42 @@ namespace Delibera.Core.Council;
 /// </summary>
 public sealed class CouncilBuilder : ICouncilBuilder
 {
+   private const string DefaultStrategy = "Standard";
+   private const int DefaultMaxRounds = 4;
+   private const float DefaultTemperature = 0.7f;
+   private const string DefaultSystemPrompt = "You are a helpful AI assistant participating in a council debate.";
    private readonly List<CouncilMember> _members = [];
+   private IAgentMemory? _agentMemory;
    private AutoChunkingOptions? _autoChunkingOptions;
    private CouncilMember? _chairman;
    private CompressionCache? _compressionCache;
    private CompressionOptions? _compressionOptions;
    private IContextCompressor? _compressor;
+   private IDebateStore? _debateStore;
+   private TimeSpan? _debateTimeout;
    private IKnowledgeBase? _knowledgeBase;
    private KnowledgeKeeper? _knowledgeKeeper;
    private ILogger? _logger;
    private int _maxDegreeOfParallelism;
+   private int? _maxParticipants;
    private int _maxRounds = 4;
    private Operator? _operator;
    private CouncilMember? _operatorModel;
    private bool _operatorReuseCompression;
    private IReadOnlyList<McpServerConfig>? _operatorServers;
    private string? _outputPath;
+   private CouncilOptions? _persistedOptionsSnapshot;
    private string? _responseLanguage;
+   private string? _resumeFromDebateId;
    private IDebateStrategy _strategy = new StandardDebate();
-   private string _systemPrompt = "You are a helpful AI assistant participating in a council debate.";
-   private float _temperature = 0.7f;
-   private string _userPrompt = string.Empty;
-   private TelemetryOptions? _telemetryOptions;
-   private TimeSpan? _debateTimeout;
-   private int? _maxParticipants;
    private IStrategySelector? _strategySelector;
-   private IVotingStrategy? _votingStrategy;
    private IStructuredOutputSerializer? _structuredOutputSerializer;
    private Type? _structuredOutputType;
-   private IDebateStore? _debateStore;
-   private string? _resumeFromDebateId;
-   private CouncilOptions? _persistedOptionsSnapshot;
-   private IAgentMemory? _agentMemory;
+   private string _systemPrompt = "You are a helpful AI assistant participating in a council debate.";
+   private TelemetryOptions? _telemetryOptions;
+   private float _temperature = 0.7f;
+   private string _userPrompt = string.Empty;
+   private IVotingStrategy? _votingStrategy;
 
    /// <summary>
    ///    Creates an empty builder. Use <see cref="WithOptions(CouncilOptions)" /> or
@@ -267,209 +271,209 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
-    /// <inheritdoc />
-    public ICouncilBuilder WithModelContextWindow(string modelNamePattern, int contextWindowTokens)
-    {
-       ModelContextWindowRegistry.Register(modelNamePattern, contextWindowTokens);
-       return this;
-    }
+   /// <inheritdoc />
+   public ICouncilBuilder WithModelContextWindow(string modelNamePattern, int contextWindowTokens)
+   {
+      ModelContextWindowRegistry.Register(modelNamePattern, contextWindowTokens);
+      return this;
+   }
 
-    // ── Telemetry (OpenTelemetry-style observability) ──
+   // ── Telemetry (OpenTelemetry-style observability) ──
 
-    /// <summary>
-    ///    Enables OpenTelemetry-style observability. When enabled, the
-    ///    <see cref="CouncilExecutor"/> emits <see cref="System.Diagnostics.Activity"/>
-    ///    spans via <see cref="DeliberaActivitySource"/> and records metrics via
-    ///    <see cref="DeliberaMeter"/>. See <see cref="TelemetryOptions"/> for the
-    ///    activity-source / meter naming convention.
-    /// </summary>
-    /// <param name="options">
-    ///    Telemetry configuration. Pass <c>null</c> to use defaults
-    ///    (<see cref="TelemetryOptions.Enabled"/> = <c>true</c>, default source/meter names).
-    /// </param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder WithTelemetry(TelemetryOptions? options = null)
-    {
-       _telemetryOptions = options ?? new TelemetryOptions { Enabled = true };
-       return this;
-    }
+   /// <summary>
+   ///    Enables OpenTelemetry-style observability. When enabled, the
+   ///    <see cref="CouncilExecutor" /> emits <see cref="System.Diagnostics.Activity" />
+   ///    spans via <see cref="DeliberaActivitySource" /> and records metrics via
+   ///    <see cref="DeliberaMeter" />. See <see cref="TelemetryOptions" /> for the
+   ///    activity-source / meter naming convention.
+   /// </summary>
+   /// <param name="options">
+   ///    Telemetry configuration. Pass <c>null</c> to use defaults
+   ///    (<see cref="TelemetryOptions.Enabled" /> = <c>true</c>, default source/meter names).
+   /// </param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder WithTelemetry(TelemetryOptions? options = null)
+   {
+      _telemetryOptions = options ?? new TelemetryOptions { Enabled = true };
+      return this;
+   }
 
-    /// <summary>
-    ///    Enables OpenTelemetry-style observability with a configuration delegate.
-    /// </summary>
-    /// <param name="configure">Delegate that populates a fresh <see cref="TelemetryOptions"/>.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder WithTelemetry(Action<TelemetryOptions> configure)
-    {
-       ArgumentNullException.ThrowIfNull(configure);
-       _telemetryOptions = new TelemetryOptions { Enabled = true };
-       configure(_telemetryOptions);
-       return this;
-    }
+   /// <summary>
+   ///    Enables OpenTelemetry-style observability with a configuration delegate.
+   /// </summary>
+   /// <param name="configure">Delegate that populates a fresh <see cref="TelemetryOptions" />.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder WithTelemetry(Action<TelemetryOptions> configure)
+   {
+      ArgumentNullException.ThrowIfNull(configure);
+      _telemetryOptions = new TelemetryOptions { Enabled = true };
+      configure(_telemetryOptions);
+      return this;
+   }
 
-    // ── Quick Wins (F-10) ──
+   // ── Quick Wins (F-10) ──
 
-    /// <summary>
-    ///    Sets a hard wall-clock timeout for the whole debate. When the timeout
-    ///    elapses, the internal <c>CancellationTokenSource</c> used by
-    ///    <see cref="ICouncilExecutor.ExecuteAsync(CancellationToken)"/> is cancelled,
-    ///    which propagates <see cref="OperationCanceledException"/> through every
-    ///    downstream async operation (LLM calls, RAG queries, MCP tools, file saves).
-    /// </summary>
-    /// <param name="timeout">Maximum debate duration. <see cref="Timeout.InfiniteTimeSpan"/> disables.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    /// <remarks>
-    ///    <para>
-    ///       This is a convenience wrapper over <c>CancellationTokenSource</c>. Callers
-    ///       who already own a token can pass it directly to
-    ///       <see cref="ICouncilExecutor.ExecuteAsync(CancellationToken)"/> instead —
-    ///       the two mechanisms compose via
-    ///       <see cref="CancellationTokenSource.CreateLinkedTokenSource(CancellationToken, CancellationToken)"/>.
-    ///    </para>
-    /// </remarks>
-    public ICouncilBuilder WithTimeout(TimeSpan timeout)
-    {
-       if (timeout == TimeSpan.Zero)
-          throw new ArgumentOutOfRangeException(nameof(timeout), "Use Timeout.InfiniteTimeSpan to disable the timeout, not TimeSpan.Zero.");
-       _debateTimeout = timeout;
-       return this;
-    }
+   /// <summary>
+   ///    Sets a hard wall-clock timeout for the whole debate. When the timeout
+   ///    elapses, the internal <c>CancellationTokenSource</c> used by
+   ///    <see cref="ICouncilExecutor.ExecuteAsync(CancellationToken)" /> is cancelled,
+   ///    which propagates <see cref="OperationCanceledException" /> through every
+   ///    downstream async operation (LLM calls, RAG queries, MCP tools, file saves).
+   /// </summary>
+   /// <param name="timeout">Maximum debate duration. <see cref="Timeout.InfiniteTimeSpan" /> disables.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   /// <remarks>
+   ///    <para>
+   ///       This is a convenience wrapper over <c>CancellationTokenSource</c>. Callers
+   ///       who already own a token can pass it directly to
+   ///       <see cref="ICouncilExecutor.ExecuteAsync(CancellationToken)" /> instead —
+   ///       the two mechanisms compose via
+   ///       <see cref="CancellationTokenSource.CreateLinkedTokenSource(CancellationToken, CancellationToken)" />.
+   ///    </para>
+   /// </remarks>
+   public ICouncilBuilder WithTimeout(TimeSpan timeout)
+   {
+      if (timeout == TimeSpan.Zero)
+         throw new ArgumentOutOfRangeException(nameof(timeout), "Use Timeout.InfiniteTimeSpan to disable the timeout, not TimeSpan.Zero.");
+      _debateTimeout = timeout;
+      return this;
+   }
 
-    /// <summary>
-    ///    Caps the maximum number of council participants. When set,
-    ///    <see cref="Build"/> throws <see cref="InvalidOperationException"/> if more
-    ///    members have been added than the limit. Useful in dynamic DI-driven setups
-    ///    where the participant list is built at runtime and a misconfigured source
-    ///    could enqueue dozens of models.
-    /// </summary>
-    /// <param name="maxParticipants">Maximum allowed participants (must be ≥ 1).</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder WithParticipantLimit(int maxParticipants)
-    {
-       if (maxParticipants < 1)
-          throw new ArgumentOutOfRangeException(nameof(maxParticipants), "Participant limit must be at least 1.");
-       _maxParticipants = maxParticipants;
-       return this;
-    }
+   /// <summary>
+   ///    Caps the maximum number of council participants. When set,
+   ///    <see cref="Build" /> throws <see cref="InvalidOperationException" /> if more
+   ///    members have been added than the limit. Useful in dynamic DI-driven setups
+   ///    where the participant list is built at runtime and a misconfigured source
+   ///    could enqueue dozens of models.
+   /// </summary>
+   /// <param name="maxParticipants">Maximum allowed participants (must be ≥ 1).</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder WithParticipantLimit(int maxParticipants)
+   {
+      if (maxParticipants < 1)
+         throw new ArgumentOutOfRangeException(nameof(maxParticipants), "Participant limit must be at least 1.");
+      _maxParticipants = maxParticipants;
+      return this;
+   }
 
-    // ── Adaptive strategy switching (F-09) ──
+   // ── Adaptive strategy switching (F-09) ──
 
-    /// <summary>
-    ///    Enables adaptive strategy switching. After each round,
-    ///    <see cref="CouncilExecutor"/> calls
-    ///    <see cref="IStrategySelector.SelectNextAsync"/> with a
-    ///    <see cref="DebateProgress"/> snapshot; if the selector returns a non-null
-    ///    strategy, the executor swaps <see cref="ICouncilExecutor.Strategy"/> before
-    ///    the next round. Use <see cref="AdaptiveStrategySelector"/> for the built-in
-    ///    stalemate detector, or implement <see cref="IStrategySelector"/> for custom
-    ///    heuristics.
-    /// </summary>
-    /// <param name="selector">The strategy selector to consult after each round.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    /// <remarks>
-    ///    When <see cref="AdaptiveStrategySelector"/> is used, its <see cref="AdaptiveStrategySelector.Initial"/>
-    ///    is set as the council's starting strategy (overriding any prior
-    ///    <see cref="WithStrategy"/> call).
-    /// </remarks>
-    public ICouncilBuilder WithAdaptiveStrategy(IStrategySelector selector)
-    {
-       ArgumentNullException.ThrowIfNull(selector);
-       _strategySelector = selector;
-       // If the selector is an AdaptiveStrategySelector, adopt its Initial strategy
-       // as the council's starting strategy so the debate begins with the right one.
-       if (selector is AdaptiveStrategySelector adaptive)
-          _strategy = adaptive.Initial;
-       return this;
-    }
+   /// <summary>
+   ///    Enables adaptive strategy switching. After each round,
+   ///    <see cref="CouncilExecutor" /> calls
+   ///    <see cref="IStrategySelector.SelectNextAsync" /> with a
+   ///    <see cref="DebateProgress" /> snapshot; if the selector returns a non-null
+   ///    strategy, the executor swaps <see cref="ICouncilExecutor.Strategy" /> before
+   ///    the next round. Use <see cref="AdaptiveStrategySelector" /> for the built-in
+   ///    stalemate detector, or implement <see cref="IStrategySelector" /> for custom
+   ///    heuristics.
+   /// </summary>
+   /// <param name="selector">The strategy selector to consult after each round.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   /// <remarks>
+   ///    When <see cref="AdaptiveStrategySelector" /> is used, its <see cref="AdaptiveStrategySelector.Initial" />
+   ///    is set as the council's starting strategy (overriding any prior
+   ///    <see cref="WithStrategy" /> call).
+   /// </remarks>
+   public ICouncilBuilder WithAdaptiveStrategy(IStrategySelector selector)
+   {
+      ArgumentNullException.ThrowIfNull(selector);
+      _strategySelector = selector;
+      // If the selector is an AdaptiveStrategySelector, adopt its Initial strategy
+      // as the council's starting strategy so the debate begins with the right one.
+      if (selector is AdaptiveStrategySelector adaptive)
+         _strategy = adaptive.Initial;
+      return this;
+   }
 
-    // ── Voting engine (F-02) ──
+   // ── Voting engine (F-02) ──
 
-    /// <summary>
-    ///    Configures a voting Chairman that uses an <see cref="IVotingStrategy"/> to
-    ///    reach a decision via structured voting among participants, as an alternative
-    ///    to the single-LLM Chairman synthesis. The strategy is attached to the
-    ///    Chairman member and detected by <see cref="CouncilExecutor"/> at runtime.
-    /// </summary>
-    /// <param name="modelName">Chairman model name.</param>
-    /// <param name="provider">LLM provider for the Chairman (used to ask participants to rank options).</param>
-    /// <param name="votingStrategy">Voting strategy (Majority, BordaCount, Weighted, ...).</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder WithVotingChairman(string modelName, ILLMProvider provider, IVotingStrategy votingStrategy)
-    {
-       ArgumentNullException.ThrowIfNull(votingStrategy);
-       _votingStrategy = votingStrategy;
-       SetChairman(Chairman.CreateVoting(modelName, provider, votingStrategy));
-       return this;
-    }
+   /// <summary>
+   ///    Configures a voting Chairman that uses an <see cref="IVotingStrategy" /> to
+   ///    reach a decision via structured voting among participants, as an alternative
+   ///    to the single-LLM Chairman synthesis. The strategy is attached to the
+   ///    Chairman member and detected by <see cref="CouncilExecutor" /> at runtime.
+   /// </summary>
+   /// <param name="modelName">Chairman model name.</param>
+   /// <param name="provider">LLM provider for the Chairman (used to ask participants to rank options).</param>
+   /// <param name="votingStrategy">Voting strategy (Majority, BordaCount, Weighted, ...).</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder WithVotingChairman(string modelName, ILLMProvider provider, IVotingStrategy votingStrategy)
+   {
+      ArgumentNullException.ThrowIfNull(votingStrategy);
+      _votingStrategy = votingStrategy;
+      SetChairman(Chairman.CreateVoting(modelName, provider, votingStrategy));
+      return this;
+   }
 
-    // ── Structured output (F-05) ──
+   // ── Structured output (F-05) ──
 
-    /// <summary>
-    ///    Enables structured JSON output (F-05). The Chairman's synthesis prompt is
-    ///    augmented with a JSON schema generated from <typeparamref name="TVerdict"/>,
-    ///    and <see cref="ICouncilExecutor.ExecuteTypedAsync{TVerdict}"/> deserialises
-    ///    the response into a strongly-typed verdict. One automatic retry with a
-    ///    correction prompt is performed on deserialisation failure.
-    /// </summary>
-    /// <typeparam name="TVerdict">The target verdict type (typically a C# record).</typeparam>
-    /// <param name="serializer">
-    ///    Optional custom serializer. <c>null</c> uses <see cref="JsonSchemaOutputSerializer"/>
-    ///    with default options.
-    /// </param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null) where TVerdict : class
-    {
-       _structuredOutputSerializer = serializer ?? new JsonSchemaOutputSerializer();
-       _structuredOutputType = typeof(TVerdict);
-       return this;
-    }
+   /// <summary>
+   ///    Enables structured JSON output (F-05). The Chairman's synthesis prompt is
+   ///    augmented with a JSON schema generated from <typeparamref name="TVerdict" />,
+   ///    and <see cref="ICouncilExecutor.ExecuteTypedAsync{TVerdict}" /> deserialises
+   ///    the response into a strongly-typed verdict. One automatic retry with a
+   ///    correction prompt is performed on deserialisation failure.
+   /// </summary>
+   /// <typeparam name="TVerdict">The target verdict type (typically a C# record).</typeparam>
+   /// <param name="serializer">
+   ///    Optional custom serializer. <c>null</c> uses <see cref="JsonSchemaOutputSerializer" />
+   ///    with default options.
+   /// </param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null) where TVerdict : class
+   {
+      _structuredOutputSerializer = serializer ?? new JsonSchemaOutputSerializer();
+      _structuredOutputType = typeof(TVerdict);
+      return this;
+   }
 
-    // ── Debate persistence (F-03) ──
+   // ── Debate persistence (F-03) ──
 
-    /// <summary>
-    ///    Attaches an <see cref="IDebateStore"/> so a checkpoint is saved after every
-    ///    round. The debate can be resumed from the last completed round after a
-    ///    crash or intentional pause via <see cref="ResumeFrom"/>.
-    /// </summary>
-    /// <param name="store">The store to persist checkpoints to.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder WithPersistence(IDebateStore store)
-    {
-       ArgumentNullException.ThrowIfNull(store);
-       _debateStore = store;
-       return this;
-    }
+   /// <summary>
+   ///    Attaches an <see cref="IDebateStore" /> so a checkpoint is saved after every
+   ///    round. The debate can be resumed from the last completed round after a
+   ///    crash or intentional pause via <see cref="ResumeFrom" />.
+   /// </summary>
+   /// <param name="store">The store to persist checkpoints to.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder WithPersistence(IDebateStore store)
+   {
+      ArgumentNullException.ThrowIfNull(store);
+      _debateStore = store;
+      return this;
+   }
 
-    /// <summary>
-    ///    Resumes a debate from the given <paramref name="debateId"/>. The corresponding
-    ///    checkpoint must exist in the configured <see cref="IDebateStore"/> (set via
-    ///    <see cref="WithPersistence"/>). The executor skips already-completed rounds
-    ///    and continues from the next round using the checkpoint's preserved options.
-    /// </summary>
-    /// <param name="debateId">The debate identifier to resume.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder ResumeFrom(string debateId)
-    {
-       ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
-       _resumeFromDebateId = debateId;
-       return this;
-    }
+   /// <summary>
+   ///    Resumes a debate from the given <paramref name="debateId" />. The corresponding
+   ///    checkpoint must exist in the configured <see cref="IDebateStore" /> (set via
+   ///    <see cref="WithPersistence" />). The executor skips already-completed rounds
+   ///    and continues from the next round using the checkpoint's preserved options.
+   /// </summary>
+   /// <param name="debateId">The debate identifier to resume.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder ResumeFrom(string debateId)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
+      _resumeFromDebateId = debateId;
+      return this;
+   }
 
-    // ── Agent memory (F-04) ──
+   // ── Agent memory (F-04) ──
 
-    /// <summary>
-    ///    Attaches an <see cref="IAgentMemory"/> so council members can recall
-    ///    context from previous sessions and persist their conclusions after each
-    ///    debate. The default is <see cref="InMemoryAgentMemory"/> (no persistence)
-    ///    when not configured.
-    /// </summary>
-    /// <param name="memory">Memory backend. <c>null</c> disables memory.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder WithAgentMemory(IAgentMemory? memory = null)
-    {
-       _agentMemory = memory ?? new InMemoryAgentMemory();
-       return this;
-    }
+   /// <summary>
+   ///    Attaches an <see cref="IAgentMemory" /> so council members can recall
+   ///    context from previous sessions and persist their conclusions after each
+   ///    debate. The default is <see cref="InMemoryAgentMemory" /> (no persistence)
+   ///    when not configured.
+   /// </summary>
+   /// <param name="memory">Memory backend. <c>null</c> disables memory.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder WithAgentMemory(IAgentMemory? memory = null)
+   {
+      _agentMemory = memory ?? new InMemoryAgentMemory();
+      return this;
+   }
 
    // ── Options (bulk configuration) ──
 
@@ -491,10 +495,11 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
-   private const string DefaultStrategy = "Standard";
-   private const int DefaultMaxRounds = 4;
-   private const float DefaultTemperature = 0.7f;
-   private const string DefaultSystemPrompt = "You are a helpful AI assistant participating in a council debate.";
+   /// <inheritdoc />
+   ICouncilExecutor ICouncilBuilder.Build()
+   {
+      return Build();
+   }
 
    /// <summary>
    ///    Applies a <see cref="CouncilOptions" /> snapshot to the builder.
@@ -505,14 +510,12 @@ public sealed class CouncilBuilder : ICouncilBuilder
    {
       // Strategy
       if (!string.Equals(options.Strategy, DefaultStrategy, StringComparison.OrdinalIgnoreCase))
-      {
          _strategy = options.Strategy.ToLowerInvariant() switch
          {
             "critique" => new CritiqueDebate(),
             "consensus" => new ConsensusDebate(),
             _ => new StandardDebate()
          };
-      }
 
       // Core parameters
       if (options.MaxRounds != DefaultMaxRounds) _maxRounds = options.MaxRounds;
@@ -528,13 +531,11 @@ public sealed class CouncilBuilder : ICouncilBuilder
       if (options.Compression is { Enabled: true })
       {
          if (_compressor is null)
-         {
             _compressor = CompressionFactory.Create(
                options.Compression.Strategy,
-               llmProvider: null,
-               modelName: null,
-               embeddingProvider: null);
-         }
+               null,
+               null,
+               null);
 
          _compressionOptions ??= new CompressionOptions
          {
@@ -545,23 +546,17 @@ public sealed class CouncilBuilder : ICouncilBuilder
             _compressionCache = new CompressionCache(options.Compression.MaxCacheEntries);
       }
 
-       // AutoChunking
-       if (options.AutoChunking is { Enabled: true } && _autoChunkingOptions is null)
-          _autoChunkingOptions = options.AutoChunking.ToOptions();
+      // AutoChunking
+      if (options.AutoChunking is { Enabled: true } && _autoChunkingOptions is null)
+         _autoChunkingOptions = options.AutoChunking.ToOptions();
 
-       // Telemetry
-       if (options.Telemetry is { Enabled: true } && _telemetryOptions is null)
-          _telemetryOptions = options.Telemetry;
+      // Telemetry
+      if (options.Telemetry is { Enabled: true } && _telemetryOptions is null)
+         _telemetryOptions = options.Telemetry;
 
-       // Output
-       if (options.Output is { Directory: { Length: > 0 } dir } && dir != "./debate_results")
-          _outputPath = dir;
-    }
-
-   /// <inheritdoc />
-   ICouncilExecutor ICouncilBuilder.Build()
-   {
-      return Build();
+      // Output
+      if (options.Output is { Directory: { Length: > 0 } dir } && dir != "./debate_results")
+         _outputPath = dir;
    }
 
    /// <summary>Backward-compatible alias for <see cref="SetChairman(CouncilMember)" />.</summary>
@@ -598,16 +593,16 @@ public sealed class CouncilBuilder : ICouncilBuilder
    ///    Validates configuration and builds a <see cref="CouncilExecutor" />.
    /// </summary>
    /// <exception cref="InvalidOperationException">When required configuration is missing.</exception>
-    public CouncilExecutor Build()
-    {
-       if (_members.Count == 0)
-          throw new InvalidOperationException("Council must have at least one member. Use AddMember().");
-       if (string.IsNullOrWhiteSpace(_userPrompt))
-          throw new InvalidOperationException("User prompt is required. Use WithUserPrompt().");
-       if (_maxParticipants is { } limit && _members.Count > limit)
-          throw new InvalidOperationException(
-             $"Participant limit exceeded: {_members.Count} members added, but limit is {limit}. " +
-             "Use WithParticipantLimit() to raise the limit or remove members.");
+   public CouncilExecutor Build()
+   {
+      if (_members.Count == 0)
+         throw new InvalidOperationException("Council must have at least one member. Use AddMember().");
+      if (string.IsNullOrWhiteSpace(_userPrompt))
+         throw new InvalidOperationException("User prompt is required. Use WithUserPrompt().");
+      if (_maxParticipants is { } limit && _members.Count > limit)
+         throw new InvalidOperationException(
+            $"Participant limit exceeded: {_members.Count} members added, but limit is {limit}. " +
+            "Use WithParticipantLimit() to raise the limit or remove members.");
 
       var context = new PromptContext
       {
@@ -639,29 +634,29 @@ public sealed class CouncilBuilder : ICouncilBuilder
          _maxDegreeOfParallelism,
          _logger);
 
-        return new CouncilExecutor(
-           _members.AsReadOnly(),
-           _chairman,
-           _knowledgeKeeper,
-           _strategy,
-           context,
-           _maxRounds,
-           _temperature,
-           _outputPath,
-           _compressor,
-           _compressionOptions,
-           _compressionCache,
-           @operator,
-           executionOptions,
-           _autoChunkingOptions,
-           _telemetryOptions,
-           _debateTimeout,
-           _strategySelector,
-           _votingStrategy,
-           _structuredOutputSerializer,
-           _structuredOutputType,
-           _debateStore,
-           _resumeFromDebateId,
-           _agentMemory);
-     }
+      return new CouncilExecutor(
+         _members.AsReadOnly(),
+         _chairman,
+         _knowledgeKeeper,
+         _strategy,
+         context,
+         _maxRounds,
+         _temperature,
+         _outputPath,
+         _compressor,
+         _compressionOptions,
+         _compressionCache,
+         @operator,
+         executionOptions,
+         _autoChunkingOptions,
+         _telemetryOptions,
+         _debateTimeout,
+         _strategySelector,
+         _votingStrategy,
+         _structuredOutputSerializer,
+         _structuredOutputType,
+         _debateStore,
+         _resumeFromDebateId,
+         _agentMemory);
+   }
 }
