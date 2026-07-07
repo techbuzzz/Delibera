@@ -1,42 +1,140 @@
+# ───────────────────────────────────────────────────────────────────────────────
+# Delibera — full stack
+#
+# Quickstart (Ollama on host, external LLM provider):
+#   docker compose up delibera-server qdrant postgres
+#
+# Quickstart (all-in-one incl. Ollama on GPU):
+#   docker compose --profile ollama up
+#
+# Copy .env.example -> .env and fill in your values before first run.
+# ───────────────────────────────────────────────────────────────────────────────
 name: delibera
 
+networks:
+  delibera-net:
+    driver: bridge
+
 services:
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   container_name: delibera-ollama
-  #   restart: unless-stopped
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ollama-data:/root/.ollama
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 10
-  #     start_period: 20s
 
-  # ollama-pull:
-  #   image: curlimages/curl:latest
-  #   container_name: delibera-ollama-pull
-  #   depends_on:
-  #     ollama:
-  #       condition: service_healthy
-  #   entrypoint: ["/bin/sh", "-c"]
-  #   command:
-  #     - |
-  #       set -eu
-  #       for model in llama2 qwen2.5 nomic-embed-text; do
-  #         echo "Pulling $$model..."
-  #         curl -sS -X POST http://ollama:11434/api/pull -d "{\"name\":\"$$model\"}" || true
-  #       done
-  #       echo "Model pull step finished."
-  #   restart: "no"
+  # ───────────────────────────────────────────────────────────────────────────
+  # Delibera Server — REST API + MCP endpoint
+  # ───────────────────────────────────────────────────────────────────────────
+  delibera-server:
+    build:
+      context: .
+      dockerfile: src/Delibera.Server/Dockerfile
+      args:
+        BUILD_CONFIGURATION: ${BUILD_CONFIGURATION:-Release}
+    image: delibera-server:${IMAGE_TAG:-latest}
+    container_name: delibera-server
+    restart: unless-stopped
+    networks:
+      - delibera-net
+    ports:
+      - "${DELIBERA_PORT:-5200}:8080"
+    volumes:
+      - debate-results:/app/debate_results
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      # — LLM provider —
+      Delibera__Providers__DefaultType:     ${DELIBERA_PROVIDER_TYPE:-Ollama}
+      Delibera__Providers__DefaultEndpoint: ${DELIBERA_PROVIDER_ENDPOINT:-http://ollama:11434}
+      Delibera__Providers__DefaultModel:    ${DELIBERA_MODEL:-qwen2.5:14b}
+      Delibera__Providers__EmbeddingModel:  ${DELIBERA_EMBEDDING_MODEL:-nomic-embed-text}
+      Delibera__Providers__ApiKey:          ${DELIBERA_API_KEY:-}
+      # — debate defaults —
+      Delibera__Strategy:    ${DELIBERA_STRATEGY:-Standard}
+      Delibera__MaxRounds:   ${DELIBERA_MAX_ROUNDS:-4}
+      Delibera__Temperature: ${DELIBERA_TEMPERATURE:-0.7}
+      # — compression —
+      Delibera__Compression__Enabled:      ${DELIBERA_COMPRESSION_ENABLED:-true}
+      Delibera__Compression__Strategy:     ${DELIBERA_COMPRESSION_STRATEGY:-Hybrid}
+      Delibera__Compression__TargetRatio:  ${DELIBERA_COMPRESSION_TARGET_RATIO:-0.5}
+      # — RAG —
+      Delibera__Rag__Enabled:           ${DELIBERA_RAG_ENABLED:-false}
+      Delibera__Rag__ProviderType:      ${DELIBERA_RAG_PROVIDER:-Qdrant}
+      Delibera__Rag__ConnectionString:  ${DELIBERA_RAG_CONNECTION:-http://qdrant:6333}
+      # — output —
+      Delibera__Output__Directory:      /app/debate_results
+      Delibera__Output__SeparateFiles:  true
+      # — observability —
+      Delibera__Server__Telemetry__OtlpEndpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
+  # ───────────────────────────────────────────────────────────────────────────
+  # Ollama — local LLM (GPU). Start with: docker compose --profile ollama up
+  # ───────────────────────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: delibera-ollama
+    profiles: ["ollama"]
+    restart: unless-stopped
+    networks:
+      - delibera-net
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # Pulls required models into Ollama after it is healthy
+  ollama-pull:
+    image: curlimages/curl:latest
+    container_name: delibera-ollama-pull
+    profiles: ["ollama"]
+    networks:
+      - delibera-net
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        for model in ${OLLAMA_PULL_MODELS:-qwen2.5:14b nomic-embed-text}; do
+          echo "Pulling $$model ..."
+          curl -sS -X POST http://ollama:11434/api/pull \
+               -H 'Content-Type: application/json' \
+               -d "{\"name\":\"$$model\"}" \
+          || echo "WARNING: failed to pull $$model"
+        done
+        echo "Model pull finished."
+    restart: "no"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Qdrant — vector store for RAG
+  # ───────────────────────────────────────────────────────────────────────────
   qdrant:
     image: qdrant/qdrant:latest
     container_name: delibera-qdrant
     restart: unless-stopped
+    networks:
+      - delibera-net
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -49,26 +147,32 @@ services:
       retries: 10
       start_period: 10s
 
+  # ───────────────────────────────────────────────────────────────────────────
+  # PostgreSQL + pgvector — alternative vector store
+  # ───────────────────────────────────────────────────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
     container_name: delibera-postgres
     restart: unless-stopped
+    networks:
+      - delibera-net
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: council_vectors
+      POSTGRES_USER:     ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB:       ${POSTGRES_DB:-council_vectors}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d council_vectors"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-council_vectors}"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 10s
 
 volumes:
-  # ollama-data:
+  debate-results:
+  ollama-data:
   qdrant-data:
   postgres-data:
