@@ -29,6 +29,9 @@ services:
     image: delibera-server:${IMAGE_TAG:-latest}
     container_name: delibera-server
     restart: unless-stopped
+    # Comment this line if you don't need to access host services from inside the container (e.g., Ollama on host)
+    extra_hosts:
+    - "host.docker.internal:host-gateway"
     networks:
       - delibera-net
     ports:
