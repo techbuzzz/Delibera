@@ -8,7 +8,8 @@ namespace Delibera.Core.Models;
 ///    <para>
 ///       The registry is consulted by <see cref="Chunking.AutoChunkingOrchestrator" />
 ///       when <see cref="Interfaces.ILLMProvider.GetModelCapabilitiesAsync" /> returns
-///       <c>null</c> or a <see cref="ModelCapabilities" /> with an unknown context window.
+///       a <see cref="ModelCapabilities" /> where <see cref="ModelCapabilities.IsUnknown" />
+///       is <c>true</c> or <see cref="ModelCapabilities.ContextWindowTokens" /> is <c>null</c>.
 ///    </para>
 ///    <para>
 ///       Call <see cref="Register" /> to add custom models at startup. The lookup is

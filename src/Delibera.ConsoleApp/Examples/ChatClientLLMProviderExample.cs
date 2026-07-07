@@ -66,10 +66,10 @@ public static class ChatClientLLMProviderExample
          var models = await llmProvider.ListModelsAsync();
          Console.WriteLine($"    ListModelsAsync:    {(models.Count > 0 ? string.Join(", ", models) : "(empty — M.E.AI has no enumeration contract)")}");
 
-         var caps = await llmProvider.GetModelCapabilitiesAsync(model);
-         Console.WriteLine(caps is not null
-            ? $"    GetModelCapabilitiesAsync('{model}'): context window = {caps.ContextWindowTokens} tokens"
-            : $"    GetModelCapabilitiesAsync('{model}'): null (falls back to static registry)");
+          var caps = await llmProvider.GetModelCapabilitiesAsync(model);
+          Console.WriteLine(!caps.IsUnknown
+             ? $"    GetModelCapabilitiesAsync('{model}'): context window = {caps.ContextWindowTokens} tokens"
+             : $"    GetModelCapabilitiesAsync('{model}'): unknown (falls back to static registry)");
       }
       catch (Exception ex)
       {

@@ -5,6 +5,28 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.3.0] - 2026
+
+### ⚠️ Breaking Changes (P-01)
+
+| Removed | Replacement |
+|---------|-------------|
+| `Moderator` static class | `Chairman` |
+| `ICouncilBuilder.SetModerator(CouncilMember)` | `ICouncilBuilder.SetChairman(CouncilMember)` |
+| `ICouncilBuilder.SetModerator(string, ILLMProvider, string?)` | `ICouncilBuilder.SetChairman(string, ILLMProvider, string?)` |
+| `IDebateStrategyWithOptions` interface | `IDebateStrategy` (full signature with `DebateExecutionOptions`) |
+| `IDebateStrategy.ExecuteAsync` overload without `DebateExecutionOptions` | Use the `DebateExecutionOptions` overload (pass `DebateExecutionOptions.Default`) |
+| `ILLMProvider.GetModelCapabilitiesAsync` default `null` return | Implement explicitly; return `ModelCapabilities.Unknown(model)` when unknown |
+| `ModelCapabilities?` (nullable) return type | `ModelCapabilities` (non-nullable); check `caps.IsUnknown` instead of `caps is null` |
+| `RagProviderFactory` class | `VectorStoreFactory` |
+| `IRagProviderFactory` interface | `IVectorStoreFactory` |
+
+### Changed
+
+- **`IDebateStrategy.ExecuteAsync`** now requires a `DebateExecutionOptions` parameter. The legacy overload without `DebateExecutionOptions` has been removed. Implement `IDebateStrategy` with the full signature; pass `DebateExecutionOptions.Default` when calling from code that doesn't need custom options.
+- **`ILLMProvider.GetModelCapabilitiesAsync`** now returns `ModelCapabilities` (non-nullable) instead of `ModelCapabilities?`. Providers that cannot introspect capabilities should return `ModelCapabilities.Unknown(modelName)`. Callers should check `caps.IsUnknown` instead of `caps is null`.
+- **`ModelCapabilities`** now has an `IsUnknown` property for checking whether the instance represents unknown capabilities.
+
 ## [10.2.7] - 2026
 
 Multi-Modal Council (F-06): bring images, diagrams, and documents into the

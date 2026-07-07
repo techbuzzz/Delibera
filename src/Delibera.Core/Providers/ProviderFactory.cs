@@ -6,7 +6,7 @@ namespace Delibera.Core.Providers;
 
 /// <summary>
 ///    Generic registry-and-cache factory shared by <see cref="ProviderFactory" /> and
-///    <see cref="RAG.RagProviderFactory" />. Stores builders keyed by name and the instances
+///    <see cref="RAG.VectorStoreFactory" />. Stores builders keyed by name and the instances
 ///    they have produced so subsequent <c>Create</c> calls return the same object.
 /// </summary>
 public abstract class CachingFactory<TBuilder, TInstance>

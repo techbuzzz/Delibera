@@ -371,6 +371,8 @@ public class StructuredOutputTests
                 return Task.FromResult(retryReply);
             return Task.FromResult(initialReply);
         }
+        public Task<ModelCapabilities> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
+            => Task.FromResult(ModelCapabilities.Unknown(model));
         public void Dispose() { }
     }
 }

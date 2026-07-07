@@ -140,7 +140,7 @@ Resolved services:
 | Interface             | Implementation       | Lifetime  |
 | --------------------- | -------------------- | --------- |
 | `ILLMProviderFactory` | `ProviderFactory`    | Singleton |
-| `IRagProviderFactory` | `RagProviderFactory` | Singleton |
+| `IVectorStoreFactory` | `VectorStoreFactory` | Singleton |
 | `ICompressionFactory` | `CompressionService` | Singleton |
 | `ICouncilBuilder`     | `CouncilBuilder`     | Transient |
 
@@ -282,7 +282,7 @@ var ollama = new OllamaProvider("http://localhost:11434");
 var embeddings = new OllamaEmbeddingProvider(ollama, "nomic-embed-text");
 
 // pgvector — just add a connection string
-var ragFactory = new RagProviderFactory();
+var ragFactory = new VectorStoreFactory();
 var rag = ragFactory.CreatePgVector(
 	 embeddings,
 	 "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres");
@@ -395,7 +395,7 @@ var council = new CouncilBuilder()
 | **ConsensusDebate**   | Perspectives → Common Ground → Consensus → Facilitator  | Optimal solution search |
 
 Each strategy is implemented as an `IDebateStrategy` — combine with `Builder`, `Template Method`
-(`DebateScenario`) and `Factory` patterns (`ProviderFactory`, `RagProviderFactory`, `CompressionFactory`,
+(`DebateScenario`) and `Factory` patterns (`ProviderFactory`, `VectorStoreFactory`, `CompressionFactory`,
 `Chairman`) to compose custom flows.
 
 ---

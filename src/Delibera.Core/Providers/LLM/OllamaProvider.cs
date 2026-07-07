@@ -206,7 +206,7 @@ public sealed class OllamaProvider : ILLMProvider
    }
 
    /// <inheritdoc />
-   public async Task<ModelCapabilities?> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
+   public async Task<ModelCapabilities> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(model);
 
@@ -246,7 +246,7 @@ public sealed class OllamaProvider : ILLMProvider
          var window = ModelContextWindowRegistry.GetContextWindow(model);
          return window is not null
             ? new ModelCapabilities { ModelName = model, ContextWindowTokens = window }
-            : null;
+            : ModelCapabilities.Unknown(model);
       }
    }
 

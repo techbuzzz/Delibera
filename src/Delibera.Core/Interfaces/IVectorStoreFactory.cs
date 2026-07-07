@@ -6,7 +6,7 @@ namespace Delibera.Core.Interfaces;
 ///    Abstraction for creating and managing <see cref="IRagProvider" /> instances.
 ///    Supports registration of custom vector database builders (Qdrant, pgvector, etc.).
 /// </summary>
-public interface IRagProviderFactory : IAsyncDisposable
+public interface IVectorStoreFactory : IAsyncDisposable
 {
    /// <summary>
    ///    Returns the set of registered provider type names.
@@ -14,12 +14,12 @@ public interface IRagProviderFactory : IAsyncDisposable
    IReadOnlyCollection<string> RegisteredTypes { get; }
 
    /// <summary>
-   ///    Registers a custom builder for a RAG provider type.
+   ///    Registers a custom builder for a vector store provider type.
    /// </summary>
    /// <param name="providerType">Provider type key (case-insensitive, e.g., "Qdrant", "PgVector").</param>
    /// <param name="builder">Factory function that takes a config section and embedding provider.</param>
    /// <returns>This factory for fluent chaining.</returns>
-   IRagProviderFactory RegisterBuilder(
+   IVectorStoreFactory RegisterBuilder(
       string providerType,
       Func<IConfigurationSection, IEmbeddingProvider, IRagProvider> builder);
 

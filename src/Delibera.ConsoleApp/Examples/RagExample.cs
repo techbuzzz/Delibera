@@ -22,7 +22,7 @@ public static class RagExample
       var embeddings = new OllamaEmbeddingProvider(ollama, "nomic-embed-text");
 
       // ── 3. RAG provider (Qdrant) ──
-      await using var ragFactory = new RagProviderFactory();
+      await using var ragFactory = new VectorStoreFactory();
       var rag = ragFactory.CreateQdrant(embeddings);
 
       // ── 4. Knowledge Keeper ──

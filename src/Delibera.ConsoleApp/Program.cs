@@ -269,27 +269,27 @@ public static class Program
                AnsiConsole.MarkupLine("\n📚 [bold]Setting up RAG with Qdrant...[/]");
                try
                {
-                  var ragFactory = new RagProviderFactory();
-                  activeRagProvider = ragFactory.CreateQdrant(
-                     embeddingProvider,
-                     qdrantCfg["Host"] ?? "localhost",
-                     qdrantCfg.GetValue<int?>("Port") ?? 6334);
-                  AnsiConsole.MarkupLine("  [green]✅ Qdrant RAG ready[/]");
-               }
-               catch (Exception ex)
-               {
-                  AnsiConsole.MarkupLine($"  [yellow]⚠️  Qdrant: {Markup.Escape(ex.Message)}[/]");
-               }
-            }
+                   var ragFactory = new VectorStoreFactory();
+                   activeRagProvider = ragFactory.CreateQdrant(
+                      embeddingProvider,
+                      qdrantCfg["Host"] ?? "localhost",
+                      qdrantCfg.GetValue<int?>("Port") ?? 6334);
+                   AnsiConsole.MarkupLine("  [green]✅ Qdrant RAG ready[/]");
+                }
+                catch (Exception ex)
+                {
+                   AnsiConsole.MarkupLine($"  [yellow]⚠️  Qdrant: {Markup.Escape(ex.Message)}[/]");
+                }
+             }
 
-            // Fallback to pgvector
-            if (activeRagProvider is null && pgCfg.Exists())
-            {
-               AnsiConsole.MarkupLine("\n📚 [bold]Setting up RAG with pgvector...[/]");
-               try
-               {
-                  var connStr = pgCfg["ConnectionString"] ?? "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres";
-                  var ragFactory = new RagProviderFactory();
+             // Fallback to pgvector
+             if (activeRagProvider is null && pgCfg.Exists())
+             {
+                AnsiConsole.MarkupLine("\n📚 [bold]Setting up RAG with pgvector...[/]");
+                try
+                {
+                   var connStr = pgCfg["ConnectionString"] ?? "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres";
+                   var ragFactory = new VectorStoreFactory();
                   activeRagProvider = ragFactory.CreatePgVector(embeddingProvider, connStr);
                   AnsiConsole.MarkupLine("  [green]✅ pgvector RAG ready[/]");
                }
