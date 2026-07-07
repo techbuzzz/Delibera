@@ -18,28 +18,25 @@
 
   <ItemGroup>
     <!-- ASP.NET / Minimal API -->
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi"                Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi"                    Version="10.0.0" />
 
     <!-- MCP Server (HTTP transport) -->
-    <PackageReference Include="ModelContextProtocol.AspNetCore"             Version="0.2.0-preview.3" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore"                 Version="0.2.0-preview.3" />
 
     <!-- Validation -->
-    <PackageReference Include="FluentValidation"                            Version="11.11.0" />
-    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
-
-    <!-- Serialization -->
-    <PackageReference Include="Microsoft.AspNetCore.Http.Extensions"        Version="2.3.0" />
+    <PackageReference Include="FluentValidation"                                Version="11.11.0" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions"  Version="11.11.0" />
 
     <!-- Observability -->
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting"            Version="1.12.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore"    Version="1.12.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Http"          Version="1.12.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.Console"              Version="1.12.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.12.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime"       Version="1.12.0" />
-
-    <!-- Health checks -->
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting"               Version="1.12.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore"        Version="1.12.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http"              Version="1.12.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.Console"                 Version="1.12.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol"   Version="1.12.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime"          Version="1.12.0" />
+    <!-- NU1510: Microsoft.AspNetCore.Http.Extensions and                                        -->
+    <!--         Microsoft.Extensions.Diagnostics.HealthChecks are implicit in                  -->
+    <!--         Microsoft.NET.Sdk.Web — removed explicit references.                           -->
   </ItemGroup>
 
 </Project>

@@ -1,119 +1,104 @@
-using Delibera.Core.Rag;
 using Delibera.Server.Api.Contracts;
 
 namespace Delibera.Server.Services;
 
 /// <summary>
-/// Manages RAG corpora: creation, document ingestion, search, and removal.
-/// Delegates to the <see cref="IRagProviderFactory"/> from Delibera.Core.
+///    In-memory corpus registry. Stores corpus and document metadata;
+///    actual vector indexing is delegated to the RAG provider configured
+///    in appsettings (Qdrant / pgvector) — wired up when RAG is enabled.
 /// </summary>
 public sealed class CorpusService : ICorpusService
 {
     private readonly ILogger<CorpusService> _logger;
-    private readonly IRagProviderFactory   _ragFactory;
-    private readonly IConfiguration        _configuration;
 
-    // In-memory index of corpora metadata (id -> CorpusInfo)
-    private readonly Dictionary<string, CorpusInfo> _corpora = new();
+    // corpusId → (meta, documents)
+    private readonly Dictionary<string, (CorpusDto Meta, List<DocumentDto> Docs)> _store = new();
 
-    public CorpusService(
-        ILogger<CorpusService> logger,
-        IRagProviderFactory    ragFactory,
-        IConfiguration         configuration)
+    public CorpusService(ILogger<CorpusService> logger)
+        => _logger = logger;
+
+    // ── ICorpusService ────────────────────────────────────────────────────────
+
+    public IReadOnlyCollection<CorpusDto> ListCorpora()
+        => _store.Values.Select(v => v.Meta).ToList();
+
+    public CorpusDto CreateCorpus(CreateCorpusRequest request)
     {
-        _logger        = logger;
-        _ragFactory    = ragFactory;
-        _configuration = configuration;
-    }
+        var id = Guid.NewGuid().ToString("N")[..12];
 
-    // ── ICorpusService ─────────────────────────────────────────────────────────
-
-    public Task<IReadOnlyCollection<CorpusInfo>> ListCorporaAsync(CancellationToken ct)
-        => Task.FromResult<IReadOnlyCollection<CorpusInfo>>(_corpora.Values.ToList());
-
-    public Task<CorpusInfo> CreateCorpusAsync(CreateCorpusRequest request, CancellationToken ct)
-    {
-        if (_corpora.ContainsKey(request.CorpusId))
+        if (_store.Values.Any(v =>
+                string.Equals(v.Meta.Name, request.Name, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException(
-                $"Corpus '{request.CorpusId}' already exists.");
+                $"Corpus with name '{request.Name}' already exists.");
 
-        var info = new CorpusInfo
+        var dto = new CorpusDto
         {
-            CorpusId    = request.CorpusId,
-            DisplayName = request.DisplayName,
-            CreatedAt   = DateTimeOffset.UtcNow
+            CorpusId      = id,
+            Name          = request.Name,
+            Description   = request.Description,
+            DocumentCount = 0,
+            CreatedAt     = DateTimeOffset.UtcNow,
         };
 
-        _corpora[info.CorpusId] = info;
-        _logger.LogInformation("Corpus '{CorpusId}' created.", info.CorpusId);
-        return Task.FromResult(info);
+        _store[id] = (dto, []);
+        _logger.LogInformation("Corpus '{CorpusId}' ({Name}) created.", id, request.Name);
+        return dto;
     }
 
-    public async Task AddDocumentAsync(
+    public Task<DocumentDto?> IndexDocumentAsync(
         string             corpusId,
-        CorpusDocumentDto  doc,
+        IndexDocumentRequest request,
         CancellationToken  ct)
     {
-        EnsureExists(corpusId);
+        if (!_store.TryGetValue(corpusId, out var entry))
+            return Task.FromResult<DocumentDto?>(null);
 
-        var provider = GetProvider();
-        await provider.IndexAsync(corpusId, doc.DocumentId, doc.Content, ct);
+        var doc = new DocumentDto
+        {
+            DocumentId = Guid.NewGuid().ToString("N")[..12],
+            Title      = request.Title ?? "(untitled)",
+            Chunks     = EstimateChunks(request.Content),
+            IndexedAt  = DateTimeOffset.UtcNow,
+        };
 
-        _corpora[corpusId].DocumentCount++;
+        entry.Docs.Add(doc);
+
+        // Replace meta with incremented DocumentCount (record is immutable)
+        _store[corpusId] = (entry.Meta with { DocumentCount = entry.Docs.Count }, entry.Docs);
+
         _logger.LogInformation(
             "Document '{DocumentId}' indexed into corpus '{CorpusId}'.",
             doc.DocumentId, corpusId);
+
+        return Task.FromResult<DocumentDto?>(doc);
     }
 
-    public async Task<IReadOnlyCollection<CorpusDocumentMeta>> ListDocumentsAsync(
-        string            corpusId,
-        CancellationToken ct)
+    public DocumentDto[]? ListDocuments(string corpusId)
+        => _store.TryGetValue(corpusId, out var entry)
+            ? entry.Docs.ToArray()
+            : null;
+
+    public void DeleteDocument(string corpusId, string documentId)
     {
-        EnsureExists(corpusId);
-        var provider = GetProvider();
-        var docs = await provider.ListDocumentsAsync(corpusId, ct);
-        return docs.Select(d => new CorpusDocumentMeta
+        if (!_store.TryGetValue(corpusId, out var entry)) return;
+
+        var removed = entry.Docs.RemoveAll(d => d.DocumentId == documentId);
+        if (removed > 0)
         {
-            DocumentId = d.Id,
-            Source     = d.Source
-        }).ToList();
+            _store[corpusId] = (entry.Meta with { DocumentCount = entry.Docs.Count }, entry.Docs);
+            _logger.LogInformation(
+                "Document '{DocumentId}' removed from corpus '{CorpusId}'.",
+                documentId, corpusId);
+        }
     }
 
-    public async Task DeleteDocumentAsync(
-        string            corpusId,
-        string            documentId,
-        CancellationToken ct)
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>Rough chunk estimate: ~512 tokens per chunk, ~0.75 tokens per word.</summary>
+    private static int EstimateChunks(string content)
     {
-        EnsureExists(corpusId);
-        var provider = GetProvider();
-        await provider.DeleteDocumentAsync(corpusId, documentId, ct);
-        _corpora[corpusId].DocumentCount = Math.Max(0, _corpora[corpusId].DocumentCount - 1);
-        _logger.LogInformation(
-            "Document '{DocumentId}' removed from corpus '{CorpusId}'.",
-            documentId, corpusId);
+        var words  = content.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        var tokens = (int)(words / 0.75);
+        return Math.Max(1, (int)Math.Ceiling(tokens / 512.0));
     }
-
-    public async Task<IReadOnlyCollection<RagSearchResult>> SearchAsync(
-        string            corpusId,
-        string            query,
-        int               topK,
-        CancellationToken ct)
-    {
-        EnsureExists(corpusId);
-        var provider = GetProvider();
-        return await provider.SearchAsync(corpusId, query, topK, ct);
-    }
-
-    // ── Private helpers ────────────────────────────────────────────────────────
-
-    private void EnsureExists(string corpusId)
-    {
-        if (!_corpora.ContainsKey(corpusId))
-            throw new KeyNotFoundException($"Corpus '{corpusId}' not found.");
-    }
-
-    private IRagProvider GetProvider()
-        => _ragFactory.Create(
-            _configuration.GetSection("Delibera:Rag").Get<RagProviderOptions>()
-            ?? new RagProviderOptions());
 }

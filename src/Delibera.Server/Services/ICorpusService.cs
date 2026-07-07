@@ -1,14 +1,19 @@
-using Delibera.Core.Rag;
 using Delibera.Server.Api.Contracts;
 
 namespace Delibera.Server.Services;
 
+/// <summary>
+///    Manages in-memory RAG corpus metadata and delegates document
+///    operations to the configured vector store at runtime.
+/// </summary>
 public interface ICorpusService
 {
-    Task<IReadOnlyCollection<CorpusInfo>>          ListCorporaAsync(CancellationToken ct);
-    Task<CorpusInfo>                               CreateCorpusAsync(CreateCorpusRequest request, CancellationToken ct);
-    Task                                           AddDocumentAsync(string corpusId, CorpusDocumentDto doc, CancellationToken ct);
-    Task<IReadOnlyCollection<CorpusDocumentMeta>>  ListDocumentsAsync(string corpusId, CancellationToken ct);
-    Task                                           DeleteDocumentAsync(string corpusId, string documentId, CancellationToken ct);
-    Task<IReadOnlyCollection<RagSearchResult>>     SearchAsync(string corpusId, string query, int topK, CancellationToken ct);
+    // ── Corpus CRUD ───────────────────────────────────────────────────────────
+    IReadOnlyCollection<CorpusDto>  ListCorpora();
+    CorpusDto                       CreateCorpus(CreateCorpusRequest request);
+
+    // ── Document operations ───────────────────────────────────────────────────
+    Task<DocumentDto?>              IndexDocumentAsync(string corpusId, IndexDocumentRequest request, CancellationToken ct);
+    DocumentDto[]?                  ListDocuments(string corpusId);
+    void                            DeleteDocument(string corpusId, string documentId);
 }

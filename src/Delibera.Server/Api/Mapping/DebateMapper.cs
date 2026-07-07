@@ -1,4 +1,5 @@
 using Delibera.Core.Models;
+using Delibera.Core.Voting;
 using Delibera.Server.Api.Contracts;
 using Delibera.Server.Services;
 
@@ -17,7 +18,7 @@ public static class DebateMapper
             Status       = record.Status,
             FinalVerdict = record.Result?.FinalVerdict,
             Verdict      = record.Result?.MapVerdict(),
-            Voting       = record.Result?.VotingResult?.MapVoting(),
+            Voting       = record.Result?.VotingTally?.MapVoting(),   // VotingTally, not VotingResult
             TokenStats   = record.Result?.TokenStats?.MapStats(),
             ErrorMessage = record.ErrorMessage,
             StreamUrl    = $"{baseUrl}/api/v1/debates/{record.DebateId}/stream",
@@ -37,18 +38,24 @@ public static class DebateMapper
         };
     }
 
-    private static VotingResultDto? MapVoting(this VotingResult v)
+    // Maps Delibera.Core.Voting.VotingResult → VotingResultDto
+    // Core record:  WinningOption, Score, Scores (dict), Method
+    // Server DTO:   Strategy,      Winner, TotalVotes,   Tally[]
+    private static VotingResultDto MapVoting(this VotingResult v)
         => new()
         {
-            Strategy   = v.StrategyName,
-            Winner     = v.Winner,
-            TotalVotes = v.TotalVotes,
-            Tally      = v.Tally.Select(t => new VoteTallyDto
-            {
-                Candidate = t.Candidate,
-                Votes     = t.Votes,
-                Score     = t.Score,
-            }).ToArray(),
+            Strategy   = v.Method,
+            Winner     = v.WinningOption,
+            TotalVotes = v.Scores.Count,
+            Tally      = v.Scores
+                .OrderByDescending(kv => kv.Value)
+                .Select((kv, i) => new VoteTallyDto
+                {
+                    Candidate = kv.Key,
+                    Votes     = i == 0 ? 1 : 0,          // plurality proxy — first entry = winner
+                    Score     = (float)kv.Value,
+                })
+                .ToArray(),
         };
 
     private static TokenStatsDto? MapStats(this TokenStatistics s)
@@ -63,11 +70,11 @@ public static class DebateMapper
     public static DebateRoundDto ToDto(this DebateRound round)
         => new()
         {
-            RoundNumber   = round.RoundNumber,
-            IsFinal       = round.IsFinal,
-            Strategy      = round.StrategyName ?? string.Empty,
+            RoundNumber     = round.RoundNumber,
+            IsFinal         = round.IsFinal,
+            Strategy        = round.StrategyName ?? string.Empty,
             ChairmanSummary = round.ChairmanSummary,
-            Messages      = round.Responses.Select(r => new ParticipantMessageDto
+            Messages        = round.Responses.Select(r => new ParticipantMessageDto
             {
                 Role      = r.MemberName,
                 Content   = r.Content,
