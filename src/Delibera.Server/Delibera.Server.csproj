@@ -22,6 +22,7 @@
          the AspNetCore.OpenApi source generator. Pin to 2.0.0 (resolved by AspNetCore.OpenApi)
          until the source generator is updated for v3. -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
 
     <!-- MCP Server (HTTP transport) -->
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
