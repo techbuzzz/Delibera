@@ -1,4 +1,7 @@
+using Delibera.Server.Templates.Engineering;
 using Delibera.Server.Templates.Governance;
+using Delibera.Server.Templates.Legal;
+using Delibera.Server.Templates.Product;
 
 namespace Delibera.Server.Templates.Registry;
 
@@ -15,8 +18,18 @@ public sealed class TemplateRegistry : ITemplateRegistry
         // Register all built-in templates
         var builtIn = new IServerTemplate[]
         {
+            // Vertical 1 — Enterprise Decision Support & Governance
             new RiskCommitteeTemplate(),
             new ArchitectureDecisionTemplate(),
+
+            // Vertical 2 — Software Engineering & Code Review
+            new CodeReviewTemplate(),
+
+            // Vertical 3 — Requirements Engineering & Product Discovery
+            new RequirementsReviewTemplate(),
+
+            // Vertical 4 — Legal / Policy / Compliance
+            new LegalContractReviewTemplate(),
         };
         _templates = builtIn.ToDictionary(t => t.TemplateId, StringComparer.OrdinalIgnoreCase);
     }
