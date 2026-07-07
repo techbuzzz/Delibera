@@ -1,6 +1,22 @@
 namespace Delibera.Core.Models;
 
 /// <summary>
+///    Capabilities of a council member, used by F-06 Multi-Modal attachment routing.
+///    Auto-detected from the model name via <see cref="ModelContextWindowRegistry"/>
+///    or set explicitly via the <c>AddMember</c> overload that accepts
+///    <see cref="MemberCapabilities"/>.
+/// </summary>
+[Flags]
+public enum MemberCapabilities
+{
+    /// <summary>The member can process text prompts. Always set for all LLMs.</summary>
+    Text = 1,
+
+    /// <summary>The member can process image / vision inputs (e.g. llava, gpt-4o).</summary>
+    Vision = 2
+}
+
+/// <summary>
 ///    Describes the capabilities of an LLM model — context window size,
 ///    maximum output tokens, and supported modalities.
 /// </summary>

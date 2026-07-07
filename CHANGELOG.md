@@ -5,6 +5,97 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.2.7] - 2026
+
+Multi-Modal Council (F-06): bring images, diagrams, and documents into the
+debate with zero forced dependencies in `Delibera.Core`.
+
+### Added — F-06 Multi-Modal Council (Vision + Documents)
+
+- **`Delibera.Core/Attachments/`** — new namespace with:
+  - **`IFileContentReader`** — single extensibility point for document parsing.
+    The core package ships **no** PDF/DOCX libraries; users register a reader
+    per extension via `WithFileReader`.
+  - **`FileReadResult`** — normalised output record (`SourcePath`,
+    `TextContent`, `BinaryParts`, `Metadata`). Text + binary can both be
+    non-null (e.g. PDF with embedded images).
+  - **`BinaryAttachment`** — raw binary part (image bytes) with MIME type,
+    ready for vision models via `Microsoft.Extensions.AI` `ImageContent`.
+  - **`FileAttachment`** — file-attachment record (`FilePath`, `Description`).
+  - **`FileContentReaderRegistry`** — per-extension registry, pre-populated
+    with built-in readers. Always returns a reader (fallback for unknown
+    extensions — never throws).
+  - **`FileReaderDIEntry`** — DI entry record for `AddFileReader` extension.
+
+- **Built-in readers** (zero external deps in `Delibera.Core`):
+  - **`PlainTextFileReader`** — `.txt .md .markdown .json .xml .cs .yml .yaml .csv .html .htm .log .tsv`
+  - **`ImageFileReader`** — `.png .jpg .jpeg .webp .gif .bmp` → `BinaryParts` with correct `MediaType`
+  - **`FallbackFileReader`** — any unregistered extension → graceful placeholder text
+  - **`DelegateFileContentReader`** — lambda adapter (no class needed)
+
+- **`MemberCapabilities`** flags enum (`Text`, `Vision`) added to
+  `Delibera.Core.Models`. `CouncilMember` gains `Capabilities` property and
+  `SupportsVision` computed property.
+
+- **`ModelContextWindowRegistry`** extended with vision detection:
+  - `SupportsVision(string)` — substring match against known vision patterns
+    (`llava`, `gemma3`, `llama3.2-vision`, `minicpm-v`, `gpt-4o`,
+    `gpt-4-vision`, `claude-3`, `qwen-vl`, `internvl`, `pixtral`, `llama4`, …)
+  - `GetCapabilities(string)` — combines context-window + vision detection
+  - `RegisterVisionPattern(string)` — add custom patterns at startup
+  - `GetVisionPatterns()` — snapshot of all registered patterns
+
+- **`CouncilBuilder`** fluent API:
+  - `WithAttachment(string filePath)` — attach a file (read lazily on debate start)
+  - `WithAttachment(string filePath, string description)` — attach with description
+  - `WithFileReader(string extension, IFileContentReader reader)` — register instance
+  - `WithFileReader(string extension, Func<string, CancellationToken, Task<FileReadResult>> handler)` — register lambda
+  - `AddMember(string, ILLMProvider, string, MemberCapabilities, string?)` — explicit capabilities overload
+  - `AddMember(string, ILLMProvider, string?, string?)` — now auto-detects vision from model name
+
+- **`ICouncilExecutor`** gains `Attachments` (`IReadOnlyList<FileAttachment>`) and
+  `FileReaders` (`FileContentReaderRegistry`) surfaces.
+
+- **`CouncilExecutor.ExecuteCoreAsync`** reads attachments via the registry and
+  injects text content into the debate context's `KnowledgeContent`. Binary parts
+  are available for future `Microsoft.Extensions.AI` `ImageContent` routing (the
+  text-injection path is the foundation; full vision-model routing is a future
+  enhancement that requires per-member message construction).
+
+- **DI registration**: `ServiceCollectionExtensions.AddFileReader(extension, factory)`
+  registers a `FileReaderDIEntry` singleton so DI-resolved `CouncilBuilder`
+  instances can pick up custom readers automatically.
+
+### Changed
+
+- Bumped `Delibera.Core` package version `10.2.6` → `10.2.7`.
+- `CouncilMember.AddMember(string, ILLMProvider, string?, string?)` now
+  auto-detects `MemberCapabilities.Vision` from the model name.
+- `<Description>` and `<PackageTags>` updated to mention multi-modal support.
+
+### Compatibility
+
+- **No breaking changes.** The new `AddMember` overload with `MemberCapabilities`
+  is additive; existing callers get auto-detection for free. `WithAttachment`
+  and `WithFileReader` are opt-in.
+
+### Test summary
+
+- 1 new test file, 48 new tests, **all 307 tests pass** (up from 259 in v10.2.6).
+- Coverage: PlainTextFileReader roundtrip, ImageFileReader binary parts + MIME,
+  FallbackFileReader placeholder, DelegateFileContentReader lambda,
+  FileContentReaderRegistry (pre-registered, register instance, register lambda,
+  fallback for unknown), MemberCapabilities flags, vision auto-detection
+  (10 vision + 5 text-only model names), GetCapabilities combination,
+  RegisterVisionPattern, CouncilBuilder wiring (WithAttachment, WithFileReader,
+  AddMember with capabilities, auto-detect), end-to-end execution with text
+  attachment, fallback reader, and custom reader.
+
+### ConsoleApp
+
+- `MultiModalExample` (`--multimodal`) — demos vision member + text member +
+  attachments + custom `.pdf` reader (lambda style).
+
 ## [10.2.6] - 2026
 
 A large feature release that delivers nine new capabilities across
