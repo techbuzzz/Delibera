@@ -1,6 +1,7 @@
 using Delibera.Server.Api.Endpoints;
 using Delibera.Server.Api.Filters;
 using Delibera.Server.Infrastructure;
+using Delibera.Server.Mcp;
 using Delibera.Server.Middleware;
 
 var builder = WebApplication.CreateSlimBuilder(args);
@@ -37,7 +38,7 @@ app.UseMiddleware<TenantResolutionMiddleware>();
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
-// ── Endpoint groups ───────────────────────────────────────────────────────────
+// ── REST endpoint groups ──────────────────────────────────────────────────────
 var api = app.MapGroup("/api/v1")
              .AddEndpointFilter<ValidationFilter>();
 
@@ -47,5 +48,9 @@ api.MapCorpusEndpoints();
 api.MapScenarioEndpoints();
 
 app.MapHealthChecks("/api/v1/health");
+
+// ── MCP endpoint (Model Context Protocol) ────────────────────────────────────
+// Claude Desktop / Cursor / any MCP client → http://localhost:5200/mcp
+app.MapDeliberaMcp("/mcp");
 
 await app.RunAsync();

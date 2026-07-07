@@ -3,7 +3,6 @@ using Delibera.Server.Services;
 using Delibera.Server.Templates;
 using Delibera.Server.Templates.Registry;
 using FluentValidation;
-using Microsoft.Extensions.Options;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -30,6 +29,15 @@ public static class ServerServiceExtensions
 
         // Validators (auto-scan assembly)
         services.AddValidatorsFromAssemblyContaining<Program>(lifetime: ServiceLifetime.Singleton);
+
+        // ── MCP Server (HTTP transport) ───────────────────────────────────────
+        // Exposes Delibera council as MCP tools at /mcp.
+        // Claude Desktop, Cursor, or any MCP client can connect to:
+        //   http://localhost:5200/mcp
+        services
+            .AddMcpServer()
+            .WithHttpTransport()
+            .WithToolsFromAssembly();  // auto-discovers [McpServerToolType] in this assembly
 
         // OpenTelemetry
         var otelOptions = configuration
