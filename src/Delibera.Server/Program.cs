@@ -5,7 +5,7 @@ using Delibera.Server.Middleware;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
-// ── Logging: Microsoft.Extensions.Logging only (no Serilog) ──────────────────
+// ── Logging ───────────────────────────────────────────────────────────────────
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
@@ -44,6 +44,7 @@ var api = app.MapGroup("/api/v1")
 api.MapDebateEndpoints();
 api.MapTemplateEndpoints();
 api.MapCorpusEndpoints();
+api.MapScenarioEndpoints();
 
 app.MapHealthChecks("/api/v1/health");
 
