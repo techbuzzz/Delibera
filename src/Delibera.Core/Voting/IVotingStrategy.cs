@@ -140,7 +140,7 @@ public sealed class BordaCountVotingStrategy : IVotingStrategy
 ///    <see cref="MemberWeights" /> to give specific members more influence
 ///    (e.g. a SecurityExpert's vote counts double).
 /// </summary>
-public sealed class WeightedVotingStrategy : IVotingStrategy
+public sealed class WeightedVotingStrategy(double defaultWeight = 1.0) : IVotingStrategy
 {
    /// <summary>
    ///    Per-member weight overrides. Keyed by <see cref="ParticipantBallot.MemberName" />
@@ -148,7 +148,6 @@ public sealed class WeightedVotingStrategy : IVotingStrategy
    ///    <see cref="ParticipantBallot.Weight" /> is used.
    /// </summary>
    public Dictionary<string, double> MemberWeights { get; init; } = new(StringComparer.Ordinal);
-
    /// <inheritdoc />
    public string MethodName => "Weighted";
 
@@ -180,8 +179,6 @@ public sealed class WeightedVotingStrategy : IVotingStrategy
 
    private double ResolveWeight(ParticipantBallot ballot)
    {
-      return MemberWeights.TryGetValue(ballot.MemberName, out var w)
-         ? w
-         : ballot.Weight;
+      return MemberWeights.GetValueOrDefault(ballot.MemberName, defaultWeight);
    }
 }

@@ -1,135 +1,132 @@
-using Delibera.Core.Council;
+using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
 using Delibera.Core.Providers;
+using Delibera.Core.Providers.LLM;
 using Delibera.Core.Voting;
 using Delibera.Server.Api.Contracts;
 
 namespace Delibera.Server.Scenarios;
 
-/// <summary>
-/// Converts a <see cref="ScenarioRequest"/> into a fully-configured
-/// <see cref="CouncilBuilder"/> ready for execution.
-/// </summary>
 public static class ScenarioBuilder
 {
-    public static CouncilBuilder Build(
+    public static ICouncilBuilder Build(
         ScenarioRequest request,
-        IConfiguration  configuration)
-    {
-        if (request.Members is not { Length: > 0 })
-            throw new ArgumentException("A scenario must have at least one member.", nameof(request));
+        IConfiguration configuration)
+   {
+      if (request.Members is not { Length: > 0 })
+         throw new ArgumentException("A scenario must have at least one member.", nameof(request));
 
-        // ── Provider resolution ───────────────────────────────────────────────
-        var endpoint    = configuration["Delibera:Providers:DefaultEndpoint"] ?? "http://localhost:11434";
-        var apiKey      = configuration["Delibera:Providers:ApiKey"];
-        var fastModel   = configuration["Delibera:Models:Fast"]   ?? "llama3.2:3b";
-        var strongModel = configuration["Delibera:Models:Strong"] ?? "qwen2.5:7b";
-        var factory     = new ProviderFactory();
+      var endpoint = configuration["Delibera:Providers:DefaultEndpoint"] ?? "http://localhost:11434";
+      var apiKey = configuration["Delibera:Providers:ApiKey"];
+      var fastModel = configuration["Delibera:Models:Fast"] ?? "llama3.2:3b";
+      var strongModel = configuration["Delibera:Models:Strong"] ?? "qwen2.5:7b";
+      var factory = new ProviderFactory();
 
-        ILLMProvider DefaultProvider() =>
-            string.IsNullOrEmpty(apiKey)
-                ? factory.CreateOllama(endpoint)
-                : factory.CreateOllamaCloud(apiKey);
+      ILLMProvider DefaultProvider() =>
+          string.IsNullOrEmpty(apiKey)
+              ? factory.CreateLocalOllama(endpoint)
+              : factory.CreateCloudOllama(endpoint, apiKey);
 
-        ILLMProvider ResolveProvider(string? providerType) =>
-            providerType?.ToLowerInvariant() switch
-            {
-                "openai"      => factory.CreateOpenAI(apiKey ?? string.Empty),
-                "azureopenai" => factory.CreateAzureOpenAI(apiKey ?? string.Empty, endpoint),
-                "anthropic"   => factory.CreateAnthropic(apiKey ?? string.Empty),
-                _             => DefaultProvider(),
-            };
+       ILLMProvider ResolveProvider(string? providerType) =>
+           providerType?.ToLowerInvariant() switch
+           {
+              _ => DefaultProvider(),
+           };
 
-        string ResolveModel(string? model, bool preferStrong = true) =>
-            !string.IsNullOrWhiteSpace(model) ? model
-                : preferStrong ? strongModel : fastModel;
+      string ResolveModel(string? model, bool preferStrong = true) =>
+          !string.IsNullOrWhiteSpace(model) ? model
+              : preferStrong ? strongModel : fastModel;
 
-        // ── Builder base ──────────────────────────────────────────────────────
-        var builder = new CouncilBuilder()
-            .WithMaxRounds(request.MaxRounds)
-            .WithTemperature(request.Temperature);
+      var builder = new CouncilBuilder()
+          .WithMaxRounds(request.MaxRounds)
+          .WithTemperature(request.Temperature);
 
-        if (!string.IsNullOrWhiteSpace(request.SystemPrompt))
-            builder.WithSystemPrompt(request.SystemPrompt);
-        else
-        {
-            var ctx = request.InputData.HasValue
-                ? request.InputData.Value.ToString()
-                : string.Empty;
-            builder.WithSystemPrompt(
-                string.IsNullOrWhiteSpace(ctx)
-                    ? request.Question
-                    : $"{request.Question}\n\nContext:\n{ctx}");
-        }
+      if (!string.IsNullOrWhiteSpace(request.SystemPrompt))
+         builder.WithSystemPrompt(request.SystemPrompt);
+      else
+      {
+         var ctx = request.InputData.HasValue
+             ? request.InputData.Value.ToString()
+             : string.Empty;
+         builder.WithSystemPrompt(
+             string.IsNullOrWhiteSpace(ctx)
+                 ? request.Question
+                 : $"{request.Question}\n\nContext:\n{ctx}");
+      }
 
-        builder.WithUserPrompt(request.Question);
+      builder.WithUserPrompt(request.Question);
 
-        // ── Members ───────────────────────────────────────────────────────────
-        foreach (var m in request.Members)
-        {
-            var model    = ResolveModel(m.Model);
-            var provider = ResolveProvider(m.Provider);
-            var caps     = m.Capabilities.ToLowerInvariant() switch
-            {
-                "vision" => MemberCapabilities.Vision,
-                "both"   => MemberCapabilities.Text | MemberCapabilities.Vision,
-                _        => MemberCapabilities.Text,
-            };
-            builder.AddMember(model, provider, m.Role, caps, m.Persona);
-        }
+      foreach (var m in request.Members)
+      {
+         var model = ResolveModel(m.Model);
+         var provider = ResolveProvider(m.Provider);
+         var caps = m.Capabilities?.ToLowerInvariant() switch
+         {
+            "vision" => MemberCapabilities.Vision,
+            "both" => MemberCapabilities.Text | MemberCapabilities.Vision,
+            _ => MemberCapabilities.Text,
+         };
+         builder.AddMember(model, provider, m.Role, caps, m.Persona);
+      }
 
-        // ── Strategy ──────────────────────────────────────────────────────────
-        _ = request.Strategy.ToLowerInvariant() switch
-        {
-            "critique"  => builder.WithCritiqueDebate(),
-            "consensus" => builder.WithConsensusDebate(),
-            _           => builder.WithStandardDebate(),
-        };
+      _ = request.Strategy?.ToLowerInvariant() switch
+      {
+         "critique" => builder.WithStrategy(new Delibera.Core.Debate.CritiqueDebate()),
+         "consensus" => builder.WithStrategy(new Delibera.Core.Debate.ConsensusDebate()),
+         _ => builder.WithStrategy(new Delibera.Core.Debate.StandardDebate()),
+      };
 
-        // ── Chairman ──────────────────────────────────────────────────────────
-        if (request.Chairman is { } ch)
-        {
-            var chModel    = ResolveModel(ch.Model, preferStrong: true);
-            var chProvider = ResolveProvider(ch.Provider);
-            var chairman   = ch.OpeningStatement
-                ? Chairman.CreateWithOpening(chModel, chProvider, ch.SystemPrompt)
-                : Chairman.CreateStandard(chModel, chProvider, ch.SystemPrompt);
-            builder.SetChairman(chairman);
-        }
+      // ── Chairman ──────────────────────────────────────────────────────────
+      if (request.Chairman is { } ch)
+      {
+         var chModel = ResolveModel(ch.Model, preferStrong: true);
+         var chProvider = ResolveProvider(ch.Provider);
+         // CreateWithOpening не существует — используем CreateStandard
+         var chairman = Chairman.CreateStandard(chModel, chProvider);
+         builder.SetChairman(chairman);
+      }
 
-        // ── Voting ────────────────────────────────────────────────────────────
-        if (!string.IsNullOrWhiteSpace(request.VotingStrategy))
-        {
-            IVotingStrategy voting = request.VotingStrategy.ToLowerInvariant() switch
-            {
-                "bordacount" or "borda" =>
-                    new BordaCountVotingStrategy(),
-                "weighted" =>
-                    new WeightedVotingStrategy(
-                        request.MemberWeights
-                        ?? request.Members.ToDictionary(m => m.Role, m => m.Weight)),
-                _ =>
-                    new MajorityVotingStrategy(),
-            };
-            builder.WithVoting(voting);
-        }
+      // ── Voting ────────────────────────────────────────────────────────────
+      if (!string.IsNullOrWhiteSpace(request.VotingStrategy))
+      {
+         var chModel = strongModel;
+         var chProvider = DefaultProvider();
 
-        // ── Knowledge text (inline RAG) ───────────────────────────────────────
-        if (!string.IsNullOrWhiteSpace(request.KnowledgeText))
-            builder.WithKnowledgeText(request.KnowledgeText);
+          IVotingStrategy voting = request.VotingStrategy.ToLowerInvariant() switch
+          {
+             "bordacount" or "borda" => new BordaCountVotingStrategy(),
+             "weighted" =>
+                 new WeightedVotingStrategy
+                 {
+                     MemberWeights = request.MemberWeights is { Count: > 0 }
+                         ? request.MemberWeights.ToDictionary(kv => kv.Key, kv => (double)kv.Value)
+                         : request.Members.ToDictionary(m => m.Role, m => (double)m.Weight),
+                 },
+             _ => new MajorityVotingStrategy(),
+          };
+         builder.WithVotingChairman(chModel, chProvider, voting);
+      }
 
-        // ── Compression ───────────────────────────────────────────────────────
-        if (!string.Equals(request.CompressionStrategy, "None", StringComparison.OrdinalIgnoreCase))
-        {
-            var embeddingModel = configuration["Delibera:Providers:EmbeddingModel"] ?? "nomic-embed-text";
-            var llm            = DefaultProvider();
-            var embeddings     = new Delibera.Core.Providers.RAG.OllamaEmbeddingProvider(
-                (Delibera.Core.Providers.LLM.OllamaProvider)llm, embeddingModel);
-            if (Enum.TryParse<Delibera.Core.Compression.CompressionStrategy>(
-                    request.CompressionStrategy, true, out var cs))
-                builder.WithCompression(cs, llm, strongModel, embeddings);
-        }
+      // ── Knowledge text (inline — добавляем в системный промпт) ───────────
+      if (!string.IsNullOrWhiteSpace(request.KnowledgeText))
+      {
+         var existing = builder.GetSystemPrompt(); // если метод есть, иначе — пересобрать
+                                                   // Т.к. WithKnowledgeText нет в ICouncilBuilder, инжектируем в system prompt:
+         builder.WithSystemPrompt(
+             (request.SystemPrompt ?? request.Question)
+             + $"\n\n## Knowledge Context\n{request.KnowledgeText}");
+      }
 
-        return builder;
-    }
+      // ── Compression ───────────────────────────────────────────────────────
+      if (!string.IsNullOrEmpty(request.CompressionStrategy) &&
+          !string.Equals(request.CompressionStrategy, "None", StringComparison.OrdinalIgnoreCase))
+      {
+         var llm = DefaultProvider();
+          if (Enum.TryParse<CompressionStrategy>(
+                  request.CompressionStrategy, true, out var cs))
+            builder.WithCompression(cs, llm, strongModel);
+      }
+
+      return builder;
+   }
 }

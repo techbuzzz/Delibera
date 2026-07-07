@@ -1,3 +1,5 @@
+using Delibera.Core.Interfaces;
+
 namespace Delibera.Server.Templates.Registry;
 
 /// <summary>
@@ -16,10 +18,10 @@ public interface IServerTemplate
     bool     OperatorEnabled  { get; }
 
     /// <summary>
-    /// Configure and return a <see cref="CouncilBuilder"/> ready to be built
+    /// Configure and return a <see cref="ICouncilBuilder"/> ready to be built
     /// for a specific debate request.
     /// </summary>
-    CouncilBuilder Configure(
+    ICouncilBuilder Configure(
         CreateDebateRequest    request,
         IServiceProvider       services,
         IConfiguration         configuration);

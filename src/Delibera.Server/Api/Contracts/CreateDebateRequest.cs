@@ -14,9 +14,12 @@ public sealed record CreateDebateRequest
 
     /// <summary>IDs of pre-indexed RAG corpora to attach to the Knowledge Keeper.</summary>
     public string[]? CorpusIds { get; init; }
+    public string? KnowledgeText { get; set; }
 
-    /// <summary>Optional per-request overrides for debate execution.</summary>
-    public DebateOptionsOverride? Options { get; init; }
+
+   /// <summary>Optional per-request overrides for debate execution.</summary>
+   public DebateOptionsOverride? Options { get; init; }
+
 }
 
 public sealed record DebateOptionsOverride

@@ -157,7 +157,7 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
 
             _logger.LogInformation(
                 "[Template] Debate {DebateId} completed — {Rounds} rounds, {Tokens} tokens.",
-                record.DebateId, record.Rounds.Count, record.Result.TotalTokens);
+                record.DebateId, record.Rounds.Count, record.Result.TokenStats?.GrandTotal);
         }
         catch (OperationCanceledException) when (record.Status == DebateStatus.Cancelled)
         {
@@ -222,7 +222,7 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
 
             _logger.LogInformation(
                 "[Scenario] Debate {DebateId} completed — {Rounds} rounds, {Tokens} tokens.",
-                record.DebateId, record.Rounds.Count, record.Result.TotalTokens);
+                record.DebateId, record.Rounds.Count, record.Result.TokenStats?.GrandTotal);
         }
         catch (OperationCanceledException) when (record.Status == DebateStatus.Cancelled)
         {

@@ -1,6 +1,8 @@
 using Delibera.Core.Council;
+using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
 using Delibera.Core.Providers;
+using Delibera.Core.Providers.LLM;
 using Delibera.Core.Voting;
 using Delibera.Server.Api.Contracts;
 using Delibera.Server.Templates.Registry;
@@ -31,7 +33,7 @@ public sealed class RiskCommitteeTemplate : IServerTemplate
     public bool     RagEnabled       => true;
     public bool     OperatorEnabled  => false;
 
-    public CouncilBuilder Configure(
+    public ICouncilBuilder Configure(
         CreateDebateRequest request,
         IServiceProvider    services,
         IConfiguration      configuration)
@@ -44,7 +46,7 @@ public sealed class RiskCommitteeTemplate : IServerTemplate
         var factory  = new ProviderFactory();
         var llm      = string.IsNullOrEmpty(apiKey)
             ? factory.CreateOllama(endpoint)
-            : factory.CreateOllamaCloud(apiKey);
+            : factory.CreateCloudOllama(endpoint, apiKey);
 
         var fastModel   = configuration["Delibera:Models:Fast"]   ?? "llama3.2:3b";
         var strongModel = configuration["Delibera:Models:Strong"] ?? "qwen2.5:7b";
@@ -70,8 +72,8 @@ public sealed class RiskCommitteeTemplate : IServerTemplate
                 persona: "You are a senior solution architect. Assess technical feasibility, dependencies, integration complexity and long-term maintainability.")
             .AddMember(fastModel, llm, "BusinessOwner",
                 persona: "You are a pragmatic business owner. Focus on business value, time-to-market, cost and strategic alignment.")
-            .SetChairman(Chairman.CreateStandard(strongModel, llm,
-                systemPrompt: """
+            .SetChairman(Chairman.CreateCustom(strongModel, llm,
+                """
                     You are the Chair of the Risk Committee.
                     After the debate rounds, synthesise all arguments into a structured verdict.
                     Produce a JSON object matching the RiskVerdict schema:
@@ -88,7 +90,7 @@ public sealed class RiskCommitteeTemplate : IServerTemplate
                     """)
             )
             .WithConsensusDebate()
-            .WithVoting(new WeightedVotingStrategy(weights))
+            .WithVoting(new WeightedVotingStrategy { MemberWeights = weights.ToDictionary(kv => kv.Key, kv => (double)kv.Value) })
             .WithSystemPrompt(
                 $"""You are a member of the Risk Committee evaluating the following proposal:\n\n{request.Question}\n\nContext:\n{request.InputData?.ToString() ?? "(no additional context provided)"}""")
             .WithUserPrompt(request.Question)
@@ -100,10 +102,10 @@ public sealed class RiskCommitteeTemplate : IServerTemplate
         var compressionStrategy = request.Options?.CompressionStrategy ?? "Hybrid";
         if (!string.Equals(compressionStrategy, "None", StringComparison.OrdinalIgnoreCase))
         {
-            var embeddings = new Delibera.Core.Providers.RAG.OllamaEmbeddingProvider(
+            var embeddings = new Delibera.Core.Providers.LLM.OllamaEmbeddingProvider(
                 (Delibera.Core.Providers.LLM.OllamaProvider)llm, embeddingModel);
             builder.WithCompression(
-                Enum.Parse<Delibera.Core.Compression.CompressionStrategy>(compressionStrategy, true),
+                Enum.Parse<CompressionStrategy>(compressionStrategy, true),
                 llm, fastModel, embeddings);
         }
 

@@ -1,4 +1,5 @@
 using Delibera.Core.Council;
+using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
 using Delibera.Core.Providers;
 using Delibera.Core.Voting;
@@ -30,7 +31,7 @@ public sealed class ArchitectureDecisionTemplate : IServerTemplate
     public bool     RagEnabled       => true;
     public bool     OperatorEnabled  => false;
 
-    public CouncilBuilder Configure(
+    public ICouncilBuilder Configure(
         CreateDebateRequest request,
         IServiceProvider    services,
         IConfiguration      configuration)
@@ -40,7 +41,7 @@ public sealed class ArchitectureDecisionTemplate : IServerTemplate
         var factory     = new ProviderFactory();
         var llm         = string.IsNullOrEmpty(apiKey)
             ? factory.CreateOllama(endpoint)
-            : factory.CreateOllamaCloud(apiKey);
+            : factory.CreateCloudOllama(endpoint,apiKey);
 
         var fastModel   = configuration["Delibera:Models:Fast"]   ?? "llama3.2:3b";
         var strongModel = configuration["Delibera:Models:Strong"] ?? "qwen2.5:7b";
@@ -55,8 +56,8 @@ public sealed class ArchitectureDecisionTemplate : IServerTemplate
                 persona: "Performance and reliability engineer. Focuses on latency, throughput, scalability and failure modes.")
             .AddMember(fastModel, llm, "TechLead",
                 persona: "Pragmatic tech lead. Weighs team skills, delivery risk, operational complexity and time-to-market.")
-            .SetChairman(Chairman.CreateStandard(strongModel, llm,
-                systemPrompt: """
+            .SetChairman(Chairman.CreateCustom(strongModel, llm,
+                """
                     You are the Architecture Decision Chair.
                     After debate, produce an ADR-style JSON verdict:
                     {

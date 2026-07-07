@@ -289,6 +289,13 @@ public interface ICouncilBuilder
    ICouncilBuilder WithVotingChairman(string modelName, ILLMProvider provider, IVotingStrategy votingStrategy);
 
    /// <summary>
+   /// Configures a voting strategy (F-02) that uses an <see cref="IVotingStrategy" />
+   /// </summary>
+   /// <param name="votingStrategy"></param>
+   /// <returns></returns>
+   ICouncilBuilder WithVoting(IVotingStrategy votingStrategy);
+
+   /// <summary>
    ///    Enables structured JSON output (F-05). The Chairman's synthesis prompt is
    ///    augmented with a JSON schema generated from <typeparamref name="TVerdict" />,
    ///    and <see cref="ICouncilExecutor.ExecuteTypedAsync{TVerdict}" /> deserialises
@@ -407,6 +414,12 @@ public interface ICouncilBuilder
    /// </code>
    /// </example>
    ICouncilBuilder WithOptions(Action<CouncilOptions> configure);
+
+   /// <summary>
+   ///    Gets the system prompt for the council.
+   /// </summary>
+   /// <returns>The system prompt, or <c>null</c> if not set.</returns>
+   string? GetSystemPrompt();
 
    /// <summary>
    ///    Validates configuration and builds an <see cref="ICouncilExecutor" />.

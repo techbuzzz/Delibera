@@ -1,4 +1,5 @@
 using Delibera.Core.Council;
+using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
 using Delibera.Core.Providers;
 using Delibera.Core.Voting;
@@ -33,7 +34,7 @@ public sealed class RequirementsReviewTemplate : IServerTemplate
     public bool     RagEnabled       => true;
     public bool     OperatorEnabled  => false;
 
-    public CouncilBuilder Configure(
+    public ICouncilBuilder Configure(
         CreateDebateRequest request,
         IServiceProvider    services,
         IConfiguration      configuration)
@@ -43,7 +44,7 @@ public sealed class RequirementsReviewTemplate : IServerTemplate
         var factory     = new ProviderFactory();
         var llm         = string.IsNullOrEmpty(apiKey)
             ? factory.CreateOllama(endpoint)
-            : factory.CreateOllamaCloud(apiKey);
+            : factory.CreateCloudOllama(endpoint, apiKey);
 
         var fastModel   = configuration["Delibera:Models:Fast"]   ?? "llama3.2:3b";
         var strongModel = configuration["Delibera:Models:Strong"] ?? "qwen2.5:7b";
@@ -67,8 +68,8 @@ public sealed class RequirementsReviewTemplate : IServerTemplate
             .AddMember(fastModel, llm, "SecurityOfficer",
                 persona: "Security and compliance officer. Evaluate data privacy implications, GDPR/CCPA compliance, " +
                          "authentication/authorisation requirements and threat model gaps.")
-            .SetChairman(Chairman.CreateStandard(strongModel, llm,
-                systemPrompt: """
+            .SetChairman(Chairman.CreateCustom(strongModel, llm,
+                """
                     You are the Requirements Review Chair.
                     After the debate, produce a structured JSON verdict:
                     {

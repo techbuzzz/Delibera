@@ -442,6 +442,17 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
+   /// <summary>
+   ///    Configures a voting strategy (F-02) that uses an <see cref="IVotingStrategy" />
+   /// </summary>
+   /// <param name="votingStrategy"></param>
+   /// <returns></returns>
+   public ICouncilBuilder WithVoting(IVotingStrategy votingStrategy)
+   {
+      _votingStrategy = votingStrategy;
+      return this;
+   }
+
    // ── Structured output (F-05) ──
 
    /// <summary>
@@ -592,6 +603,15 @@ public sealed class CouncilBuilder : ICouncilBuilder
       configure(options);
       ApplyOptions(options);
       return this;
+   }
+
+   /// <summary>
+   ///    Gets the system prompt for the council.
+   /// </summary>
+   /// <returns>The system prompt, or <c>null</c> if not set.</returns>
+   public string? GetSystemPrompt()
+   {
+      return _systemPrompt;
    }
 
    /// <inheritdoc />

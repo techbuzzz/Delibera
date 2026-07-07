@@ -41,7 +41,7 @@ public static class CorpusEndpoints
     }
 
     private static Ok<CorpusDto[]> ListCorpora(ICorpusService svc)
-        => TypedResults.Ok(svc.ListCorpora());
+        => TypedResults.Ok(svc.ListCorpora().ToArray());
 
     private static Created<CorpusDto> CreateCorpus(
         CreateCorpusRequest req, ICorpusService svc)
@@ -66,7 +66,7 @@ public static class CorpusEndpoints
     ListDocuments(string id, ICorpusService svc)
     {
         var docs = svc.ListDocuments(id);
-        return docs is null ? TypedResults.NotFound() : TypedResults.Ok(docs);
+        return docs is null ? TypedResults.NotFound() : TypedResults.Ok(docs.ToArray());
     }
 
     private static NoContent DeleteDocument(

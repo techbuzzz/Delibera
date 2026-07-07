@@ -1,4 +1,5 @@
 using Delibera.Core.Council;
+using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
 using Delibera.Core.Providers;
 using Delibera.Core.Voting;
@@ -31,7 +32,7 @@ public sealed class LegalContractReviewTemplate : IServerTemplate
     public bool     RagEnabled       => true;
     public bool     OperatorEnabled  => false;
 
-    public CouncilBuilder Configure(
+    public ICouncilBuilder Configure(
         CreateDebateRequest request,
         IServiceProvider    services,
         IConfiguration      configuration)
@@ -41,7 +42,7 @@ public sealed class LegalContractReviewTemplate : IServerTemplate
         var factory     = new ProviderFactory();
         var llm         = string.IsNullOrEmpty(apiKey)
             ? factory.CreateOllama(endpoint)
-            : factory.CreateOllamaCloud(apiKey);
+            : factory.CreateCloudOllama(endpoint, apiKey);
 
         var fastModel   = configuration["Delibera:Models:Fast"]   ?? "llama3.2:3b";
         var strongModel = configuration["Delibera:Models:Strong"] ?? "qwen2.5:7b";
@@ -70,8 +71,8 @@ public sealed class LegalContractReviewTemplate : IServerTemplate
             .AddMember(fastModel, llm, "RiskManager",
                 persona: "Operational and financial risk manager. Identify contractual obligations that create " +
                          "financial exposure, operational dependencies or reputational risk.")
-            .SetChairman(Chairman.CreateStandard(strongModel, llm,
-                systemPrompt: """
+            .SetChairman(Chairman.CreateCustom(strongModel, llm,
+                """
                     You are the Legal Review Chair.
                     After the debate, produce a structured JSON verdict:
                     {
@@ -88,7 +89,7 @@ public sealed class LegalContractReviewTemplate : IServerTemplate
                     """)
             )
             .WithCritiqueDebate()
-            .WithVoting(new WeightedVotingStrategy(weights))
+            .WithVoting(new WeightedVotingStrategy { MemberWeights = weights.ToDictionary(kv => kv.Key, kv => (double)kv.Value) })
             .WithSystemPrompt(
                 $"""Legal Contract Review Council\n\nContract / Clause to Review:\n{request.Question}\n\nContract Text:\n{request.InputData?.ToString() ?? "(no contract text provided)"}""")
             .WithUserPrompt(request.Question)

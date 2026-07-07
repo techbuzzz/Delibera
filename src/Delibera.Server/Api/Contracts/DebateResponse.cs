@@ -17,4 +17,4 @@ public sealed record DebateResponse
     public          DateTimeOffset? CompletedAt { get; init; }
 }
 
-public enum DebateStatus { Pending, Running, Completed, Failed, Paused }
+public enum DebateStatus { Pending, Running, Completed, Failed, Cancelled, Paused }

@@ -192,7 +192,7 @@ public static class DebateEndpoints
             : TypedResults.NotFound();
     }
 
-    private static async Task<Results<FileContentHttpResult, NotFound>>
+    private static Results<FileContentHttpResult, NotFound>
     ExportMarkdownAsync(
         string id,
         IDebateOrchestrationService orchestration,
@@ -201,7 +201,7 @@ public static class DebateEndpoints
         var record = orchestration.Find(id);
         if (record?.Result is null) return TypedResults.NotFound();
 
-        var md = await record.Result.ToMarkdownAsync(ct);
+        var md = record.Result.ToMarkdown();
         var bytes = System.Text.Encoding.UTF8.GetBytes(md);
         return TypedResults.File(bytes, "text/markdown",
             fileDownloadName: $"debate_{id}_result.md");

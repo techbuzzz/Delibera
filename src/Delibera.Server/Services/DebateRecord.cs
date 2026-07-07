@@ -22,4 +22,5 @@ public sealed class DebateRecord
 
     public System.Threading.Channels.ChannelWriter<DebateRound>  RoundWriter => _channel.Writer;
     public System.Threading.Channels.ChannelReader<DebateRound>  RoundReader => _channel.Reader;
+    public string Label { get; set; }
 }

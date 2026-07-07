@@ -91,7 +91,7 @@ public sealed class DeliberaMcpTools(
             Members       = members,
             Strategy      = strategy,
             VotingStrategy = votingStrategy,
-            MaxRounds     = maxRounds,
+            MaxRounds     = maxRounds ?? 3,
             Chairman      = chairmanPrompt is null ? null
                             : new ScenarioChairman { SystemPrompt = chairmanPrompt },
             KnowledgeText = knowledgeText,
@@ -147,7 +147,7 @@ public sealed class DeliberaMcpTools(
             Status      = r.Status.ToString(),
             r.CreatedAt,
             r.CompletedAt,
-            Verdict     = r.Result?.Verdict,
+            Verdict     = r.Result?.FinalVerdict,
         });
 
         return System.Text.Json.JsonSerializer.Serialize(summaries,
@@ -194,27 +194,35 @@ public sealed class DeliberaMcpTools(
 
     private static string SerialiseRecord(DebateRecord record)
     {
-        var payload = new
-        {
-            record.DebateId,
-            record.TemplateId,
-            record.TenantId,
-            Status      = record.Status.ToString(),
-            Verdict     = record.Result?.Verdict,
-            Confidence  = record.Result?.Confidence,
-            Rationale   = record.Result?.Rationale,
-            Risks       = record.Result?.Risks,
-            Rounds      = record.Rounds.Select(r => new
+      var result = record.Result;
+      var payload = new
+      {
+         record.DebateId,
+         record.TemplateId,
+         record.TenantId,
+         Status = record.Status.ToString(),
+         // Verdict → FinalVerdict
+         Verdict = result?.FinalVerdict,
+         // Confidence — нет в DebateResult; парсим из FinalVerdict или убираем
+         Confidence = (object?)null,
+         Rationale = (object?)null,
+         Risks = (object?)null,
+         Rounds = record.Rounds.Select(r => new
+         {
+            r.RoundNumber,
+            // Speeches → Responses (словарь)
+            Speeches = r.Responses.Select(s => new
             {
-                r.RoundNumber,
-                Speeches = r.Speeches?.Select(s => new { s.MemberRole, s.Content }),
+               MemberRole = s.Key,
+               Content = s.Value,
             }),
-            record.CreatedAt,
-            record.CompletedAt,
-            record.ErrorMessage,
-        };
+         }),
+         record.CreatedAt,
+         record.CompletedAt,
+         record.ErrorMessage,
+      };
 
-        return System.Text.Json.JsonSerializer.Serialize(payload,
+      return System.Text.Json.JsonSerializer.Serialize(payload,
             new System.Text.Json.JsonSerializerOptions
             {
                 WriteIndented          = true,
