@@ -1,4 +1,5 @@
 using Delibera.Core.Interfaces;
+using Delibera.Core.Models;
 
 namespace Delibera.Core.Tests.Fakes;
 
@@ -21,6 +22,9 @@ public sealed class FakeLLMProvider(
 
    public Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct = default)
       => Task.FromResult<IReadOnlyList<string>>(new[] { "fake-model" });
+
+   public Task<ModelCapabilities> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
+      => Task.FromResult(ModelCapabilities.Unknown(model));
 
    public async Task<string> ChatAsync(
       string model,

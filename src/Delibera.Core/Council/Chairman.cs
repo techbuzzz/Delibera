@@ -15,9 +15,9 @@ public static class Chairman
    ///    voting engine instead of the standard synthesis.
    /// </summary>
    public const string VotingChairmanMarker = "##VOTING##";
-   // ──────────────────────────────────────────────
-   // Factory methods (backward-compatible with old Moderator API)
-   // ──────────────────────────────────────────────
+// ──────────────────────────────────────────────
+// Factory methods
+// ──────────────────────────────────────────────
 
    /// <summary>Creates a standard, neutral Chairman.</summary>
    public static CouncilMember CreateStandard(string modelName, ILLMProvider provider)
@@ -316,33 +316,4 @@ public static class Chairman
    }
 }
 
-/// <summary>
-///    Backward-compatible alias for <see cref="Chairman" />.
-/// </summary>
-[Obsolete("Use Chairman instead. This alias will be removed in v3.0.")]
-public static class Moderator
-{
-   /// <inheritdoc cref="Chairman.CreateStandard" />
-   public static CouncilMember CreateStandard(string modelName, ILLMProvider provider)
-   {
-      return Chairman.CreateStandard(modelName, provider);
-   }
 
-   /// <inheritdoc cref="Chairman.CreateStrict" />
-   public static CouncilMember CreateStrict(string modelName, ILLMProvider provider)
-   {
-      return Chairman.CreateStrict(modelName, provider);
-   }
-
-   /// <inheritdoc cref="Chairman.CreateCreative" />
-   public static CouncilMember CreateCreative(string modelName, ILLMProvider provider)
-   {
-      return Chairman.CreateCreative(modelName, provider);
-   }
-
-   /// <inheritdoc cref="Chairman.CreateCustom" />
-   public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt)
-   {
-      return Chairman.CreateCustom(modelName, provider, personaPrompt);
-   }
-}

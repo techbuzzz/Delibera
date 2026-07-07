@@ -29,6 +29,7 @@ public class FinalVerdictTests
          chairman,
          null,
          null,
+         DebateExecutionOptions.Default,
          maxRounds: maxRounds);
 
       result.FinalVerdict.Should().NotBeNullOrWhiteSpace();
@@ -42,12 +43,13 @@ public class FinalVerdictTests
       var member = new CouncilMember("model", provider);
 
       var debate = new StandardDebate();
-      var result = await debate.ExecuteAsync(
-         [member],
-         new PromptContext { UserPrompt = "What is 2+2?" },
-         null,
-         null,
-         null);
+       var result = await debate.ExecuteAsync(
+          [member],
+          new PromptContext { UserPrompt = "What is 2+2?" },
+          null,
+          null,
+          null,
+          DebateExecutionOptions.Default);
 
       result.FinalVerdict.Should().BeNullOrWhiteSpace();
    }
@@ -60,13 +62,14 @@ public class FinalVerdictTests
       var chairman = new CouncilMember("chair", provider, "Chairman");
 
       var debate = new CritiqueDebate();
-      var result = await debate.ExecuteAsync(
-         [member],
-         new PromptContext { UserPrompt = "Microservices vs monolith?" },
-         chairman,
-         null,
-         null,
-         maxRounds: 3);
+       var result = await debate.ExecuteAsync(
+          [member],
+          new PromptContext { UserPrompt = "Microservices vs monolith?" },
+          chairman,
+          null,
+          null,
+          DebateExecutionOptions.Default,
+          maxRounds: 3);
 
       result.FinalVerdict.Should().NotBeNullOrWhiteSpace();
       result.FinalVerdict.Should().StartWith("critique-verdict");
@@ -80,13 +83,14 @@ public class FinalVerdictTests
       var chairman = new CouncilMember("chair", provider, "Chairman");
 
       var debate = new ConsensusDebate();
-      var result = await debate.ExecuteAsync(
-         [member],
-         new PromptContext { UserPrompt = "Best project structure?" },
-         chairman,
-         null,
-         null,
-         maxRounds: 2);
+       var result = await debate.ExecuteAsync(
+          [member],
+          new PromptContext { UserPrompt = "Best project structure?" },
+          chairman,
+          null,
+          null,
+          DebateExecutionOptions.Default,
+          maxRounds: 2);
 
       result.FinalVerdict.Should().NotBeNullOrWhiteSpace();
       result.FinalVerdict.Should().StartWith("consensus-verdict");
@@ -100,13 +104,14 @@ public class FinalVerdictTests
       var chairman = new CouncilMember("chair", provider, "Chairman");
 
       var debate = new StandardDebate();
-      var result = await debate.ExecuteAsync(
-         [member],
-         new PromptContext { UserPrompt = "What is 2+2?" },
-         chairman,
-         null,
-         null,
-         maxRounds: 4);
+       var result = await debate.ExecuteAsync(
+          [member],
+          new PromptContext { UserPrompt = "What is 2+2?" },
+          chairman,
+          null,
+          null,
+          DebateExecutionOptions.Default,
+          maxRounds: 4);
 
       foreach (var round in result.Rounds)
          round.Duration.Should().BeGreaterThan(TimeSpan.Zero, $"Round {round.RoundNumber} should have non-zero duration");
@@ -146,14 +151,15 @@ public class FinalVerdictTests
 
        var debate = new StandardDebate();
        // maxRounds=1 so only the Initial Positions round runs before FinalizeAsync.
-       var result = await debate.ExecuteAsync(
-          [member],
-          new PromptContext { UserPrompt = "What is 2+2?" },
-          chairman,
-          null,
-          null,
-          maxRounds: 1,
-          ct: budgetCts.Token);
+        var result = await debate.ExecuteAsync(
+           [member],
+           new PromptContext { UserPrompt = "What is 2+2?" },
+           chairman,
+           null,
+           null,
+           DebateExecutionOptions.Default,
+           maxRounds: 1,
+           ct: budgetCts.Token);
 
        result.FinalVerdict.Should().NotBeNullOrWhiteSpace();
        result.FinalVerdict.Should().StartWith(verdict);
@@ -176,14 +182,15 @@ public class FinalVerdictTests
        budgetCts.Cancel();
 
        var debate = new CritiqueDebate();
-       var result = await debate.ExecuteAsync(
-          [member],
-          new PromptContext { UserPrompt = "Microservices vs monolith?" },
-          chairman,
-          null,
-          null,
-          maxRounds: 1,
-          ct: budgetCts.Token);
+        var result = await debate.ExecuteAsync(
+           [member],
+           new PromptContext { UserPrompt = "Microservices vs monolith?" },
+           chairman,
+           null,
+           null,
+           DebateExecutionOptions.Default,
+           maxRounds: 1,
+           ct: budgetCts.Token);
 
        result.FinalVerdict.Should().NotBeNullOrWhiteSpace();
        result.FinalVerdict.Should().StartWith(verdict);
@@ -206,14 +213,15 @@ public class FinalVerdictTests
        budgetCts.Cancel();
 
        var debate = new ConsensusDebate();
-       var result = await debate.ExecuteAsync(
-          [member],
-          new PromptContext { UserPrompt = "Best project structure?" },
-          chairman,
-          null,
-          null,
-          maxRounds: 1,
-          ct: budgetCts.Token);
+        var result = await debate.ExecuteAsync(
+           [member],
+           new PromptContext { UserPrompt = "Best project structure?" },
+           chairman,
+           null,
+           null,
+           DebateExecutionOptions.Default,
+           maxRounds: 1,
+           ct: budgetCts.Token);
 
        result.FinalVerdict.Should().NotBeNullOrWhiteSpace();
        result.FinalVerdict.Should().StartWith(verdict);
@@ -259,5 +267,7 @@ file sealed class CancellationAwareLLMProvider(string reply) : ILLMProvider
       return Task.FromResult(reply);
    }
 
-   public void Dispose() { }
+    public Task<ModelCapabilities> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
+        => Task.FromResult(ModelCapabilities.Unknown(model));
+    public void Dispose() { }
 }

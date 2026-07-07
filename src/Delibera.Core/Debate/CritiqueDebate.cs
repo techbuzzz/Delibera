@@ -27,22 +27,6 @@ public sealed class CritiqueDebate : DebateScenario
       CouncilMember? chairman,
       KnowledgeKeeper? knowledgeKeeper,
       Operator? @operator,
-      int maxRounds = 4,
-      float temperature = 0.7f,
-      Action<DebateRound>? onRoundCompleted = null,
-      CancellationToken ct = default)
-   {
-      return await ExecuteAsync(members, context, chairman, knowledgeKeeper, @operator,
-         DebateExecutionOptions.Default, maxRounds, temperature, onRoundCompleted, ct);
-   }
-
-   /// <inheritdoc />
-   public override async Task<DebateResult> ExecuteAsync(
-      IReadOnlyList<CouncilMember> members,
-      PromptContext context,
-      CouncilMember? chairman,
-      KnowledgeKeeper? knowledgeKeeper,
-      Operator? @operator,
       DebateExecutionOptions executionOptions,
       int maxRounds = 4,
       float temperature = 0.7f,

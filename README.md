@@ -214,7 +214,7 @@ Resolves these interfaces from DI:
 | Interface             | Implementation       | Lifetime  |
 | --------------------- | -------------------- | --------- |
 | `ILLMProviderFactory` | `ProviderFactory`    | Singleton |
-| `IRagProviderFactory` | `RagProviderFactory` | Singleton |
+| `IVectorStoreFactory` | `VectorStoreFactory` | Singleton |
 | `ICompressionFactory` | `CompressionService` | Singleton |
 | `ICouncilBuilder`     | `CouncilBuilder`     | Transient |
 
@@ -569,7 +569,7 @@ var ollama = new OllamaProvider("http://localhost:11434");
 var embeddings = new OllamaEmbeddingProvider(ollama, "nomic-embed-text");
 
 // pgvector — just add a connection string
-var ragFactory = new RagProviderFactory();
+var ragFactory = new VectorStoreFactory();
 var rag = ragFactory.CreatePgVector(
     embeddings,
     "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres");
@@ -614,7 +614,7 @@ Each strategy is implemented as an `IDebateStrategy` — see
 
 | Pattern             | Usage                                                                     |
 | ------------------- | ------------------------------------------------------------------------- |
-| **Factory**         | `ProviderFactory`, `RagProviderFactory`, `CompressionFactory`, `Chairman` |
+| **Factory**         | `ProviderFactory`, `VectorStoreFactory`, `CompressionFactory`, `Chairman` |
 | **Strategy**        | `IDebateStrategy`, `IContextCompressor`                                   |
 | **Builder**         | `CouncilBuilder` fluent API                                               |
 | **Template Method** | `DebateScenario` abstract base class                                      |

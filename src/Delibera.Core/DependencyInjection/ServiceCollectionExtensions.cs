@@ -47,7 +47,7 @@ public static class ServiceCollectionExtensions
       ///    Registers:
       ///    <list type="bullet">
       ///       <item><see cref="ILLMProviderFactory" /> → <see cref="ProviderFactory" /> (singleton)</item>
-      ///       <item><see cref="IRagProviderFactory" /> → <see cref="RagProviderFactory" /> (singleton)</item>
+      ///       <item><see cref="IVectorStoreFactory" /> → <see cref="VectorStoreFactory" /> (singleton)</item>
       ///       <item><see cref="ICompressionFactory" /> → <see cref="CompressionService" /> (singleton)</item>
       ///       <item><see cref="ICouncilBuilder" /> → <see cref="CouncilBuilder" /> (transient)</item>
       ///    </list>
@@ -56,7 +56,7 @@ public static class ServiceCollectionExtensions
       public IServiceCollection AddDelibera()
       {
          services.TryAddSingleton<ILLMProviderFactory, ProviderFactory>();
-         services.TryAddSingleton<IRagProviderFactory, RagProviderFactory>();
+         services.TryAddSingleton<IVectorStoreFactory, VectorStoreFactory>();
          services.TryAddSingleton<ICompressionFactory, CompressionService>();
          services.TryAddTransient<ICouncilBuilder, CouncilBuilder>();
 

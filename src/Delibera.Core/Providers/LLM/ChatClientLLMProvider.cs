@@ -87,16 +87,16 @@ public sealed class ChatClientLLMProvider : ILLMProvider
    /// <remarks>
    ///    The Microsoft.Extensions.AI abstraction does not define a capabilities contract,
    ///    so this falls back to the static <see cref="ModelContextWindowRegistry" />.
-   ///    Providers that can introspect model metadata (e.g. Ollama) override this.
+   ///    When the registry has no entry, returns <see cref="ModelCapabilities.Unknown" />.
    /// </remarks>
-   public Task<ModelCapabilities?> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
+   public Task<ModelCapabilities> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
    {
       var window = ModelContextWindowRegistry.GetContextWindow(model);
       if (window is not null)
-         return Task.FromResult<ModelCapabilities?>(
+         return Task.FromResult(
             new ModelCapabilities { ModelName = model, ContextWindowTokens = window });
 
-      return Task.FromResult<ModelCapabilities?>(null);
+      return Task.FromResult(ModelCapabilities.Unknown(model));
    }
 
    /// <inheritdoc />

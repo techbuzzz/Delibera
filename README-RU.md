@@ -213,7 +213,7 @@ services.AddDelibera();
 | Интерфейс             | Реализация           | Время жизни |
 | --------------------- | -------------------- | ----------- |
 | `ILLMProviderFactory` | `ProviderFactory`    | Singleton   |
-| `IRagProviderFactory` | `RagProviderFactory` | Singleton   |
+| `IVectorStoreFactory` | `VectorStoreFactory` | Singleton   |
 | `ICompressionFactory` | `CompressionService` | Singleton   |
 | `ICouncilBuilder`     | `CouncilBuilder`     | Transient   |
 
@@ -572,7 +572,7 @@ var ollama = new OllamaProvider("http://localhost:11434");
 var embeddings = new OllamaEmbeddingProvider(ollama, "nomic-embed-text");
 
 // pgvector — просто добавьте строку подключения
-var ragFactory = new RagProviderFactory();
+var ragFactory = new VectorStoreFactory();
 var rag = ragFactory.CreatePgVector(
     embeddings,
     "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres");
@@ -617,7 +617,7 @@ IEmbeddingProvider
 
 | Паттерн             | Использование                                                             |
 | ------------------- | ------------------------------------------------------------------------- |
-| **Factory**         | `ProviderFactory`, `RagProviderFactory`, `CompressionFactory`, `Chairman` |
+| **Factory**         | `ProviderFactory`, `VectorStoreFactory`, `CompressionFactory`, `Chairman` |
 | **Strategy**        | `IDebateStrategy`, `IContextCompressor`                                   |
 | **Builder**         | Fluent API `CouncilBuilder`                                               |
 | **Template Method** | Абстрактный базовый класс `DebateScenario`                                |

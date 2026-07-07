@@ -8,7 +8,7 @@ namespace Delibera.Core.Debate;
 ///    Provides shared utilities for collecting responses, formatting rounds,
 ///    querying the Knowledge Keeper, and compressing context.
 /// </summary>
-public abstract class DebateScenario : IDebateStrategyWithOptions
+public abstract class DebateScenario : IDebateStrategy
 {
    // ──────────────────────────────────────────────
    // Operator helpers
@@ -31,19 +31,6 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
    public abstract string Description { get; }
 
    /// <inheritdoc />
-   public abstract Task<DebateResult> ExecuteAsync(
-      IReadOnlyList<CouncilMember> members,
-      PromptContext context,
-      CouncilMember? chairman,
-      KnowledgeKeeper? knowledgeKeeper,
-      Operator? @operator,
-      int maxRounds = 4,
-      float temperature = 0.7f,
-      Action<DebateRound>? onRoundCompleted = null,
-      CancellationToken ct = default);
-
-   /// <inheritdoc
-   ///    cref="IDebateStrategyWithOptions.ExecuteAsync(IReadOnlyList{CouncilMember}, PromptContext, CouncilMember?, KnowledgeKeeper?, Operator?, DebateExecutionOptions, int, float, Action{DebateRound}?, CancellationToken)" />
    public abstract Task<DebateResult> ExecuteAsync(
       IReadOnlyList<CouncilMember> members,
       PromptContext context,

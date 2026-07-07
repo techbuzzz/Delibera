@@ -222,7 +222,7 @@ using Delibera.Core.Providers.RAG;
 var ollama = new OllamaProvider("http://localhost:11434");
 var embeddings = new OllamaEmbeddingProvider(ollama, "nomic-embed-text");
 
-var ragFactory = new RagProviderFactory();
+var ragFactory = new VectorStoreFactory();
 var rag = ragFactory.CreateQdrant(embeddings, "localhost", 6334);
 
 var kkMember = new CouncilMember("llama3.2:3b", ollama, "Knowledge Keeper");
