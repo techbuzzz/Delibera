@@ -25,6 +25,17 @@ public sealed class CouncilMember(string modelName, ILLMProvider provider, strin
    /// <summary>Optional persona system-prompt that personalises the model's behaviour.</summary>
    public string? PersonaPrompt { get; set; } = personaPrompt;
 
+   /// <summary>
+   ///    Member capabilities (Text, Vision) used by F-06 Multi-Modal attachment routing.
+   ///    Defaults to <see cref="MemberCapabilities.Text"/>. Set explicitly via the
+   ///    <c>AddMember</c> overload that accepts <see cref="MemberCapabilities"/>, or
+   ///    auto-detected from the model name by <see cref="ModelContextWindowRegistry"/>.
+   /// </summary>
+   public MemberCapabilities Capabilities { get; set; } = MemberCapabilities.Text;
+
+   /// <summary>Whether this member can process image / vision inputs.</summary>
+   public bool SupportsVision => (Capabilities & MemberCapabilities.Vision) != 0;
+
    /// <summary>Sends a request to the underlying model.</summary>
    public Task<string> AskAsync(
       string systemPrompt,

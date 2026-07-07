@@ -56,7 +56,8 @@ public static class ExampleRegistry
          ["VotingExample"] = ("Voting Engine", "Pluggable vote/consensus: Majority, BordaCount, Weighted strategies.", "Features", 8, "voting", []),
          ["StructuredOutputExample"] = ("Structured Output", "JSON-schema-validated typed verdicts from the Chairman.", "Features", 9, "structured-output", []),
          ["PersistenceExample"] = ("Debate Persistence", "Checkpoint after every round; resume from last completed round.", "Features", 10, "persistence", []),
-         ["AgentMemoryExample"] = ("Agent Memory", "Council members recall + persist conclusions across sessions.", "Features", 11, "agent-memory", [])
+         ["AgentMemoryExample"] = ("Agent Memory", "Council members recall + persist conclusions across sessions.", "Features", 11, "agent-memory", []),
+         ["MultiModalExample"] = ("Multi-Modal Council", "Images, diagrams, and documents via pluggable IFileContentReader.", "Features", 12, "multimodal", [])
       };
 
    /// <summary>Discovers all examples in the Examples namespace, ordered by category then order.</summary>

@@ -300,7 +300,30 @@ public static class ServiceCollectionExtensions
                vectorSize,
                false));
 
-         return services;
-      }
-   }
+          return services;
+       }
+    }
+
+    extension(IServiceCollection services)
+    {
+       /// <summary>
+       ///    Registers a file-content reader for a specific extension via DI factory
+       ///    (F-06 Multi-Modal). The reader is stored as a singleton
+       ///    <see cref="Delibera.Core.Attachments.IFileContentReader"/> keyed by
+       ///    extension so that resolved <see cref="CouncilBuilder"/> instances can
+       ///    pick it up automatically.
+       /// </summary>
+       /// <param name="extension">File extension including the leading dot (e.g. ".pdf").</param>
+       /// <param name="readerFactory">Factory that creates the reader from the service provider.</param>
+       /// <returns>The service collection for chaining.</returns>
+       public IServiceCollection AddFileReader(string extension,
+          Func<IServiceProvider, Delibera.Core.Attachments.IFileContentReader> readerFactory)
+       {
+          ArgumentException.ThrowIfNullOrWhiteSpace(extension);
+          ArgumentNullException.ThrowIfNull(readerFactory);
+          var key = $"Delibera.FileReader.{extension.ToLowerInvariant()}";
+          services.TryAddSingleton(new Delibera.Core.Attachments.FileReaderDIEntry(extension, readerFactory));
+          return services;
+       }
+    }
 }

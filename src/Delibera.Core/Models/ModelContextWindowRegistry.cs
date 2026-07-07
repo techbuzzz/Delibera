@@ -77,12 +77,74 @@ public static class ModelContextWindowRegistry
       ["yandexgpt-32k"] = 32_768,
       ["yandexgpt"] = 8_000,
 
-      // ── Other ──
-      ["nomic"] = 8_192,
-      ["mxbai"] = 32_768,
-      ["tinyllama"] = 2_048,
-      ["stable-code"] = 16_384
+       // ── Other ──
+       ["nomic"] = 8_192,
+       ["mxbai"] = 32_768,
+       ["tinyllama"] = 2_048,
+       ["stable-code"] = 16_384
+    };
+
+   // ── Vision-capable model name patterns (case-insensitive substring match) ──
+   // When a model name contains any of these substrings, it is treated as vision-capable.
+   private static readonly HashSet<string> KnownVisionPatterns = new(StringComparer.OrdinalIgnoreCase)
+   {
+      "llava", "gemma3", "llama3.2-vision", "minicpm-v",
+      "gpt-4o", "gpt-4-vision", "claude-3", "qwen-vl", "internvl",
+      "qwen2-vl", "qwen2.5-vl", "cogvlm", "yi-vl", "deepseek-vl",
+      "pixtral", "llama4"
    };
+
+   /// <summary>
+   ///    Returns <c>true</c> when the model name matches a known vision-capable pattern.
+   ///    Uses case-insensitive substring matching — "llava:13b" matches "llava".
+   /// </summary>
+   /// <param name="modelName">Model name as reported by the provider.</param>
+   /// <returns><c>true</c> if the model supports vision inputs; <c>false</c> otherwise.</returns>
+   public static bool SupportsVision(string modelName)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+      foreach (var pattern in KnownVisionPatterns)
+         if (modelName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+            return true;
+      return false;
+   }
+
+   /// <summary>
+   ///    Returns the <see cref="ModelCapabilities"/> for a model by name — combining
+   ///    context-window lookup with vision-capability detection.
+   /// </summary>
+   /// <param name="modelName">Model name as reported by the provider.</param>
+   /// <returns>
+   ///    A <see cref="ModelCapabilities"/> snapshot with <see cref="ModelCapabilities.ContextWindowTokens"/>
+   ///    from the registry (or <c>null</c> if unknown) and <see cref="ModelCapabilities.SupportsVision"/>
+   ///    from <see cref="SupportsVision(string)"/>.
+   /// </returns>
+   public static ModelCapabilities GetCapabilities(string modelName)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+      return new ModelCapabilities
+      {
+         ModelName = modelName,
+         ContextWindowTokens = GetContextWindow(modelName),
+         SupportsVision = SupportsVision(modelName)
+      };
+   }
+
+   /// <summary>
+   ///    Registers a custom vision-capable model name pattern.
+   ///    Overwrites any existing entry for the same pattern.
+   /// </summary>
+   /// <param name="modelNamePattern">Substring pattern to match against model names.</param>
+   public static void RegisterVisionPattern(string modelNamePattern)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(modelNamePattern);
+      KnownVisionPatterns.Add(modelNamePattern);
+   }
+
+   /// <summary>
+   ///    Returns a read-only snapshot of all registered vision-capable model patterns.
+   /// </summary>
+   public static IReadOnlyCollection<string> GetVisionPatterns() => KnownVisionPatterns;
 
    /// <summary>
    ///    Looks up the context window size for a model by name.

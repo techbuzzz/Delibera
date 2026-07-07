@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
+using Delibera.Core.Attachments;
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
@@ -12,6 +13,8 @@ using Delibera.Core.Output;
 using Delibera.Core.Persistence;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
+using System.Text.Json;
+using System.Threading.Channels;
 
 namespace Delibera.Core.Council;
 
@@ -54,7 +57,9 @@ public sealed class CouncilExecutor : ICouncilExecutor
       Type? structuredOutputType = null,
       IDebateStore? debateStore = null,
       string? resumeFromDebateId = null,
-      IAgentMemory? agentMemory = null)
+      IAgentMemory? agentMemory = null,
+      IReadOnlyList<FileAttachment>? attachments = null,
+      FileContentReaderRegistry? fileReaders = null)
    {
       Members = members;
       Chairman = chairman;
@@ -79,6 +84,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
       DebateStore = debateStore;
       _resumeFromDebateId = resumeFromDebateId;
       AgentMemory = agentMemory;
+      Attachments = attachments ?? [];
+      FileReaders = fileReaders ?? new FileContentReaderRegistry();
 
       // When telemetry is enabled with a non-default source/meter name, configure the
       // global activity source and meter to honour the user's OpenTelemetry builder setup.
@@ -147,9 +154,23 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
    /// <summary>
    ///    The agent memory backend, or <c>null</c> when agent memory is disabled.
-   ///    Set via <see cref="ICouncilBuilder.WithAgentMemory(IAgentMemory?)" />.
+   ///    Set via <see cref="ICouncilBuilder.WithAgentMemory(IAgentMemory?)"/>.
    /// </summary>
    public IAgentMemory? AgentMemory { get; }
+
+   /// <summary>
+   ///    File attachments configured for this debate (F-06 Multi-Modal).
+   ///    Empty when no attachments were configured.
+   /// </summary>
+   public IReadOnlyList<FileAttachment> Attachments { get; }
+
+   /// <summary>
+   ///    The file-content reader registry used to read attachments (F-06 Multi-Modal).
+   ///    Pre-populated with built-in <see cref="Readers.PlainTextFileReader"/>,
+   ///    <see cref="Readers.ImageFileReader"/>, and
+   ///    <see cref="Readers.FallbackFileReader"/>.
+   /// </summary>
+   public FileContentReaderRegistry FileReaders { get; }
 
    /// <summary>
    ///    Whether telemetry instrumentation is active for this executor. When <c>true</c>,
@@ -677,7 +698,46 @@ public sealed class CouncilExecutor : ICouncilExecutor
                                 {effectiveContext.SystemPrompt}
                                 """;
                effectiveContext = effectiveContext with { SystemPrompt = augmented };
-               Log(ExecutionLog.Info("AgentMemory", $"Recalled {allMemories.Count} memory entries from previous sessions."));
+                Log(ExecutionLog.Info("AgentMemory", $"Recalled {allMemories.Count} memory entries from previous sessions."));
+             }
+         }
+
+         // ── F-06 Multi-Modal: read attachments and inject text content into the prompt ──
+         if (Attachments.Count > 0)
+         {
+            var attachmentTexts = new List<string>();
+            foreach (var attachment in Attachments)
+            {
+               try
+               {
+                  var reader = FileReaders.GetReader(attachment.FilePath);
+                  var readResult = await reader.ReadAsync(attachment.FilePath, ct).ConfigureAwait(false);
+                  if (!string.IsNullOrWhiteSpace(readResult.TextContent))
+                  {
+                     var label = attachment.Description ?? Path.GetFileName(attachment.FilePath);
+                     attachmentTexts.Add($"── Attachment: {label} ──\n{readResult.TextContent}");
+                  }
+                  Log(ExecutionLog.Info("Attachments",
+                     $"Read {Path.GetFileName(attachment.FilePath)}: " +
+                     $"{(readResult.TextContent?.Length ?? 0)} chars text, " +
+                     $"{readResult.BinaryParts?.Count ?? 0} binary parts"));
+               }
+               catch (Exception ex)
+               {
+                  ReportError(ex, "Attachments");
+               }
+            }
+            if (attachmentTexts.Count > 0)
+            {
+               var attachmentBlock = string.Join("\n\n", attachmentTexts);
+               effectiveContext = effectiveContext with
+               {
+                  KnowledgeContent = string.IsNullOrWhiteSpace(effectiveContext.KnowledgeContent)
+                     ? attachmentBlock
+                     : $"{effectiveContext.KnowledgeContent}\n\n{attachmentBlock}"
+               };
+               Log(ExecutionLog.Info("Attachments",
+                  $"Injected {attachmentTexts.Count} attachment(s) into context ({attachmentBlock.Length} chars)."));
             }
          }
 

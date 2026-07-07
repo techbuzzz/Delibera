@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Delibera.Core.Attachments;
 using Delibera.Core.Council;
 using Delibera.Core.Debate;
 using Delibera.Core.Memory;
@@ -6,6 +7,7 @@ using Delibera.Core.Output;
 using Delibera.Core.Persistence;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
+using System.Text.Json;
 
 namespace Delibera.Core.Interfaces;
 
@@ -87,11 +89,23 @@ public interface ICouncilExecutor
    /// </summary>
    string? ResumeFromDebateId { get; }
 
-   /// <summary>
-   ///    The agent memory backend, or <c>null</c> when agent memory is disabled.
-   ///    Set via <see cref="ICouncilBuilder.WithAgentMemory(IAgentMemory?)" />.
-   /// </summary>
-   IAgentMemory? AgentMemory { get; }
+    /// <summary>
+    ///    The agent memory backend, or <c>null</c> when agent memory is disabled.
+    ///    Set via <see cref="ICouncilBuilder.WithAgentMemory(IAgentMemory?)"/>.
+    /// </summary>
+    IAgentMemory? AgentMemory { get; }
+
+    /// <summary>
+    ///    File attachments configured for this debate (F-06 Multi-Modal).
+    ///    Empty when no attachments were configured.
+    /// </summary>
+    IReadOnlyList<FileAttachment> Attachments { get; }
+
+    /// <summary>
+    ///    The file-content reader registry used to read attachments (F-06 Multi-Modal).
+    ///    Pre-populated with built-in readers for text and image files.
+    /// </summary>
+    FileContentReaderRegistry FileReaders { get; }
 
    /// <summary>
    ///    The result of the most recent <see cref="StreamDebateAsync" /> call, once the
