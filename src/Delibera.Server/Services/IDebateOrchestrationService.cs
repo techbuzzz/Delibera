@@ -13,6 +13,7 @@ public interface IDebateOrchestrationService
     /// <summary>Enqueue debate for background execution; return immediately.</summary>
     DebateRecord Enqueue(CreateDebateRequest request, string tenantId);
 
-    DebateRecord?            Find(string debateId);
-    DebateRecord[]           List(string? templateId, string? status, int page, int pageSize);
-    bool                     Canc
+    DebateRecord?  Find(string debateId);
+    DebateRecord[] List(string? templateId, string? status, int page, int pageSize);
+    bool           Cancel(string debateId);
+}
