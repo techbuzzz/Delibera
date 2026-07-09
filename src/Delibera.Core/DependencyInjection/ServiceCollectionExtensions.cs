@@ -79,9 +79,33 @@ public static class ServiceCollectionExtensions
          // ResilienceOptions is a sub-section; bind it independently so
          // IOptionsMonitor<ResilienceOptions> gets a typed configuration that
          // AddDeliberaResilience can read.
-         var resilienceSection = configuration.GetSection($"{sectionName}:Resilience");
-         if (resilienceSection.Exists())
-            services.Configure<ResilienceOptions>(resilienceSection);
+          var resilienceSection = configuration.GetSection($"{sectionName}:Resilience");
+          if (resilienceSection.Exists())
+             services.Configure<ResilienceOptions>(resilienceSection);
+
+          // CacheOptions is a sub-section; bind and register the cache backend.
+          var cacheSection = configuration.GetSection($"{sectionName}:Cache");
+          if (cacheSection.Exists())
+          {
+             var cacheOptions = new CacheOptions();
+             cacheSection.Bind(cacheOptions);
+             services.Configure<CacheOptions>(cacheSection);
+
+             if (cacheOptions.Provider is not ("None" or ""))
+             {
+                var ttl = TimeSpan.FromMinutes(cacheOptions.DefaultTtlMinutes);
+                switch (cacheOptions.Provider.ToLowerInvariant())
+                {
+                   case "inmemory":
+                      services.UseInMemoryCache(ttl);
+                      break;
+                   case "file":
+                      services.UseFileCache(cacheOptions.FileDirectory, ttl);
+                      break;
+                   // "redis" is registered separately via AddRedisDebateOrchestrator + UseRedisCache
+                }
+             }
+          }
 
          return services;
       }

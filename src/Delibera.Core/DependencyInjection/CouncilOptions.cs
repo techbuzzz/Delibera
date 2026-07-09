@@ -1,3 +1,4 @@
+using Delibera.Core.Caching;
 using Delibera.Core.Chunking;
 using Delibera.Core.Telemetry;
 
@@ -93,6 +94,14 @@ public sealed class CouncilOptions
    ///    after a crash or intentional pause.
    /// </summary>
    public PersistenceOptions Persistence { get; set; } = new();
+
+   /// <summary>
+   ///    Result caching configuration (S-03). When <see cref="CacheOptions.Provider" />
+   ///    is not <c>"None"</c>, the council executor checks the cache before running
+   ///    a debate and stores results after completion according to
+   ///    <see cref="CacheOptions.Behavior" />.
+   /// </summary>
+   public CacheOptions Cache { get; set; } = new();
 }
 
 /// <summary>
@@ -424,7 +433,33 @@ public sealed class AutoChunkingConfig
          SafetyMargin = Math.Clamp(SafetyMargin, 0.0, 0.5),
          MaxChunksPerRound = Math.Max(1, MaxChunksPerRound),
          EnableMapReduce = EnableMapReduce,
-         EnableProgressiveDisclosure = EnableProgressiveDisclosure
-      };
-   }
+          EnableProgressiveDisclosure = EnableProgressiveDisclosure
+       };
+    }
+}
+
+/// <summary>
+///    Configuration options for debate result caching (S-03).
+///    Bind from the <c>Delibera:Cache</c> configuration section.
+/// </summary>
+public sealed class CacheOptions
+{
+   /// <summary>Cache provider: <c>"None"</c>, <c>"InMemory"</c>, <c>"File"</c>, or <c>"Redis"</c>.</summary>
+   public string Provider { get; set; } = "None";
+
+   /// <summary>Default TTL for cache entries (in minutes). Default is 60.</summary>
+   public int DefaultTtlMinutes { get; set; } = 60;
+
+   /// <summary>Directory for <c>FileDebateCache</c> (used when Provider is <c>"File"</c>).</summary>
+   public string FileDirectory { get; set; } = "./debate-cache";
+
+   /// <summary>TTL for <c>RedisDebateCache</c> (in hours). Default is 24.</summary>
+   public int RedisTtlHours { get; set; } = 24;
+
+   /// <summary>Default cache behavior for debates: <c>"Disabled"</c>, <c>"ReadWrite"</c>, <c>"ReadOnly"</c>, <c>"WriteThrough"</c>, or <c>"Bypass"</c>.</summary>
+   public string Behavior { get; set; } = "ReadWrite";
+
+   /// <summary>Parses <see cref="Behavior" /> into a <see cref="CacheBehavior" /> enum value.</summary>
+   public CacheBehavior GetBehavior() =>
+       Enum.TryParse<CacheBehavior>(Behavior, true, out var b) ? b : CacheBehavior.Disabled;
 }
