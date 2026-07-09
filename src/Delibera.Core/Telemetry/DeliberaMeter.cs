@@ -64,10 +64,11 @@ public static class DeliberaMeter
    private static Histogram<double>? _roundDuration;
    private static Counter<long>? _tokensTotal;
    private static Gauge<double>? _compressionRatio;
-   private static Counter<long>? _debatesCompleted;
+    private static Counter<long>? _debatesCompleted;
+    private static Counter<long>? _cacheHits;
 
-   /// <summary>
-   ///    The current <see cref="Meter" />. Lazily initialised on first access using
+    /// <summary>
+    ///    The current <see cref="Meter" />. Lazily initialised on first access using
    ///    <see cref="DefaultName" /> and version <c>"1.0.0"</c>. Use
    ///    <see cref="Configure(string, string)" /> to override before any debate runs.
    /// </summary>
@@ -117,11 +118,21 @@ public static class DeliberaMeter
    ///    Counter incrementing once per completed debate.
    ///    Tagged with <c>strategy</c> and <c>success</c> ("true"/"false").
    /// </summary>
-   public static Counter<long> DebatesCompleted =>
-      _debatesCompleted ??= Instance.CreateCounter<long>(
-         "delibera.debates.completed",
-         "{debates}",
-         "Total completed debates, tagged by strategy and success.");
+    public static Counter<long> DebatesCompleted =>
+       _debatesCompleted ??= Instance.CreateCounter<long>(
+          "delibera.debates.completed",
+          "{debates}",
+          "Total completed debates, tagged by strategy and success.");
+
+    /// <summary>
+    ///    Counter incrementing each time a debate result is served from the
+    ///    <see cref="Interfaces.IDebateCache" />. Tagged with <c>cache_backend</c>.
+    /// </summary>
+    public static Counter<long> CacheHits =>
+       _cacheHits ??= Instance.CreateCounter<long>(
+          "delibera.cache.hit",
+          "{hits}",
+          "Total debate cache hits, tagged by backend type.");
 
    /// <summary>
    ///    Configures the meter name and version. Call once at startup
@@ -142,7 +153,8 @@ public static class DeliberaMeter
       _roundDuration = null;
       _tokensTotal = null;
       _compressionRatio = null;
-      _debatesCompleted = null;
+       _debatesCompleted = null;
+       _cacheHits = null;
    }
 
    /// <summary>

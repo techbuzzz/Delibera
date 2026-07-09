@@ -305,12 +305,13 @@ public sealed class CouncilExecutor : ICouncilExecutor
               Strategy.StrategyName, _maxRounds, _temperature,
               _context.SystemPrompt);
 
-          var cached = await _cache.GetAsync(cacheKey, ct).ConfigureAwait(false);
-          if (cached is not null)
-          {
-             Log(ExecutionLog.Info("Cache", $"Cache HIT for key {cacheKey}."));
-             return cached with { CacheHit = true, CacheKey = cacheKey, CachedAt = cached.StartedAt };
-          }
+           var cached = await _cache.GetAsync(cacheKey, ct).ConfigureAwait(false);
+           if (cached is not null)
+           {
+              Log(ExecutionLog.Info("Cache", $"Cache HIT for key {cacheKey}."));
+              DeliberaMeter.CacheHits.Add(1, new KeyValuePair<string, object?>("cache_backend", _cache.GetType().Name));
+              return cached with { CacheHit = true, CacheKey = cacheKey, CachedAt = cached.StartedAt };
+           }
        }
 
        // When a debate-level timeout is configured (F-10b WithTimeout), link it to the

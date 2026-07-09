@@ -179,6 +179,6 @@ public sealed class WeightedVotingStrategy(double defaultWeight = 1.0) : IVoting
 
    private double ResolveWeight(ParticipantBallot ballot)
    {
-      return MemberWeights.GetValueOrDefault(ballot.MemberName, defaultWeight);
+      return MemberWeights.TryGetValue(ballot.MemberName, out var w) ? w : ballot.Weight;
    }
 }
