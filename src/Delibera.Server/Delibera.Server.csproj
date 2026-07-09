@@ -19,8 +19,8 @@
   <ItemGroup>
     <!-- ASP.NET / Minimal API -->
     <!-- Microsoft.OpenApi 3.x makes IOpenApiMediaType.Example read-only, which breaks
-         the AspNetCore.OpenApi source generator. Pin to 2.0.0 (resolved by AspNetCore.OpenApi)
-         until the source generator is updated for v3. -->
+         the AspNetCore.OpenApi source generator. Pin to 2.7.x until the source
+         generator is updated for v3. -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
     <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
 
