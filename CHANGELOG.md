@@ -26,6 +26,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`IDebateStrategy.ExecuteAsync`** now requires a `DebateExecutionOptions` parameter. The legacy overload without `DebateExecutionOptions` has been removed. Implement `IDebateStrategy` with the full signature; pass `DebateExecutionOptions.Default` when calling from code that doesn't need custom options.
 - **`ILLMProvider.GetModelCapabilitiesAsync`** now returns `ModelCapabilities` (non-nullable) instead of `ModelCapabilities?`. Providers that cannot introspect capabilities should return `ModelCapabilities.Unknown(modelName)`. Callers should check `caps.IsUnknown` instead of `caps is null`.
 - **`ModelCapabilities`** now has an `IsUnknown` property for checking whether the instance represents unknown capabilities.
+- **`WeightedVotingStrategy.ResolveWeight`** now falls back to `ballot.Weight` when a member is not in `MemberWeights`, instead of the constructor's `defaultWeight`. This makes per-ballot weights work as documented.
+
+### Added (S-01 — Distributed Debates)
+
+- **`IDebateOrchestrator`** interface with `ExecuteAsync`, `EnqueueAsync`, `GetStatusAsync`, `StreamAsync`, `CancelAsync` — abstracts debate execution from the transport layer.
+- **`LocalDebateOrchestrator`** — default in-process implementation wrapping `CouncilExecutor`, using `Channel<DebateRound>` for SSE streaming.
+- **`RedisDebateOrchestrator`** — distributed implementation in `Delibera.Redis` project, publishing round events to Redis Streams, persisting state in Redis hashes.
+- **`DebateHandle`**, **`DebateOrchestrationStatus`**, **`DebateRoundEvent`** — core types for the orchestration layer.
+- **`DebateWorkerService`** — background service consuming jobs from Redis Streams.
+- **`RedisOrchestratorOptions`** — configuration for Redis connection, stream keys, consumer groups.
+- **`RedisOrchestratorExtensions.AddRedisDebateOrchestrator()`** — DI extension to swap `LocalDebateOrchestrator` for Redis.
+- **`DebateOrchestrationService`** now delegates execution to `IDebateOrchestrator`, enabling local or distributed mode via DI.
+- **`Delibera.Redis`** project (net10.0 class library) with `StackExchange.Redis 2.8.24` dependency.
+
+### Added (S-03 — Result Caching)
+
+- **`IDebateCache`** interface — `GetAsync`, `SetAsync`, `InvalidateAsync`, `ExistsAsync`.
+- **`CacheBehavior`** enum — `Disabled`, `ReadWrite`, `ReadOnly`, `WriteThrough`, `Bypass`.
+- **`DebateCacheKeyGenerator`** — deterministic SHA-256 cache key from debate inputs.
+- **`InMemoryDebateCache`** — `IMemoryCache`-backed implementation with configurable TTL.
+- **`FileDebateCache`** — JSON file-based implementation with TTL via file modification time.
+- **`RedisDebateCache`** — `StackExchange.Redis`-backed implementation using `SETEX`.
+- **`DebateResult.CacheHit`**, **`.CacheKey`**, **`.CachedAt`** — cache metadata on results.
+- **`ICouncilBuilder.WithCacheBehavior(CacheBehavior)`** — per-debate cache control.
+- **`ICouncilBuilder.WithCache(CacheBehavior, IDebateCache)`** — set both behavior and backend.
+- **`CouncilExecutor`** now checks cache before execution and writes back on completion.
+- DI extensions: **`UseInMemoryCache()`**, **`UseFileCache()`**, **`UseRedisCache()`**.
+- **`debate.cache_hit`** OpenTelemetry counter metric emitted on cache hits.
+- **`CacheHit`** / **`CacheKey`** fields added to `DebateResponse` DTO.
+
+### Fixed
+
+- **`WeightedVotingStrategy.ResolveWeight`** now uses `ballot.Weight` as fallback instead of constructor `defaultWeight`, fixing `WeightedVoting_All_Zero_Weights_Throws`.
 
 ## [10.2.7] - 2026
 
