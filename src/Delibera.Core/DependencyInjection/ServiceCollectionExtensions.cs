@@ -59,6 +59,7 @@ public static class ServiceCollectionExtensions
          services.TryAddSingleton<IVectorStoreFactory, VectorStoreFactory>();
          services.TryAddSingleton<ICompressionFactory, CompressionService>();
          services.TryAddTransient<ICouncilBuilder, CouncilBuilder>();
+         services.TryAddSingleton<IDebateOrchestrator, LocalDebateOrchestrator>();
 
          return services;
       }
