@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using Delibera.Core.Attachments;
+using Delibera.Core.Caching;
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
@@ -14,7 +15,6 @@ using Delibera.Core.Persistence;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
 using System.Text.Json;
-using System.Threading.Channels;
 
 namespace Delibera.Core.Council;
 
@@ -30,9 +30,11 @@ public sealed class CouncilExecutor : ICouncilExecutor
    private readonly List<ExecutionLog> _executionLogs = [];
    private readonly int _maxRounds;
    private readonly string? _outputPath;
-   private readonly string? _resumeFromDebateId;
-   private readonly TelemetryOptions? _telemetryOptions;
-   private readonly float _temperature;
+    private readonly string? _resumeFromDebateId;
+    private readonly TelemetryOptions? _telemetryOptions;
+    private readonly float _temperature;
+    private readonly CacheBehavior _cacheBehavior;
+    private readonly IDebateCache? _cache;
 
    internal CouncilExecutor(
       IReadOnlyList<CouncilMember> members,
@@ -57,9 +59,11 @@ public sealed class CouncilExecutor : ICouncilExecutor
       Type? structuredOutputType = null,
       IDebateStore? debateStore = null,
       string? resumeFromDebateId = null,
-      IAgentMemory? agentMemory = null,
-      IReadOnlyList<FileAttachment>? attachments = null,
-      FileContentReaderRegistry? fileReaders = null)
+       IAgentMemory? agentMemory = null,
+       IReadOnlyList<FileAttachment>? attachments = null,
+       FileContentReaderRegistry? fileReaders = null,
+       CacheBehavior cacheBehavior = CacheBehavior.Disabled,
+       IDebateCache? cache = null)
    {
       Members = members;
       Chairman = chairman;
@@ -83,9 +87,11 @@ public sealed class CouncilExecutor : ICouncilExecutor
       StructuredOutputType = structuredOutputType;
       DebateStore = debateStore;
       _resumeFromDebateId = resumeFromDebateId;
-      AgentMemory = agentMemory;
-      Attachments = attachments ?? [];
-      FileReaders = fileReaders ?? new FileContentReaderRegistry();
+       AgentMemory = agentMemory;
+       Attachments = attachments ?? [];
+       FileReaders = fileReaders ?? new FileContentReaderRegistry();
+       _cacheBehavior = cacheBehavior;
+       _cache = cache;
 
       // When telemetry is enabled with a non-default source/meter name, configure the
       // global activity source and meter to honour the user's OpenTelemetry builder setup.
@@ -164,13 +170,19 @@ public sealed class CouncilExecutor : ICouncilExecutor
    /// </summary>
    public IReadOnlyList<FileAttachment> Attachments { get; }
 
-   /// <summary>
-   ///    The file-content reader registry used to read attachments (F-06 Multi-Modal).
-   ///    Pre-populated with built-in <see cref="Readers.PlainTextFileReader"/>,
-   ///    <see cref="Readers.ImageFileReader"/>, and
-   ///    <see cref="Readers.FallbackFileReader"/>.
-   /// </summary>
-   public FileContentReaderRegistry FileReaders { get; }
+    /// <summary>
+    ///    The file-content reader registry used to read attachments (F-06 Multi-Modal).
+    ///    Pre-populated with built-in <see cref="Readers.PlainTextFileReader"/>,
+    ///    <see cref="Readers.ImageFileReader"/>, and
+    ///    <see cref="Readers.FallbackFileReader"/>.
+    /// </summary>
+    public FileContentReaderRegistry FileReaders { get; }
+
+    /// <summary>
+    ///    Cache behavior for this executor. When not <see cref="CacheBehavior.Disabled" />,
+    ///    the executor checks <see cref="IDebateCache" /> before running a debate.
+    /// </summary>
+    public CacheBehavior CacheBehavior => _cacheBehavior;
 
    /// <summary>
    ///    Whether telemetry instrumentation is active for this executor. When <c>true</c>,
@@ -281,27 +293,58 @@ public sealed class CouncilExecutor : ICouncilExecutor
    /// <summary>
    ///    Runs the debate and returns the full result.
    /// </summary>
-   public async Task<DebateResult> ExecuteAsync(CancellationToken ct = default)
-   {
-      _executionLogs.Clear();
+    public async Task<DebateResult> ExecuteAsync(CancellationToken ct = default)
+    {
+       _executionLogs.Clear();
 
-      // When a debate-level timeout is configured (F-10b WithTimeout), link it to the
-      // caller's CT so either signal cancels the whole pipeline. The linked CTS is
-      // disposed in the finally block below.
-      CancellationTokenSource? timeoutCts = null;
-      CancellationTokenSource? linkedCts = null;
-      var effectiveToken = ct;
-      if (DebateTimeout is { } timeout && timeout != Timeout.InfiniteTimeSpan)
-      {
-         timeoutCts = new CancellationTokenSource(timeout);
-         linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-         effectiveToken = linkedCts.Token;
-         Log(ExecutionLog.Info("Council", $"Debate timeout configured: {timeout.TotalSeconds:F1}s"));
-      }
+       // ── Cache check ─────────────────────────────────────────────────────────
+        if (_cache is not null && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.ReadOnly)
+        {
+           var cacheKey = DebateCacheKeyGenerator.Generate(
+              _context, Members.Select(m => m.DisplayName).ToList(),
+              Strategy.StrategyName, _maxRounds, _temperature,
+              _context.SystemPrompt);
 
-      try
-      {
-         return await ExecuteCoreAsync(effectiveToken);
+          var cached = await _cache.GetAsync(cacheKey, ct).ConfigureAwait(false);
+          if (cached is not null)
+          {
+             Log(ExecutionLog.Info("Cache", $"Cache HIT for key {cacheKey}."));
+             return cached with { CacheHit = true, CacheKey = cacheKey, CachedAt = cached.StartedAt };
+          }
+       }
+
+       // When a debate-level timeout is configured (F-10b WithTimeout), link it to the
+       // caller's CT so either signal cancels the whole pipeline. The linked CTS is
+       // disposed in the finally block below.
+       CancellationTokenSource? timeoutCts = null;
+       CancellationTokenSource? linkedCts = null;
+       var effectiveToken = ct;
+       if (DebateTimeout is { } timeout && timeout != Timeout.InfiniteTimeSpan)
+       {
+          timeoutCts = new CancellationTokenSource(timeout);
+          linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+          effectiveToken = linkedCts.Token;
+          Log(ExecutionLog.Info("Council", $"Debate timeout configured: {timeout.TotalSeconds:F1}s"));
+       }
+
+       try
+       {
+          var result = await ExecuteCoreAsync(effectiveToken);
+
+          // ── Cache write ──────────────────────────────────────────────────────
+          if (_cache is not null && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.WriteThrough)
+          {
+             var cacheKey = DebateCacheKeyGenerator.Generate(
+                _context, Members.Select(m => m.DisplayName).ToList(),
+                Strategy.StrategyName, _maxRounds, _temperature,
+                _context.SystemPrompt);
+
+              await _cache.SetAsync(cacheKey, result, ct: ct).ConfigureAwait(false);
+             Log(ExecutionLog.Info("Cache", $"Cache SET for key {cacheKey}."));
+             result = result with { CacheKey = cacheKey };
+          }
+
+          return result;
       }
       finally
       {

@@ -1,3 +1,4 @@
+using Delibera.Core.Caching;
 using Delibera.Core.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,6 +31,24 @@ public static class RedisOrchestratorExtensions
     {
         services.Configure(configure);
         services.Replace(ServiceDescriptor.Singleton<IDebateOrchestrator, RedisDebateOrchestrator>());
+        return services;
+    }
+
+    /// <summary>
+    ///    Registers <see cref="RedisDebateCache" /> as the <see cref="IDebateCache" /> implementation
+    ///    using the Redis connection from <see cref="RedisDebateOrchestrator" />.
+    /// </summary>
+    public static IServiceCollection UseRedisCache(
+        this IServiceCollection services,
+        TimeSpan? ttl = null)
+    {
+        services.TryAddSingleton<IDebateCache>(sp =>
+        {
+            var redis = sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>();
+            var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<RedisOrchestratorOptions>>();
+            var logger = sp.GetService<Microsoft.Extensions.Logging.ILogger<RedisDebateCache>>();
+            return new RedisDebateCache(redis, options, ttl, logger);
+        });
         return services;
     }
 }

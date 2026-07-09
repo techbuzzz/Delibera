@@ -107,6 +107,13 @@ public interface ICouncilExecutor
     /// </summary>
     FileContentReaderRegistry FileReaders { get; }
 
+    /// <summary>
+    ///    Cache behavior for this executor. When not <see cref="CacheBehavior.Disabled" />,
+    ///    the executor checks <see cref="IDebateCache" /> before running a debate.
+    ///    Set via <see cref="ICouncilBuilder.WithCacheBehavior(CacheBehavior)" />.
+    /// </summary>
+    CacheBehavior CacheBehavior { get; }
+
    /// <summary>
    ///    The result of the most recent <see cref="StreamDebateAsync" /> call, once the
    ///    stream has completed. <c>null</c> while the stream is in progress, before any

@@ -1,4 +1,5 @@
 using Delibera.Core.Attachments;
+using Delibera.Core.Caching;
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Debate;
@@ -52,7 +53,9 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private TelemetryOptions? _telemetryOptions;
    private float _temperature = 0.7f;
    private string _userPrompt = string.Empty;
-   private IVotingStrategy? _votingStrategy;
+    private IVotingStrategy? _votingStrategy;
+    private CacheBehavior _cacheBehavior;
+    private IDebateCache? _cache;
    private readonly List<FileAttachment> _attachments = [];
    private readonly FileContentReaderRegistry _fileReaders = new();
 
@@ -499,14 +502,31 @@ public sealed class CouncilBuilder : ICouncilBuilder
    /// </summary>
    /// <param name="debateId">The debate identifier to resume.</param>
    /// <returns>This builder for fluent chaining.</returns>
-   public ICouncilBuilder ResumeFrom(string debateId)
-   {
-      ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
-      _resumeFromDebateId = debateId;
-      return this;
-   }
+    public ICouncilBuilder ResumeFrom(string debateId)
+    {
+       ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
+       _resumeFromDebateId = debateId;
+       return this;
+    }
 
-   // ── Agent memory (F-04) ──
+    /// <inheritdoc />
+    public ICouncilBuilder WithCacheBehavior(CacheBehavior behavior)
+    {
+       _cacheBehavior = behavior;
+       return this;
+    }
+
+    /// <summary>
+    ///    Sets the caching behavior and cache backend for this debate.
+    /// </summary>
+    public ICouncilBuilder WithCache(CacheBehavior behavior, IDebateCache cache)
+    {
+       _cacheBehavior = behavior;
+       _cache = cache;
+       return this;
+    }
+
+    // ── Agent memory (F-04) ──
 
    /// <summary>
    ///    Attaches an <see cref="IAgentMemory" /> so council members can recall
@@ -763,7 +783,9 @@ public sealed class CouncilBuilder : ICouncilBuilder
          _debateStore,
          _resumeFromDebateId,
          _agentMemory,
-         _attachments.AsReadOnly(),
-         _fileReaders);
+          _attachments.AsReadOnly(),
+          _fileReaders,
+          _cacheBehavior,
+          _cache);
    }
 }

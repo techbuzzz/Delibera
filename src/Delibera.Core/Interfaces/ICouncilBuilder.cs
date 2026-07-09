@@ -319,14 +319,23 @@ public interface ICouncilBuilder
    /// <returns>This builder for fluent chaining.</returns>
    ICouncilBuilder WithPersistence(IDebateStore store);
 
-   /// <summary>
-   ///    Resumes a debate from the given <paramref name="debateId" /> (F-03). The
-   ///    corresponding checkpoint must exist in the configured
-   ///    <see cref="IDebateStore" />.
-   /// </summary>
-   /// <param name="debateId">The debate identifier to resume.</param>
-   /// <returns>This builder for fluent chaining.</returns>
-   ICouncilBuilder ResumeFrom(string debateId);
+    /// <summary>
+    ///    Resumes a debate from the given <paramref name="debateId" /> (F-03). The
+    ///    corresponding checkpoint must exist in the configured
+    ///    <see cref="IDebateStore" />.
+    /// </summary>
+    /// <param name="debateId">The debate identifier to resume.</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder ResumeFrom(string debateId);
+
+    /// <summary>
+    ///    Sets the caching behavior for this debate. When an <see cref="IDebateCache" />
+    ///    is registered in DI, the executor will check the cache before running a debate
+    ///    and store results after completion according to the specified behavior.
+    /// </summary>
+    /// <param name="behavior">Cache behavior (<see cref="CacheBehavior" />).</param>
+    /// <returns>This builder for fluent chaining.</returns>
+    ICouncilBuilder WithCacheBehavior(CacheBehavior behavior);
 
    /// <summary>
    ///    Attaches an <see cref="IAgentMemory" /> (F-04) so council members can recall

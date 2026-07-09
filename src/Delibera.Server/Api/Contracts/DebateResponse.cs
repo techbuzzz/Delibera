@@ -11,6 +11,8 @@ public sealed record DebateResponse
     public          VotingResultDto? Voting  { get; init; }
     public          TokenStatsDto?   TokenStats { get; init; }
     public          string?     ErrorMessage { get; init; }
+    public          bool?       CacheHit     { get; init; }
+    public          string?     CacheKey     { get; init; }
     public required string      StreamUrl   { get; init; }    // SSE endpoint
     public required string      ResultUrl   { get; init; }
     public required DateTimeOffset CreatedAt { get; init; }
