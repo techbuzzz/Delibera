@@ -1,73 +1,111 @@
 using System.Collections.Concurrent;
+using Delibera.Core.Interfaces;
+using Delibera.Core.Models;
 using Delibera.Server.Scenarios;
 using Delibera.Server.Templates.Registry;
 
 namespace Delibera.Server.Services;
 
 /// <summary>
-/// In-process orchestrator that runs council debates synchronously or enqueues
-/// them for background execution via two paths:
-/// <list type="bullet">
-///   <item>Template path  — <see cref="CreateDebateRequest"/> resolved via <see cref="ITemplateRegistry"/>.</item>
-///   <item>Scenario path  — <see cref="ScenarioRequest"/> built directly via <see cref="ScenarioBuilder"/>.</item>
-/// </list>
+///    HTTP-oriented orchestrator that bridges <see cref="CreateDebateRequest" /> /
+///    <see cref="ScenarioRequest" /> to <see cref="ICouncilBuilder" /> and delegates
+///    execution to <see cref="IDebateOrchestrator" />.
+///    <para>
+///       When <see cref="IDebateOrchestrator" /> is a <see cref="LocalDebateOrchestrator" />,
+///       debates run in-process (the default). When it's a <c>RedisDebateOrchestrator</c>,
+///       round events are published to Redis Streams for cross-instance SSE streaming.
+///    </para>
 /// </summary>
 public sealed class DebateOrchestrationService : IDebateOrchestrationService
 {
     private readonly ILogger<DebateOrchestrationService> _logger;
-    private readonly ITemplateRegistry                   _templates;
-    private readonly IServiceProvider                    _services;
-    private readonly IConfiguration                     _configuration;
+    private readonly ITemplateRegistry _templates;
+    private readonly IServiceProvider _services;
+    private readonly IConfiguration _configuration;
+    private readonly IDebateOrchestrator _orchestrator;
 
     private readonly ConcurrentDictionary<string, DebateRecord> _records = new();
 
     public DebateOrchestrationService(
         ILogger<DebateOrchestrationService> logger,
-        ITemplateRegistry                   templates,
-        IServiceProvider                    services,
-        IConfiguration                      configuration)
+        ITemplateRegistry templates,
+        IServiceProvider services,
+        IConfiguration configuration,
+        IDebateOrchestrator orchestrator)
     {
-        _logger        = logger;
-        _templates     = templates;
-        _services      = services;
+        _logger = logger;
+        _templates = templates;
+        _services = services;
         _configuration = configuration;
+        _orchestrator = orchestrator;
     }
 
     // ── Template path ─────────────────────────────────────────────────────────
 
     public async Task<DebateRecord> RunAsync(
         CreateDebateRequest request,
-        string              tenantId,
-        CancellationToken   ct = default)
+        string tenantId,
+        CancellationToken ct = default)
     {
-        var record = CreateTemplateRecord(request, tenantId);
-        await ExecuteTemplateAsync(record, request, ct);
+        var builder = ResolveTemplateBuilder(request);
+        var record = CreateRecord(request.TemplateId, tenantId, request.Question);
+
+        var result = await _orchestrator.ExecuteAsync(builder, ct);
+        record.Result = result;
+        record.Status = DebateStatus.Completed;
+        record.CompletedAt = DateTimeOffset.UtcNow;
+        record.Rounds.AddRange(result.Rounds);
+
+        _logger.LogInformation(
+            "[Template] Debate {DebateId} completed — {Rounds} rounds, {Tokens} tokens.",
+            record.DebateId, record.Rounds.Count, result.TokenStats?.GrandTotal);
+
         return record;
     }
 
     public DebateRecord Enqueue(CreateDebateRequest request, string tenantId)
     {
-        var record = CreateTemplateRecord(request, tenantId);
-        _ = Task.Run(() => ExecuteTemplateAsync(record, request, CancellationToken.None));
+        var builder = ResolveTemplateBuilder(request);
+        var record = CreateRecord(request.TemplateId, tenantId, request.Question);
+
+        _ = RunOrchestratorEnqueuedAsync(record, builder);
+
         return record;
     }
 
     // ── Scenario path ─────────────────────────────────────────────────────────
 
     public async Task<DebateRecord> RunScenarioAsync(
-        ScenarioRequest   scenario,
-        string            tenantId,
+        ScenarioRequest scenario,
+        string tenantId,
         CancellationToken ct = default)
     {
-        var record = CreateScenarioRecord(scenario, tenantId);
-        await ExecuteScenarioAsync(record, scenario, ct);
+        var builder = ScenarioBuilder.Build(scenario, _configuration);
+        var record = CreateRecord("scenario", tenantId, scenario.Label ?? scenario.Question);
+
+        var result = await _orchestrator.ExecuteAsync(builder, ct);
+        record.Result = result;
+        record.Status = DebateStatus.Completed;
+        record.CompletedAt = DateTimeOffset.UtcNow;
+        record.Rounds.AddRange(result.Rounds);
+
+        _logger.LogInformation(
+            "[Scenario] Debate {DebateId} completed — {Rounds} rounds, {Tokens} tokens.",
+            record.DebateId, record.Rounds.Count, result.TokenStats?.GrandTotal);
+
         return record;
     }
 
     public DebateRecord EnqueueScenario(ScenarioRequest scenario, string tenantId)
     {
-        var record = CreateScenarioRecord(scenario, tenantId);
-        _ = Task.Run(() => ExecuteScenarioAsync(record, scenario, CancellationToken.None));
+        if (scenario.Members is not { Length: > 0 })
+            throw new ArgumentException("Scenario must have at least one member.");
+
+        var builder = ScenarioBuilder.Build(scenario, _configuration);
+        var record = CreateRecord("scenario", tenantId, scenario.Label ?? scenario.Question);
+
+        _ = RunOrchestratorEnqueuedAsync(record, builder);
+
         return record;
     }
 
@@ -103,140 +141,105 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
         record.Status = DebateStatus.Cancelled;
         record.RoundWriter.TryComplete();
         _logger.LogInformation("Debate {DebateId} cancelled.", debateId);
+
+        _ = _orchestrator.CancelAsync(debateId);
         return true;
     }
 
-    // ── Private: template path ────────────────────────────────────────────────
+    // ── Private ───────────────────────────────────────────────────────────────
 
-    private DebateRecord CreateTemplateRecord(CreateDebateRequest request, string tenantId)
+    private ICouncilBuilder ResolveTemplateBuilder(CreateDebateRequest request)
     {
         var template = _templates.Get(request.TemplateId)
             ?? throw new InvalidOperationException(
                 $"Template '{request.TemplateId}' is not registered.");
+        return template.Configure(request, _services, _configuration);
+    }
 
-        _ = template; // validated — will be re-fetched in Execute
-
+    private DebateRecord CreateRecord(string templateId, string tenantId, string label)
+    {
         var record = new DebateRecord
         {
-            DebateId   = Guid.NewGuid().ToString("N"),
-            TemplateId = request.TemplateId,
-            TenantId   = tenantId,
-            Label      = request.Question,
+            DebateId = Guid.NewGuid().ToString("N"),
+            TemplateId = templateId,
+            TenantId = tenantId,
+            Label = label,
         };
 
         _records[record.DebateId] = record;
-        _logger.LogInformation(
-            "[Template] Debate {DebateId} created for '{TemplateId}' (tenant: {TenantId}).",
-            record.DebateId, record.TemplateId, record.TenantId);
         return record;
     }
 
-    private async Task ExecuteTemplateAsync(
-        DebateRecord        record,
-        CreateDebateRequest request,
-        CancellationToken   ct)
+    private async Task RunOrchestratorEnqueuedAsync(DebateRecord record, ICouncilBuilder builder)
     {
         record.Status = DebateStatus.Running;
-        _logger.LogInformation("[Template] Debate {DebateId} started.", record.DebateId);
+        _logger.LogInformation("Debate {DebateId} started (enqueued).", record.DebateId);
+
+        // Subscribe to round events from the orchestrator
+        var streamTask = Task.Run(async () =>
+        {
+            await foreach (var evt in _orchestrator.StreamAsync(record.DebateId))
+            {
+                switch (evt)
+                {
+                    case DebateRoundEvent.RoundCompleted rc:
+                        record.Rounds.Add(rc.Round);
+                        record.RoundWriter.TryWrite(rc.Round);
+                        break;
+                    case DebateRoundEvent.DebateCompleted:
+                    case DebateRoundEvent.DebateFailed:
+                    case DebateRoundEvent.DebateCancelled:
+                        break;
+                }
+            }
+        });
 
         try
         {
-            var template = _templates.Get(record.TemplateId)!;
-            var builder  = template.Configure(request, _services, _configuration);
-            var executor = builder.Build();
+            var handle = await _orchestrator.EnqueueAsync(record.DebateId, builder);
 
-            executor.OnRoundCompleted += round =>
+            // Poll until completion
+            while (true)
             {
-                record.Rounds.Add(round);
-                record.RoundWriter.TryWrite(round);
-            };
-
-            record.Result      = await executor.ExecuteAsync(ct);
-            record.Status      = DebateStatus.Completed;
-            record.CompletedAt = DateTimeOffset.UtcNow;
+                await Task.Delay(200);
+                var status = await _orchestrator.GetStatusAsync(record.DebateId);
+                if (status?.Status is DebateOrchestrationStatus.Completed
+                                 or DebateOrchestrationStatus.Failed
+                                 or DebateOrchestrationStatus.Cancelled)
+                {
+                    record.Result = status.Result;
+                    record.ErrorMessage = status.ErrorMessage;
+                    record.CompletedAt = status.CompletedAt;
+                    record.Status = status.Status switch
+                    {
+                        DebateOrchestrationStatus.Completed => DebateStatus.Completed,
+                        DebateOrchestrationStatus.Failed => DebateStatus.Failed,
+                        DebateOrchestrationStatus.Cancelled => DebateStatus.Cancelled,
+                        _ => DebateStatus.Failed
+                    };
+                    break;
+                }
+            }
 
             _logger.LogInformation(
-                "[Template] Debate {DebateId} completed — {Rounds} rounds, {Tokens} tokens.",
-                record.DebateId, record.Rounds.Count, record.Result.TokenStats?.GrandTotal);
+                "Debate {DebateId} {Status} — {Rounds} rounds.",
+                record.DebateId, record.Status, record.Rounds.Count);
         }
-        catch (OperationCanceledException) when (record.Status == DebateStatus.Cancelled)
+        catch (OperationCanceledException)
         {
-            _logger.LogInformation("[Template] Debate {DebateId} was cancelled.", record.DebateId);
+            record.Status = DebateStatus.Cancelled;
+            _logger.LogInformation("Debate {DebateId} was cancelled.", record.DebateId);
         }
         catch (Exception ex)
         {
-            record.Status       = DebateStatus.Failed;
+            record.Status = DebateStatus.Failed;
             record.ErrorMessage = ex.Message;
-            _logger.LogError(ex, "[Template] Debate {DebateId} failed.", record.DebateId);
+            _logger.LogError(ex, "Debate {DebateId} failed.", record.DebateId);
         }
         finally
         {
             record.RoundWriter.TryComplete();
-        }
-    }
-
-    // ── Private: scenario path ────────────────────────────────────────────────
-
-    private DebateRecord CreateScenarioRecord(ScenarioRequest scenario, string tenantId)
-    {
-        if (scenario.Members is not { Length: > 0 })
-            throw new ArgumentException("Scenario must have at least one member.");
-
-        var record = new DebateRecord
-        {
-            DebateId   = Guid.NewGuid().ToString("N"),
-            TemplateId = "scenario",
-            TenantId   = tenantId,
-            Label      = scenario.Label ?? scenario.Question,
-        };
-
-        _records[record.DebateId] = record;
-        _logger.LogInformation(
-            "[Scenario] Debate {DebateId} created — {Members} members (tenant: {TenantId}).",
-            record.DebateId, scenario.Members.Length, record.TenantId);
-        return record;
-    }
-
-    private async Task ExecuteScenarioAsync(
-        DebateRecord      record,
-        ScenarioRequest   scenario,
-        CancellationToken ct)
-    {
-        record.Status = DebateStatus.Running;
-        _logger.LogInformation("[Scenario] Debate {DebateId} started.", record.DebateId);
-
-        try
-        {
-            var builder  = ScenarioBuilder.Build(scenario, _configuration);
-            var executor = builder.Build();
-
-            executor.OnRoundCompleted += round =>
-            {
-                record.Rounds.Add(round);
-                record.RoundWriter.TryWrite(round);
-            };
-
-            record.Result      = await executor.ExecuteAsync(ct);
-            record.Status      = DebateStatus.Completed;
-            record.CompletedAt = DateTimeOffset.UtcNow;
-
-            _logger.LogInformation(
-                "[Scenario] Debate {DebateId} completed — {Rounds} rounds, {Tokens} tokens.",
-                record.DebateId, record.Rounds.Count, record.Result.TokenStats?.GrandTotal);
-        }
-        catch (OperationCanceledException) when (record.Status == DebateStatus.Cancelled)
-        {
-            _logger.LogInformation("[Scenario] Debate {DebateId} was cancelled.", record.DebateId);
-        }
-        catch (Exception ex)
-        {
-            record.Status       = DebateStatus.Failed;
-            record.ErrorMessage = ex.Message;
-            _logger.LogError(ex, "[Scenario] Debate {DebateId} failed.", record.DebateId);
-        }
-        finally
-        {
-            record.RoundWriter.TryComplete();
+            await streamTask; // ensure streaming completes
         }
     }
 }

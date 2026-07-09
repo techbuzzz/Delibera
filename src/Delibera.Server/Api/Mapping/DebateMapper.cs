@@ -21,6 +21,8 @@ public static class DebateMapper
          Voting = record.Result?.VotingTally?.MapVoting(),
          TokenStats = record.Result?.TokenStats?.MapStats(),
          ErrorMessage = record.ErrorMessage,
+         CacheHit = record.Result?.CacheHit,
+         CacheKey = record.Result?.CacheKey,
          StreamUrl = $"{baseUrl}/api/v1/debates/{record.DebateId}/stream",
          ResultUrl = $"{baseUrl}/api/v1/debates/{record.DebateId}/result",
          CreatedAt = record.CreatedAt,
