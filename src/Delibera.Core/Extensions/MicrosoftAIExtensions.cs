@@ -106,7 +106,7 @@ public static class MicrosoftAIExtensions
             system,
             user,
             options?.Temperature ?? 0.7f,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
 
          return new ChatResponse(new ChatMessage(ChatRole.Assistant, text)) { ModelId = ResolveModel(options) };
       }
@@ -118,7 +118,7 @@ public static class MicrosoftAIExtensions
       {
          var (system, user) = SplitMessages(messages);
          await foreach (var chunk in provider.ChatStreamAsync(
-                           ResolveModel(options), system, user, options?.Temperature ?? 0.7f, cancellationToken))
+                           ResolveModel(options), system, user, options?.Temperature ?? 0.7f, cancellationToken).ConfigureAwait(false))
             yield return new ChatResponseUpdate(ChatRole.Assistant, chunk);
       }
 

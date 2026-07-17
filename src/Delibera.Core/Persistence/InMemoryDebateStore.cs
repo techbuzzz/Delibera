@@ -12,7 +12,7 @@ public sealed class InMemoryDebateStore : IDebateStore
    private readonly ConcurrentDictionary<string, DebateCheckpoint> _checkpoints = new();
 
    /// <inheritdoc />
-   public Task<string> SaveCheckpointAsync(DebateCheckpoint checkpoint, CancellationToken ct = default)
+   public ValueTask<string> SaveCheckpointAsync(DebateCheckpoint checkpoint, CancellationToken ct = default)
    {
       ArgumentNullException.ThrowIfNull(checkpoint);
       ct.ThrowIfCancellationRequested();
@@ -26,21 +26,21 @@ public sealed class InMemoryDebateStore : IDebateStore
             : checkpoint.CreatedAt
       };
       _checkpoints[id] = stamped;
-      return Task.FromResult(id);
+      return new ValueTask<string>(id);
    }
 
    /// <inheritdoc />
-   public Task<DebateCheckpoint?> LoadCheckpointAsync(string debateId, CancellationToken ct = default)
+   public ValueTask<DebateCheckpoint?> LoadCheckpointAsync(string debateId, CancellationToken ct = default)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
       ct.ThrowIfCancellationRequested();
-      return Task.FromResult(_checkpoints.TryGetValue(debateId, out var cp)
+      return new ValueTask<DebateCheckpoint?>(_checkpoints.TryGetValue(debateId, out var cp)
          ? cp
          : null);
    }
 
    /// <inheritdoc />
-   public Task<IReadOnlyList<DebateCheckpointMeta>> ListAsync(CancellationToken ct = default)
+   public ValueTask<IReadOnlyList<DebateCheckpointMeta>> ListAsync(CancellationToken ct = default)
    {
       ct.ThrowIfCancellationRequested();
       IReadOnlyList<DebateCheckpointMeta> metas = _checkpoints.Values
@@ -51,15 +51,15 @@ public sealed class InMemoryDebateStore : IDebateStore
             Truncate(cp.OriginalQuestion)))
          .OrderByDescending(m => m.CreatedAt)
          .ToList();
-      return Task.FromResult(metas);
+      return new ValueTask<IReadOnlyList<DebateCheckpointMeta>>(metas);
    }
 
    /// <inheritdoc />
-   public Task DeleteAsync(string debateId, CancellationToken ct = default)
+   public ValueTask DeleteAsync(string debateId, CancellationToken ct = default)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
       _checkpoints.TryRemove(debateId, out _);
-      return Task.CompletedTask;
+      return ValueTask.CompletedTask;
    }
 
    private static string Truncate(string s)

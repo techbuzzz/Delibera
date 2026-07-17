@@ -65,7 +65,7 @@ public sealed class SummarizationCompressor(ILLMProvider llmProvider, string mod
 
       var summary = await _llmProvider.ChatAsync(
          _modelName, systemPrompt, userPrompt,
-         options.SummarizationTemperature, ct);
+         options.SummarizationTemperature, ct).ConfigureAwait(false);
 
       var compressedTokens = counter.EstimateTokens(summary);
 
@@ -107,7 +107,7 @@ public sealed class SummarizationCompressor(ILLMProvider llmProvider, string mod
 
       var summary = await _llmProvider.ChatAsync(
          _modelName, systemPrompt, userPrompt,
-         options.SummarizationTemperature, ct);
+         options.SummarizationTemperature, ct).ConfigureAwait(false);
 
       var compressedTokens = counter.EstimateTokens(summary);
 

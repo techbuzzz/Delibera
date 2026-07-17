@@ -5,6 +5,105 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.3.0] - 2026
+
+### ⚠️ Breaking Changes (P-01)
+
+| Removed | Replacement |
+|---------|-------------|
+| `Moderator` static class | `Chairman` |
+| `ICouncilBuilder.SetModerator(CouncilMember)` | `ICouncilBuilder.SetChairman(CouncilMember)` |
+| `ICouncilBuilder.SetModerator(string, ILLMProvider, string?)` | `ICouncilBuilder.SetChairman(string, ILLMProvider, string?)` |
+| `IDebateStrategyWithOptions` interface | `IDebateStrategy` (full signature with `DebateExecutionOptions`) |
+| `IDebateStrategy.ExecuteAsync` overload without `DebateExecutionOptions` | Use the `DebateExecutionOptions` overload (pass `DebateExecutionOptions.Default`) |
+| `ILLMProvider.GetModelCapabilitiesAsync` default `null` return | Implement explicitly; return `ModelCapabilities.Unknown(model)` when unknown |
+| `ModelCapabilities?` (nullable) return type | `ModelCapabilities` (non-nullable); check `caps.IsUnknown` instead of `caps is null` |
+| `RagProviderFactory` class | `VectorStoreFactory` |
+| `IRagProviderFactory` interface | `IVectorStoreFactory` |
+
+### Changed
+
+- **`IDebateStrategy.ExecuteAsync`** now requires a `DebateExecutionOptions` parameter. The legacy overload without `DebateExecutionOptions` has been removed. Implement `IDebateStrategy` with the full signature; pass `DebateExecutionOptions.Default` when calling from code that doesn't need custom options.
+- **`ILLMProvider.GetModelCapabilitiesAsync`** now returns `ModelCapabilities` (non-nullable) instead of `ModelCapabilities?`. Providers that cannot introspect capabilities should return `ModelCapabilities.Unknown(modelName)`. Callers should check `caps.IsUnknown` instead of `caps is null`.
+- **`ModelCapabilities`** now has an `IsUnknown` property for checking whether the instance represents unknown capabilities.
+- **`WeightedVotingStrategy.ResolveWeight`** now falls back to `ballot.Weight` when a member is not in `MemberWeights`, instead of the constructor's `defaultWeight`. This makes per-ballot weights work as documented.
+
+### Added (S-01 — Distributed Debates)
+
+- **`IDebateOrchestrator`** interface with `ExecuteAsync`, `EnqueueAsync`, `GetStatusAsync`, `StreamAsync`, `CancelAsync` — abstracts debate execution from the transport layer.
+- **`LocalDebateOrchestrator`** — default in-process implementation wrapping `CouncilExecutor`, using `Channel<DebateRound>` for SSE streaming.
+- **`RedisDebateOrchestrator`** — distributed implementation in `Delibera.Redis` project, publishing round events to Redis Streams, persisting state in Redis hashes.
+- **`DebateHandle`**, **`DebateOrchestrationStatus`**, **`DebateRoundEvent`** — core types for the orchestration layer.
+- **`DebateWorkerService`** — background service consuming jobs from Redis Streams.
+- **`RedisOrchestratorOptions`** — configuration for Redis connection, stream keys, consumer groups.
+- **`RedisOrchestratorExtensions.AddRedisDebateOrchestrator()`** — DI extension to swap `LocalDebateOrchestrator` for Redis.
+- **`DebateOrchestrationService`** now delegates execution to `IDebateOrchestrator`, enabling local or distributed mode via DI.
+- **`Delibera.Redis`** project (net10.0 class library) with `StackExchange.Redis 2.8.24` dependency.
+
+### Added (S-03 — Result Caching)
+
+- **`IDebateCache`** interface — `GetAsync`, `SetAsync`, `InvalidateAsync`, `ExistsAsync`.
+- **`CacheBehavior`** enum — `Disabled`, `ReadWrite`, `ReadOnly`, `WriteThrough`, `Bypass`.
+- **`DebateCacheKeyGenerator`** — deterministic SHA-256 cache key from debate inputs.
+- **`InMemoryDebateCache`** — `IMemoryCache`-backed implementation with configurable TTL.
+- **`FileDebateCache`** — JSON file-based implementation with TTL via file modification time.
+- **`RedisDebateCache`** — `StackExchange.Redis`-backed implementation using `SETEX`.
+- **`DebateResult.CacheHit`**, **`.CacheKey`**, **`.CachedAt`** — cache metadata on results.
+- **`ICouncilBuilder.WithCacheBehavior(CacheBehavior)`** — per-debate cache control.
+- **`ICouncilBuilder.WithCache(CacheBehavior, IDebateCache)`** — set both behavior and backend.
+- **`CouncilExecutor`** now checks cache before execution and writes back on completion.
+- DI extensions: **`UseInMemoryCache()`**, **`UseFileCache()`**, **`UseRedisCache()`**.
+- **`debate.cache_hit`** OpenTelemetry counter metric emitted on cache hits.
+- **`CacheHit`** / **`CacheKey`** fields added to `DebateResponse` DTO.
+
+### Changed — Performance & Integrity (Phases 1–3)
+
+- **Memory leak fixes:**
+  - `LocalDebateOrchestrator`, `DebateOrchestrationService`, `RedisDebateOrchestrator` now evict completed entries after 30 minutes (Timer-based) to prevent unbounded memory growth.
+  - `ProviderFactory` (created in server templates and `ScenarioBuilder`) is now `using var` — properly disposed.
+  - `CompressionCache` and `FileDebateStore` now implement `IDisposable` (dispose `ReaderWriterLockSlim` / `SemaphoreSlim`).
+- **Thread safety:**
+  - `DebateRecord.Status` uses `volatile int` backing field with `Volatile.Read`/`Volatile.Write` for cross-thread visibility.
+  - `RedisDebateOrchestrator.DebateEntry.Status` uses the same `volatile int` pattern.
+  - `ProviderFactory.CachingFactory` uses `ConcurrentDictionary<string, T>` + `GetOrAdd` instead of `Dictionary` + manual `lock`.
+- **Async correctness:**
+  - `ConfigureAwait(false)` added to all `await` expressions in `Delibera.Core` and `Delibera.Redis` (~50+ sites) — library code must never capture `SynchronizationContext`.
+  - Fire-and-forget `CancelAsync` in `DebateOrchestrationService` now uses `Task.Run` with try/catch + `_logger.LogWarning`.
+- **Allocation optimisations:**
+  - `SseDebateStreamWriter` uses `JsonSerializer.SerializeToUtf8Bytes` + byte-level writes instead of string-based SSE serialization.
+  - `DebateCacheKeyGenerator.Generate` uses `SerializeToUtf8Bytes` instead of `Serialize` + `Encoding.UTF8.GetBytes`.
+  - `ModelContextWindowRegistry` uses `FrozenDictionary<string, int>` / `FrozenSet<string>` for O(1) lookups; `Register`/`RegisterVisionPattern` invalidate the frozen cache.
+  - `IDebateCache` and `IDebateStore` interfaces now return `ValueTask<T>` instead of `Task<T>` — synchronous backends avoid `Task` allocation.
+  - `IDebateOrchestrator.GetStatusAsync` returns `ValueTask<DebateHandle?>`.
+- **Micro-optimisations:**
+  - `LevenshteinDistance` (in `CouncilExecutor` and `AdaptiveStrategySelector`) rewritten to single-row DP with `Span<int>` + `stackalloc` for strings ≤128 chars.
+  - `TokenCounter` LRU lock replaced with `ReaderWriterLockSlim` for concurrent reads.
+  - `RankedOption` changed from `sealed record` to `readonly record struct` — avoids heap allocation.
+  - `DebateResult.ToMarkdown()` / `.ToStatisticsMarkdown()` / `.ToLogsMarkdown()` now use `StringBuilder` with capacity hints (4096 / 2048 / 2048).
+
+### Fixed
+
+- **`WeightedVotingStrategy.ResolveWeight`** now uses `ballot.Weight` as fallback instead of constructor `defaultWeight`, fixing `WeightedVoting_All_Zero_Weights_Throws`.
+
+### Removed (Pre-merge Cleanup)
+
+- **`DebateStatus.Paused`** — dead enum value never assigned; removed from `DebateResponse` contract.
+- **`DebateOrchestrationStatus.Pending`** — dead enum value never assigned; removed from `DebateHandle` contract.
+- **`DebateRecord._channel`**, **`RoundWriter`**, **`RoundReader`** — SSE channel moved to `IDebateOrchestrator.StreamAsync()`.
+- **`SseDebateStreamWriter`** rewritten to consume `IDebateOrchestrator.StreamAsync()` instead of `DebateRecord.RoundReader`.
+- **`DebateOrchestrationService.RunOrchestratorEnqueuedAsync`** rewritten from 200ms polling to event-driven `StreamAsync()`.
+
+### Changed (Pre-merge Cleanup)
+
+- **`DebateRecord.Label`** now defaults to `string.Empty` (was CS8618 warning).
+- **`DebateResponse`** now includes a `Label` field mapped from `DebateRecord.Label`.
+- **`DebateOrchestrationService.Enqueue`/`EnqueueScenario`** now call `_orchestrator.EnqueueAsync()` before streaming, ensuring the orchestrator registers the debate.
+- **`SseDebateStreamWriter.WriteAsync`** signature changed to accept `IDebateOrchestrator` parameter (was `DebateRecord` + `HttpContext` + `CancellationToken` only).
+- **`DebateEndpoints.StreamDebateAsync`** and **`ScenarioEndpoints.StreamScenarioAsync`** now receive `IDebateOrchestrator` via DI.
+- **`FakeLLMProvider`** now implements `GetModelCapabilitiesAsync` (required by P-01 breaking change).
+- Removed `TryGet` tests from `TemplateRegistryTests` (method removed in P-01).
+- Fixed all CS1591 and CS1574 XML-doc warnings across `Delibera.Core`.
+
 ## [10.2.7] - 2026
 
 Multi-Modal Council (F-06): bring images, diagrams, and documents into the

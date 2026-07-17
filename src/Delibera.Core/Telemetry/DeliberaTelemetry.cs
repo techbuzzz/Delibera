@@ -16,7 +16,7 @@ namespace Delibera.Core.Telemetry;
 ///    </para>
 ///    <para>
 ///       When <see cref="TelemetryOptions.Enabled" /> is <c>false</c>, the
-///       <see cref="CouncilExecutor" /> simply does not call these helpers; this provides
+///       <see cref="Council.CouncilExecutor" /> simply does not call these helpers; this provides
 ///       an extra layer of guarding for hot paths that would otherwise allocate tag
 ///       arrays or compute string tags on every round.
 ///    </para>

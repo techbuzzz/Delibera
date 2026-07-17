@@ -45,6 +45,9 @@
 | **🐘 Qdrant + pgvector**          | Подключаемые векторные хранилища — отдельная БД или ваш существующий PostgreSQL      |
 | **🗜️ Сжатие контекста**          | 4 стратегии (Semantic, Deduplication, Summarization, Hybrid) экономят 30–70% токенов |
 | **✂️ AutoChunking**              | Прогрессивное раскрытие больших документов по раундам — с учётом контекстных окон моделей |
+| **🌐 Распределённые дебаты**      | `IDebateOrchestrator` с локальным и Redis-бэкендами — параллелизация дебатов между машинами |
+| **💾 Кэширование результатов**    | `IDebateCache` с in-memory, файловым и Redis-бэкендами — пропуск повторных идентичных дебатов |
+| **🖥️ Delibera.Server**           | ASP.NET Core 10 Minimal API с REST + SSE-стримингом для дебатов по HTTP              |
 | **💉 Dependency Injection**       | Расширение `AddDelibera()` для `IServiceCollection` с полной привязкой опций         |
 | **📋 Журналирование выполнения**  | Модель `ExecutionLog` с `LogLevel` — события Chairman, KK, сжатия и участников        |
 | **📁 Раздельный вывод файлов**    | Экспорт `result.md`, `statistics.md` и `logs.md` по отдельности                     |
@@ -52,21 +55,16 @@
 | **🤝 Microsoft.Extensions.AI**     | Поддержка `IChatClient` / `IEmbeddingGenerator` — подключайте OpenAI, Azure OpenAI, Ollama и любые совместимые бэкенды, с middleware (function calling, логирование) |
 | **🧱 Современный C# 15 (preview)** | Построено на .NET 10 с `LangVersion=preview`, file-scoped namespaces, records, span/SIMD горячие пути |
 
-### 🆕 Что нового в v10.2.6
+### 🆕 Что нового в v10.3.0
 
 | Возможность | Описание |
 | --- | --- |
-| **🌊 Асинхронный потоковый совет** | `ICouncilExecutor.StreamDebateAsync` отдаёт каждый `DebateRound` по мере завершения через внутренний мост `Channel<DebateRound>` — идеально для ASP.NET Core SSE, WebSocket, Blazor и CLI в реальном времени. Включены метаданные `DebateRound.Total` + `IsFinal` + `LastStreamedResult`. |
-| **🗳️ Подключаемый движок голосования** | `IVotingStrategy` со встроенными `MajorityVotingStrategy`, `BordaCountVotingStrategy`, `WeightedVotingStrategy` (повеса по участникам `MemberWeights`). `Chairman.CreateVoting(...)` подменяет синтез Chairman на верифицируемый подсчёт, который отображается как секция 🗳️ Voting Tally в Markdown-выводе. |
-| **💾 Персистентность и возобновление дебатов** | `IDebateStore` + `FileDebateStore` (атомарная запись JSON с rename, `RetentionDays`) + `InMemoryDebateStore`. `CouncilBuilder.WithPersistence(...)` сохраняет чекпоинт после каждого раунда; `ResumeFrom(debateId)` продолжает с последнего завершённого раунда после сбоя или паузы. |
-| **🧠 Память агентов** | `IAgentMemory` с реализациями `InMemoryAgentMemory` (схожесть Жаккара), `QdrantAgentMemory` (отдельная коллекция на агента), `PgVectorAgentMemory` (общая таблица с фильтром `agent_name`). `CouncilBuilder.WithAgentMemory(...)` подгружает контекст до и сохраняет выводы после каждого совета. |
-| **📊 OpenTelemetry-стиль наблюдаемости** | `DeliberaActivitySource` + `DeliberaMeter` с гистограммами, счётчиками и gauge для спанов `delibera.council.execute`, `delibera.council.round`, `delibera.compression` и т.д. Нулевые накладные расходы, когда слушатель не подключён. Включается через `CouncilBuilder.WithTelemetry(...)`. |
-| **📋 Структурированный вывод** | `IStructuredOutputSerializer` + `JsonSchemaOutputSerializer` (использует .NET 10 `JsonSchemaExporter`). `ICouncilExecutor.ExecuteTypedAsync<TVerdict>` возвращает строго типизированный вердикт, десериализованный из ответа Chairman. Одна автоматическая повторная попытка при ошибке десериализации. |
-| **🔄 Адаптивная смена стратегии** | `IStrategySelector` + `AdaptiveStrategySelector` меняют стратегию дебатов на лету при стагнации ответов (`StagnationThreshold` подряд идущих раундов с низким разнообразием, fallback на Левенштейна при отсутствии embedding-провайдера). |
-| **📋 Шаблоны дебатов** | 6 встроенных шаблонов (`DebateTemplate.ArchitectureReview`, `RiskAssessment`, `CodeReview`, `ProductDecision`, `SecurityAudit`, `DataArchitecture`) с преднастроенными участниками, персонами, стратегиями и Chairman. |
-| **⚡ Quick Wins** | `DebateResult.ToHtml()` + `SaveToHtmlAsync()`; `CouncilBuilder.WithTimeout(TimeSpan)`; пресеты `Persona`; `CouncilBenchmark` для сравнения моделей; `WithParticipantLimit(int)` как защитный гард. |
+| **🌐 Распределённые дебаты** | Интерфейс `IDebateOrchestrator` с `LocalDebateOrchestrator` (один процесс) и `RedisDebateOrchestrator` (Redis pub/sub для диспетчеризации раундов и сбора результатов). `DebateHandle`, `DebateOrchestrationStatus`, `DebateRoundEvent`, `DebateWorkerService`, `RedisOrchestratorOptions`, `RedisOrchestratorExtensions`. Подключение через `ICouncilBuilder.WithOrchestrator(IDebateOrchestrator)`. |
+| **💾 Кэширование результатов** | Интерфейс `IDebateCache` с реализациями `InMemoryDebateCache`, `FileDebateCache`, `RedisDebateCache`. Перечисление `CacheBehavior` (`UseCache`, `BypassCache`, `RefreshCache`). `DebateCacheKeyGenerator` для детерминированных ключей кэша. Метаданные кэша на `DebateResult` (`CacheHit`, `CacheKey`, `CachedAt`). `ICouncilBuilder.WithCacheBehavior()` / `WithCache()`. Расширения DI + OTEL-счётчик `delibera.cache.hits`/`misses`. |
+| **🖥️ Delibera.Server** | ASP.NET Core 10 Minimal API для запуска Delibera по HTTP. REST API (`POST /api/debates`, `GET /api/debates/{id}`, `DELETE /api/debates/{id}`), SSE-стриминг через `GET /api/debates/{id}/stream` на базе `IDebateOrchestrator.StreamAsync()`, фоновая очередь через `IHostedService` + `System.Threading.Channels`. |
+| **⚠️ Критические изменения** | `Moderator` → `Chairman`; удалён `IDebateStrategyWithOptions`; `ModelCapabilities` стал ненулевым (используйте `IsUnknown`); `RagProviderFactory` → `VectorStoreFactory`; удалены `DebateStatus.Paused` и `DebateOrchestrationStatus.Pending`; `SseDebateStreamWriter` переписан для `IDebateOrchestrator.StreamAsync()`; удалены `DebateRecord._channel`/`RoundWriter`/`RoundReader`. |
 
-> Полные release notes v10.2.6 смотрите в [CHANGELOG.md](CHANGELOG.md), оригинальный roadmap — в [docs/v10.2.6.md](docs/v10.2.6.md).
+> Полные release notes v10.3.0 смотрите в [CHANGELOG.md](CHANGELOG.md), дорожную карту — в [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ---
 
@@ -213,7 +211,7 @@ services.AddDelibera();
 | Интерфейс             | Реализация           | Время жизни |
 | --------------------- | -------------------- | ----------- |
 | `ILLMProviderFactory` | `ProviderFactory`    | Singleton   |
-| `IRagProviderFactory` | `RagProviderFactory` | Singleton   |
+| `IVectorStoreFactory` | `VectorStoreFactory` | Singleton   |
 | `ICompressionFactory` | `CompressionService` | Singleton   |
 | `ICouncilBuilder`     | `CouncilBuilder`     | Transient   |
 
@@ -572,7 +570,7 @@ var ollama = new OllamaProvider("http://localhost:11434");
 var embeddings = new OllamaEmbeddingProvider(ollama, "nomic-embed-text");
 
 // pgvector — просто добавьте строку подключения
-var ragFactory = new RagProviderFactory();
+var ragFactory = new VectorStoreFactory();
 var rag = ragFactory.CreatePgVector(
     embeddings,
     "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres");
@@ -617,7 +615,7 @@ IEmbeddingProvider
 
 | Паттерн             | Использование                                                             |
 | ------------------- | ------------------------------------------------------------------------- |
-| **Factory**         | `ProviderFactory`, `RagProviderFactory`, `CompressionFactory`, `Chairman` |
+| **Factory**         | `ProviderFactory`, `VectorStoreFactory`, `CompressionFactory`, `Chairman` |
 | **Strategy**        | `IDebateStrategy`, `IContextCompressor`                                   |
 | **Builder**         | Fluent API `CouncilBuilder`                                               |
 | **Template Method** | Абстрактный базовый класс `DebateScenario`                                |
@@ -751,6 +749,7 @@ docker exec -it <container> psql -U postgres -d council_vectors -c "CREATE EXTEN
 | `ModelContextProtocol`   | MCP-клиент для роли Operator     |
 | `Microsoft.Extensions.AI`| Унифицированные AI-абстракции `IChatClient` / `IEmbeddingGenerator` и middleware |
 | `Microsoft.Extensions.*` | Конфигурация, DI и Options       |
+| `StackExchange.Redis`   | Redis-клиент для распределённых дебатов и кэширования |
 
 ---
 
@@ -841,6 +840,8 @@ services.AddDeliberaEmbeddingGenerator(
 Delibera.Core
 ├── Council/              ← CouncilBuilder, CouncilExecutor, Chairman, KnowledgeKeeper, Operator
 ├── Debate/               ← StandardDebate, CritiqueDebate, ConsensusDebate
+├── Orchestration/        ← IDebateOrchestrator, LocalDebateOrchestrator, DebateHandle, DebateRoundEvent
+├── Cache/                ← IDebateCache, InMemoryDebateCache, FileDebateCache, CacheBehavior, DebateCacheKeyGenerator
 ├── Compression/          ← Semantic / Deduplication / Summarization / Hybrid
 ├── Chunking/             ← AutoChunker, AutoChunkingOrchestrator, AutoChunkingOptions
 ├── Providers/
@@ -852,6 +853,15 @@ Delibera.Core
 ├── Knowledge/            ← MarkdownKnowledgeBase
 ├── Models/               ← CouncilMember, DebateResult, DebateRound, TokenStatistics, ...
 └── Interfaces/           ← ILLMProvider, IRagProvider, IContextCompressor, IOperator, IMcpClient, ...
+
+Delibera.Redis
+├── Orchestration/        ← RedisDebateOrchestrator, DebateWorkerService, RedisOrchestratorOptions, RedisOrchestratorExtensions
+└── Cache/                ← RedisDebateCache
+
+Delibera.Server
+├── Endpoints/            ← Minimal API эндпоинты (POST /api/debates, GET /stream и т.д.)
+├── Services/             ← DebateOrchestrationService, SseDebateStreamWriter
+└── Configuration/        ← AddDeliberaServer(), DeliberaServerOptions
 ```
 
 ---

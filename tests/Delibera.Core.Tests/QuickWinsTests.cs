@@ -459,6 +459,8 @@ public class QuickWinsTests
             lock (CapturedSystemPrompts) CapturedSystemPrompts.Add(systemPrompt);
             return Task.FromResult("ok");
         }
+        public Task<ModelCapabilities> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
+            => Task.FromResult(ModelCapabilities.Unknown(model));
         public void Dispose() { }
     }
 }

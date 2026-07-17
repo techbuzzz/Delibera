@@ -1,0 +1,26 @@
+# ───────────────────────────────────────────────────────────────────────────────
+# Development overlay — automatically applied by Docker Compose in dev.
+# Do NOT commit secrets here; use a .env file or Docker secrets.
+# ───────────────────────────────────────────────────────────────────────────────
+name: delibera
+
+services:
+  delibera-server:
+    build:
+      args:
+        BUILD_CONFIGURATION: Debug
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # Forward local Ollama (running on the Docker host) into the container.
+      # On Linux use host.docker.internal only if the extra-hosts trick is configured;
+      # alternatively set DELIBERA_PROVIDER_ENDPOINT=http://172.17.0.1:11434
+      Delibera__Providers__DefaultEndpoint: ${DELIBERA_PROVIDER_ENDPOINT:-http://host.docker.internal:11434}
+      # Verbose logging in dev
+      Logging__LogLevel__Default: Debug
+      Logging__LogLevel__Microsoft.AspNetCore: Information
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Linux bridge to host Ollama
+    ports:
+      - "5200:8080"   # REST API  →  http://localhost:5200/api/v1
+                      # MCP tools →  http://localhost:5200/mcp
+                      # OpenAPI   →  http://localhost:5200/openapi/v1.json

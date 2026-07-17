@@ -58,7 +58,7 @@ public interface ILLMProvider : IDisposable
       float temperature = 0.7f,
       [EnumeratorCancellation] CancellationToken ct = default)
    {
-      yield return await ChatAsync(model, systemPrompt, userPrompt, temperature, ct);
+      yield return await ChatAsync(model, systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
    }
 
    /// <summary>
@@ -69,23 +69,16 @@ public interface ILLMProvider : IDisposable
    ///    <para>
    ///       This is used by the AutoChunking orchestrator to determine whether a document
    ///       fits within every participant's context window. When a provider cannot determine
-   ///       capabilities dynamically, it should return <c>null</c> — the orchestrator will
+   ///       capabilities dynamically, it should return
+   ///       <see cref="Models.ModelCapabilities.Unknown" /> — the orchestrator will
    ///       fall back to <see cref="Models.ModelContextWindowRegistry" />.
-   ///    </para>
-   ///    <para>
-   ///       The default implementation returns <c>null</c> so existing providers keep
-   ///       working unchanged. Providers that can introspect model metadata (e.g. Ollama
-   ///       via <c>/api/show</c>) override this to return real data.
    ///    </para>
    /// </remarks>
    /// <param name="model">Model name to query.</param>
    /// <param name="ct">Cancellation token.</param>
    /// <returns>
-   ///    A <see cref="Models.ModelCapabilities" /> instance, or <c>null</c> when the
-   ///    provider cannot determine capabilities for this model.
+   ///    A <see cref="Models.ModelCapabilities" /> instance. Providers that cannot
+   ///    introspect model metadata should return <see cref="Models.ModelCapabilities.Unknown" />.
    /// </returns>
-   Task<ModelCapabilities?> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
-   {
-      return Task.FromResult<ModelCapabilities?>(null);
-   }
+   Task<ModelCapabilities> GetModelCapabilitiesAsync(string model, CancellationToken ct = default);
 }

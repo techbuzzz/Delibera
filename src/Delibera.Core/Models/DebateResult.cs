@@ -65,6 +65,25 @@ public sealed record DebateResult
    /// <summary>Whether the debate has completed.</summary>
    public bool IsCompleted => CompletedAt.HasValue;
 
+   /// <summary>
+   ///    <c>true</c> when this result was returned from <see cref="Interfaces.IDebateCache" />
+   ///    instead of being computed fresh. When <c>true</c>, <see cref="CacheKey" />
+   ///    holds the deterministic key that produced the hit.
+   /// </summary>
+   public bool CacheHit { get; init; }
+
+   /// <summary>
+   ///    The deterministic cache key used for this result, or <c>null</c> when
+   ///    caching is disabled or bypassed.
+   /// </summary>
+   public string? CacheKey { get; init; }
+
+   /// <summary>
+   ///    When this result was originally cached. <c>null</c> when <see cref="CacheHit" />
+   ///    is <c>false</c>.
+   /// </summary>
+   public DateTime? CachedAt { get; init; }
+
    /// <summary>Token usage statistics (populated when compression is enabled).</summary>
    public TokenStatistics? TokenStats { get; init; }
 
@@ -105,7 +124,7 @@ public sealed record DebateResult
    /// </summary>
    public string ToMarkdown()
    {
-      var sb = new StringBuilder();
+      var sb = new StringBuilder(4096);
 
       sb.AppendLine($"# Delibera Debate — {StartedAt:yyyy-MM-dd HH:mm:ss UTC}");
       sb.AppendLine();
@@ -233,7 +252,7 @@ public sealed record DebateResult
    /// </summary>
    public string ToStatisticsMarkdown()
    {
-      var sb = new StringBuilder();
+      var sb = new StringBuilder(2048);
 
       sb.AppendLine($"# 📊 Debate Statistics — {DebateId}");
       sb.AppendLine();
@@ -267,7 +286,7 @@ public sealed record DebateResult
    /// </summary>
    public string ToLogsMarkdown()
    {
-      var sb = new StringBuilder();
+      var sb = new StringBuilder(2048);
 
       sb.AppendLine($"# 📋 Execution Logs — {DebateId}");
       sb.AppendLine();

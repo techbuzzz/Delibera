@@ -17,22 +17,22 @@ namespace Delibera.Core.Attachments;
 /// </remarks>
 public interface IFileContentReader
 {
-    /// <summary>
-    ///    File extensions this reader handles, including the leading dot and
-    ///    both lower- and upper-case variants (e.g. <c>[".pdf", ".PDF"]</c>).
-    /// </summary>
-    IReadOnlyCollection<string> SupportedExtensions { get; }
+   /// <summary>
+   ///    File extensions this reader handles, including the leading dot and
+   ///    both lower- and upper-case variants (e.g. <c>[".pdf", ".PDF"]</c>).
+   /// </summary>
+   IReadOnlyCollection<string> SupportedExtensions { get; }
 
-    /// <summary>
-    ///    Reads the file at <paramref name="filePath"/> and returns a normalised
-    ///    <see cref="FileReadResult"/>. Implementations must handle missing files
-    ///    gracefully (return a result with an error message in
-    ///    <see cref="FileReadResult.TextContent"/> rather than throwing).
-    /// </summary>
-    /// <param name="filePath">Absolute or relative path to the file.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>Normalised read result.</returns>
-    Task<FileReadResult> ReadAsync(string filePath, CancellationToken ct = default);
+   /// <summary>
+   ///    Reads the file at <paramref name="filePath"/> and returns a normalised
+   ///    <see cref="FileReadResult"/>. Implementations must handle missing files
+   ///    gracefully (return a result with an error message in
+   ///    <see cref="FileReadResult.TextContent"/> rather than throwing).
+   /// </summary>
+   /// <param name="filePath">Absolute or relative path to the file.</param>
+   /// <param name="ct">Cancellation token.</param>
+   /// <returns>Normalised read result.</returns>
+   Task<FileReadResult> ReadAsync(string filePath, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -56,10 +56,10 @@ public interface IFileContentReader
 ///    <c>null</c> when no metadata was extracted.
 /// </param>
 public sealed record FileReadResult(
-    string SourcePath,
-    string? TextContent,
-    IReadOnlyList<BinaryAttachment>? BinaryParts,
-    IReadOnlyDictionary<string, string>? Metadata);
+   string SourcePath,
+   string? TextContent,
+   IReadOnlyList<BinaryAttachment>? BinaryParts,
+   IReadOnlyDictionary<string, string>? Metadata);
 
 /// <summary>
 ///    A raw binary part — image bytes ready for vision-model consumption via
@@ -69,9 +69,9 @@ public sealed record FileReadResult(
 /// <param name="MediaType">MIME type (e.g. "image/png", "image/jpeg", "image/webp").</param>
 /// <param name="Content">Raw binary content.</param>
 public sealed record BinaryAttachment(
-    string Name,
-    string MediaType,
-    byte[] Content);
+   string Name,
+   string MediaType,
+   byte[] Content);
 
 /// <summary>
 ///    A file attached to a council debate. The file is read lazily via the
@@ -84,5 +84,5 @@ public sealed record BinaryAttachment(
 ///    Shown to text-only models that cannot process binary attachments.
 /// </param>
 public sealed record FileAttachment(
-    string FilePath,
-    string? Description = null);
+   string FilePath,
+   string? Description = null);

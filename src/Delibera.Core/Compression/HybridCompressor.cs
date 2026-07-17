@@ -73,7 +73,7 @@ public sealed class HybridCompressor : IContextCompressor
 
       // ── Stage 1: Deduplication ──
       _dedup ??= new DeduplicationCompressor(_embeddingProvider);
-      var dedupResult = await _dedup.CompressAsync(currentText, options, ct);
+      var dedupResult = await _dedup.CompressAsync(currentText, options, ct).ConfigureAwait(false);
       currentText = dedupResult.Text;
 
       var currentTokens = counter.EstimateTokens(currentText);
@@ -85,7 +85,7 @@ public sealed class HybridCompressor : IContextCompressor
       {
          var semanticOptions = options with { MaxOutputTokens = targetTokens };
          _semantic ??= new SemanticCompressor(_embeddingProvider);
-         var semanticResult = await _semantic.CompressAsync(currentText, semanticOptions, ct);
+         var semanticResult = await _semantic.CompressAsync(currentText, semanticOptions, ct).ConfigureAwait(false);
          currentText = semanticResult.Text;
 
          currentTokens = counter.EstimateTokens(currentText);
@@ -98,7 +98,7 @@ public sealed class HybridCompressor : IContextCompressor
       {
          var summOptions = options with { MaxOutputTokens = targetTokens };
          _summarizer ??= new SummarizationCompressor(_llmProvider, _modelName);
-         var summResult = await _summarizer.CompressAsync(currentText, summOptions, ct);
+         var summResult = await _summarizer.CompressAsync(currentText, summOptions, ct).ConfigureAwait(false);
          currentText = summResult.Text;
          currentTokens = counter.EstimateTokens(currentText);
       }
@@ -112,6 +112,6 @@ public sealed class HybridCompressor : IContextCompressor
    {
       ArgumentNullException.ThrowIfNull(texts);
       var merged = string.Join("\n\n", texts);
-      return await CompressAsync(merged, options, ct);
+      return await CompressAsync(merged, options, ct).ConfigureAwait(false);
    }
 }

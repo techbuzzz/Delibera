@@ -22,7 +22,7 @@ public interface IDebateStore
    /// <param name="checkpoint">The checkpoint to persist.</param>
    /// <param name="ct">Cancellation token.</param>
    /// <returns>The debate identifier used for storage.</returns>
-   Task<string> SaveCheckpointAsync(DebateCheckpoint checkpoint, CancellationToken ct = default);
+   ValueTask<string> SaveCheckpointAsync(DebateCheckpoint checkpoint, CancellationToken ct = default);
 
    /// <summary>
    ///    Loads the checkpoint for the given <paramref name="debateId" />, or
@@ -31,7 +31,7 @@ public interface IDebateStore
    /// <param name="debateId">The debate identifier.</param>
    /// <param name="ct">Cancellation token.</param>
    /// <returns>The loaded checkpoint, or <c>null</c>.</returns>
-   Task<DebateCheckpoint?> LoadCheckpointAsync(string debateId, CancellationToken ct = default);
+   ValueTask<DebateCheckpoint?> LoadCheckpointAsync(string debateId, CancellationToken ct = default);
 
    /// <summary>
    ///    Lists metadata for every checkpoint currently stored, ordered by
@@ -39,7 +39,7 @@ public interface IDebateStore
    /// </summary>
    /// <param name="ct">Cancellation token.</param>
    /// <returns>Read-only list of checkpoint metadata.</returns>
-   Task<IReadOnlyList<DebateCheckpointMeta>> ListAsync(CancellationToken ct = default);
+   ValueTask<IReadOnlyList<DebateCheckpointMeta>> ListAsync(CancellationToken ct = default);
 
    /// <summary>
    ///    Deletes the checkpoint for the given <paramref name="debateId" />.
@@ -47,5 +47,5 @@ public interface IDebateStore
    /// </summary>
    /// <param name="debateId">The debate identifier.</param>
    /// <param name="ct">Cancellation token.</param>
-   Task DeleteAsync(string debateId, CancellationToken ct = default);
+   ValueTask DeleteAsync(string debateId, CancellationToken ct = default);
 }

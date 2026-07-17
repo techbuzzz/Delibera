@@ -8,7 +8,7 @@ namespace Delibera.Core.Debate;
 ///    Provides shared utilities for collecting responses, formatting rounds,
 ///    querying the Knowledge Keeper, and compressing context.
 /// </summary>
-public abstract class DebateScenario : IDebateStrategyWithOptions
+public abstract class DebateScenario : IDebateStrategy
 {
    // ──────────────────────────────────────────────
    // Operator helpers
@@ -37,19 +37,6 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
       CouncilMember? chairman,
       KnowledgeKeeper? knowledgeKeeper,
       Operator? @operator,
-      int maxRounds = 4,
-      float temperature = 0.7f,
-      Action<DebateRound>? onRoundCompleted = null,
-      CancellationToken ct = default);
-
-   /// <inheritdoc
-   ///    cref="IDebateStrategyWithOptions.ExecuteAsync(IReadOnlyList{CouncilMember}, PromptContext, CouncilMember?, KnowledgeKeeper?, Operator?, DebateExecutionOptions, int, float, Action{DebateRound}?, CancellationToken)" />
-   public abstract Task<DebateResult> ExecuteAsync(
-      IReadOnlyList<CouncilMember> members,
-      PromptContext context,
-      CouncilMember? chairman,
-      KnowledgeKeeper? knowledgeKeeper,
-      Operator? @operator,
       DebateExecutionOptions executionOptions,
       int maxRounds = 4,
       float temperature = 0.7f,
@@ -72,7 +59,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
       {
          try
          {
-            var response = await member.AskAsync(systemPrompt, userPrompt, temperature, ct);
+            var response = await member.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
             return (member.Role, member.DisplayName, Response: response);
          }
          catch (Exception ex)
@@ -81,7 +68,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
          }
       });
 
-      var results = await Task.WhenAll(tasks);
+      var results = await Task.WhenAll(tasks).ConfigureAwait(false);
       //return results.ToDictionary(r => r.DisplayName, r => r.Response);
       // Disambiguate by appending a counter while preserving the original label for unique names.
       var seen = new HashSet<string>();
@@ -164,7 +151,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
 
       try
       {
-         var answer = await keeper.AnswerQuestionAsync(query, 5, temperature, ct);
+         var answer = await keeper.AnswerQuestionAsync(query, 5, temperature, ct).ConfigureAwait(false);
          var interaction = new KnowledgeInteraction(query, answer, 5);
          return (answer, interaction);
       }
@@ -203,7 +190,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
             : null;
 
          var roundCtx = await keeper.ProvideContextForRoundAsync(
-            topic, roundNumber, previousSummary, ct: ct);
+            topic, roundNumber, previousSummary, ct: ct).ConfigureAwait(false);
 
          return (roundCtx.Answer, roundCtx.Interaction);
       }
@@ -249,7 +236,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
       IReadOnlyDictionary<string, string> responses,
       CancellationToken ct = default)
    {
-      return await ProcessOperatorRequestsAsync(@operator, responses, DebateExecutionOptions.Default, ct);
+      return await ProcessOperatorRequestsAsync(@operator, responses, DebateExecutionOptions.Default, ct).ConfigureAwait(false);
    }
 
    /// <summary>
@@ -294,7 +281,7 @@ public abstract class DebateScenario : IDebateStrategyWithOptions
          {
             try
             {
-               var result = await @operator.ExecuteTaskAsync(item.Member, item.Task, token);
+               var result = await @operator.ExecuteTaskAsync(item.Member, item.Task, token).ConfigureAwait(false);
                var interaction = result.ToInteraction();
                lock (interactions)
                {

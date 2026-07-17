@@ -46,8 +46,11 @@ outcomes** rather than single-model guesses.
 - 🔌 **Interface-First** — clean abstractions for providers, factories, builders and executors
 - 🧱 **Modern C# 15** — file-scoped namespaces, records, init-only properties, global usings
 
-### v10.2.6 — New Features
+### v10.3.0 — New Features
 
+- 🌐 **Distributed Debates** — `IDebateOrchestrator` with `LocalDebateOrchestrator` (in-process) and `RedisDebateOrchestrator` (Redis Streams). `DebateHandle`, `DebateRoundEvent` discriminated union, `EnqueueAsync`/`StreamAsync`/`CancelAsync` API.
+- 💾 **Result Caching** — `IDebateCache` with `InMemoryDebateCache`, `FileDebateCache`, `RedisDebateCache`. `CacheBehavior` enum (Disabled/ReadWrite/ReadOnly/WriteThrough/Bypass). `DebateCacheKeyGenerator` (SHA-256). Per-debate cache control via `WithCacheBehavior()`.
+- 🖥️ **Delibera.Server** — ASP.NET Core 10 Minimal API with REST + SSE streaming. Debate orchestration via `IDebateOrchestrator`.
 - 🌊 **Async Streaming Council** — `ICouncilExecutor.StreamDebateAsync(CancellationToken)` yields each `DebateRound` live as it completes via an internal `Channel<DebateRound>` bridge. Perfect for ASP.NET Core SSE, WebSocket, Blazor, and CLI live output. `DebateRound.Total` + `IsFinal` + `LastStreamedResult` round metadata included.
 - 🗳️ **Pluggable Vote Engine** — `IVotingStrategy` with built-in `MajorityVotingStrategy`, `BordaCountVotingStrategy`, and `WeightedVotingStrategy` (per-member `MemberWeights`). `Chairman.CreateVoting(...)` swaps the synthesis path for a verifiable decision tally rendered as a 🗳️ Voting Tally section in the Markdown output.
 - 💾 **Debate Persistence & Resume** — `IDebateStore` + `FileDebateStore` (atomic JSON write-then-rename, `RetentionDays`) + `InMemoryDebateStore`. `CouncilBuilder.WithPersistence(...)` saves a checkpoint after every round; `ResumeFrom(debateId)` continues from the last completed round after a crash or pause.
@@ -140,7 +143,7 @@ Resolved services:
 | Interface             | Implementation       | Lifetime  |
 | --------------------- | -------------------- | --------- |
 | `ILLMProviderFactory` | `ProviderFactory`    | Singleton |
-| `IRagProviderFactory` | `RagProviderFactory` | Singleton |
+| `IVectorStoreFactory` | `VectorStoreFactory` | Singleton |
 | `ICompressionFactory` | `CompressionService` | Singleton |
 | `ICouncilBuilder`     | `CouncilBuilder`     | Transient |
 
@@ -282,7 +285,7 @@ var ollama = new OllamaProvider("http://localhost:11434");
 var embeddings = new OllamaEmbeddingProvider(ollama, "nomic-embed-text");
 
 // pgvector — just add a connection string
-var ragFactory = new RagProviderFactory();
+var ragFactory = new VectorStoreFactory();
 var rag = ragFactory.CreatePgVector(
 	 embeddings,
 	 "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres");
@@ -395,7 +398,7 @@ var council = new CouncilBuilder()
 | **ConsensusDebate**   | Perspectives → Common Ground → Consensus → Facilitator  | Optimal solution search |
 
 Each strategy is implemented as an `IDebateStrategy` — combine with `Builder`, `Template Method`
-(`DebateScenario`) and `Factory` patterns (`ProviderFactory`, `RagProviderFactory`, `CompressionFactory`,
+(`DebateScenario`) and `Factory` patterns (`ProviderFactory`, `VectorStoreFactory`, `CompressionFactory`,
 `Chairman`) to compose custom flows.
 
 ---

@@ -59,13 +59,13 @@ public sealed class PgVectorStore : IVectorStore
    {
       var tableName = SanitizeTableName(collectionName);
 
-      await using var conn = await _dataSource.OpenConnectionAsync(ct);
+      await using var conn = await _dataSource.OpenConnectionAsync(ct).ConfigureAwait(false);
 
       // Ensure pgvector extension exists
       await using (var extCmd = conn.CreateCommand())
       {
          extCmd.CommandText = "CREATE EXTENSION IF NOT EXISTS vector";
-         await extCmd.ExecuteNonQueryAsync(ct);
+         await extCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
       }
 
       // Create the table if it doesn't exist
@@ -78,7 +78,7 @@ public sealed class PgVectorStore : IVectorStore
                              embedding vector({vectorSize})
                          )
                          """;
-      await cmd.ExecuteNonQueryAsync(ct);
+      await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
       // Create an IVFFlat index for fast cosine-distance search (if not exists)
       await using var idxCmd = conn.CreateCommand();
@@ -90,7 +90,7 @@ public sealed class PgVectorStore : IVectorStore
                             """;
       try
       {
-         await idxCmd.ExecuteNonQueryAsync(ct);
+         await idxCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
       }
       catch (PostgresException)
       {
@@ -105,7 +105,7 @@ public sealed class PgVectorStore : IVectorStore
       if (points.Count == 0) return;
 
       var tableName = SanitizeTableName(collectionName);
-      await using var conn = await _dataSource.OpenConnectionAsync(ct);
+      await using var conn = await _dataSource.OpenConnectionAsync(ct).ConfigureAwait(false);
       await using var batch = new NpgsqlBatch(conn);
 
       foreach (var p in points)
@@ -133,7 +133,7 @@ public sealed class PgVectorStore : IVectorStore
          batch.BatchCommands.Add(cmd);
       }
 
-      await batch.ExecuteNonQueryAsync(ct);
+      await batch.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
    }
 
    /// <inheritdoc />
@@ -145,7 +145,7 @@ public sealed class PgVectorStore : IVectorStore
       CancellationToken ct = default)
    {
       var tableName = SanitizeTableName(collectionName);
-      await using var conn = await _dataSource.OpenConnectionAsync(ct);
+      await using var conn = await _dataSource.OpenConnectionAsync(ct).ConfigureAwait(false);
       await using var cmd = conn.CreateCommand();
 
       // Cosine distance: <=> returns distance [0..2], convert to similarity [0..1]
@@ -161,10 +161,10 @@ public sealed class PgVectorStore : IVectorStore
       cmd.Parameters.AddWithValue(limit);
       cmd.Parameters.AddWithValue((double)scoreThreshold);
 
-      await using var reader = await cmd.ExecuteReaderAsync(ct);
+      await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
       var results = new List<VectorSearchResult>();
 
-      while (await reader.ReadAsync(ct))
+      while (await reader.ReadAsync(ct).ConfigureAwait(false))
       {
          var id = reader.GetGuid(0).ToString();
          var text = reader.GetString(1);
@@ -194,21 +194,21 @@ public sealed class PgVectorStore : IVectorStore
    public async Task DeleteCollectionAsync(string collectionName, CancellationToken ct = default)
    {
       var tableName = SanitizeTableName(collectionName);
-      await using var conn = await _dataSource.OpenConnectionAsync(ct);
+      await using var conn = await _dataSource.OpenConnectionAsync(ct).ConfigureAwait(false);
       await using var cmd = conn.CreateCommand();
       cmd.CommandText = $"DROP TABLE IF EXISTS {tableName}";
-      await cmd.ExecuteNonQueryAsync(ct);
+      await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
    }
 
    /// <inheritdoc />
    public async Task<long> CountAsync(string collectionName, CancellationToken ct = default)
    {
       var tableName = SanitizeTableName(collectionName);
-      await using var conn = await _dataSource.OpenConnectionAsync(ct);
+      await using var conn = await _dataSource.OpenConnectionAsync(ct).ConfigureAwait(false);
       await using var cmd = conn.CreateCommand();
       cmd.CommandText = $"SELECT COUNT(*) FROM {tableName}";
 
-      var result = await cmd.ExecuteScalarAsync(ct);
+      var result = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
       return result is long l
          ? l
          : Convert.ToInt64(result);
@@ -218,7 +218,7 @@ public sealed class PgVectorStore : IVectorStore
    public async ValueTask DisposeAsync()
    {
       if (_ownsDataSource)
-         await _dataSource.DisposeAsync();
+         await _dataSource.DisposeAsync().ConfigureAwait(false);
    }
 
    // ──────────────────────────────────────────────

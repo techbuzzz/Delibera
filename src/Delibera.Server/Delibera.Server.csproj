@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>preview</LangVersion>
+    <RootNamespace>Delibera.Server</RootNamespace>
+    <AssemblyName>Delibera.Server</AssemblyName>
+    <UserSecretsId>delibera-server-secrets</UserSecretsId>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Core -->
+    <ProjectReference Include="..\Delibera.Core\Delibera.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ASP.NET / Minimal API -->
+    <!-- Microsoft.OpenApi 3.x makes IOpenApiMediaType.Example read-only, which breaks
+         the AspNetCore.OpenApi source generator (it emits Example = ... in the
+         generated OpenApiXmlCommentSupport code). Pin to 2.7.x until the source
+         generator is updated for v3. -->
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+
+    <!-- MCP Server (HTTP transport) -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
+
+    <!-- Validation -->
+    <PackageReference Include="FluentValidation" Version="12.1.1" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
+
+    <!-- Observability -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.17.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.17.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.17.0" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <!-- NU1510: Microsoft.AspNetCore.Http.Extensions and                                        -->
+    <!--         Microsoft.Extensions.Diagnostics.HealthChecks are implicit in                  -->
+    <!--         Microsoft.NET.Sdk.Web — removed explicit references.                           -->
+  </ItemGroup>
+
+</Project>

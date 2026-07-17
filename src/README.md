@@ -11,7 +11,7 @@
 [![NuGet](https://img.shields.io/nuget/v/Delibera.Core.svg)](https://www.nuget.org/packages/Delibera.Core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-1F2937.svg)](https://dotnet.microsoft.com)
-[![C# 14](https://img.shields.io/badge/C%23-14.0-239120.svg)](https://learn.microsoft.com/dotnet/csharp/)
+[![C# 15](https://img.shields.io/badge/C%23-15.0-239120.svg)](https://learn.microsoft.com/dotnet/csharp/)
 
 </div>
 
@@ -46,8 +46,11 @@ well-reasoned outcomes** rather than single-model guesses.
 | **🌐 Response Language**     | Force every model (participants, Chairman, KK, Operator) to answer in a specific language |
 | **⚡ Parallel Operator**     | `[[OPERATOR: …]]` tasks within a round run in parallel, bounded by `MaxDegreeOfParallelism` |
 | **📁 Separate File Output**   | Export `result.md`, `statistics.md`, and `logs.md` independently                      |
+| **🌐 Distributed Debates**   | `IDebateOrchestrator` with `LocalDebateOrchestrator` (in-process) and `RedisDebateOrchestrator` (Redis Streams). `DebateHandle`, `DebateRoundEvent` discriminated union, `EnqueueAsync`/`StreamAsync`/`CancelAsync` API |
+| **💾 Result Caching**         | `IDebateCache` with `InMemoryDebateCache`, `FileDebateCache`, `RedisDebateCache`. `CacheBehavior` enum (Disabled/ReadWrite/ReadOnly/WriteThrough/Bypass). `DebateCacheKeyGenerator` (SHA-256). Per-debate cache control via `WithCacheBehavior()` |
+| **🖥️ Delibera.Server**       | ASP.NET Core 10 Minimal API with REST + SSE streaming. Debate orchestration via `IDebateOrchestrator` |
 | **🔌 Interface-First**        | Clean abstractions for providers, factories, builders and executors                   |
-| **🧱 Modern C# 12**           | File-scoped namespaces, records, init-only properties, global usings                  |
+| **🧱 Modern C# 15**           | File-scoped namespaces, records, init-only properties, global usings, discriminated unions |
 
 ---
 
@@ -189,7 +192,7 @@ Resolves these interfaces from DI:
 | Interface             | Implementation       | Lifetime  |
 | --------------------- | -------------------- | --------- |
 | `ILLMProviderFactory` | `ProviderFactory`    | Singleton |
-| `IRagProviderFactory` | `RagProviderFactory` | Singleton |
+| `IVectorStoreFactory` | `VectorStoreFactory` | Singleton |
 | `ICompressionFactory` | `CompressionService` | Singleton |
 | `ICouncilBuilder`     | `CouncilBuilder`     | Transient |
 
@@ -380,7 +383,7 @@ var ollama = new OllamaProvider("http://localhost:11434");
 var embeddings = new OllamaEmbeddingProvider(ollama, "nomic-embed-text");
 
 // pgvector — just add a connection string
-var ragFactory = new RagProviderFactory();
+var ragFactory = new VectorStoreFactory();
 var rag = ragFactory.CreatePgVector(
     embeddings,
     "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres");
@@ -425,7 +428,7 @@ Each strategy is implemented as an `IDebateStrategy` — see
 
 | Pattern             | Usage                                                                     |
 | ------------------- | ------------------------------------------------------------------------- |
-| **Factory**         | `ProviderFactory`, `RagProviderFactory`, `CompressionFactory`, `Chairman` |
+| **Factory**         | `ProviderFactory`, `VectorStoreFactory`, `CompressionFactory`, `Chairman` |
 | **Strategy**        | `IDebateStrategy`, `IContextCompressor`                                   |
 | **Builder**         | `CouncilBuilder` fluent API                                               |
 | **Template Method** | `DebateScenario` abstract base class                                      |
@@ -645,6 +648,8 @@ parallelism — all delegated tasks in a round run concurrently.
 Delibera.Core
 ├── Council/              ← CouncilBuilder, CouncilExecutor, Chairman, KnowledgeKeeper, Operator
 ├── Debate/               ← StandardDebate, CritiqueDebate, ConsensusDebate, DebateScenario
+├── Orchestration/        ← IDebateOrchestrator, LocalDebateOrchestrator, DebateHandle, DebateRoundEvent
+├── Caching/              ← IDebateCache, InMemoryDebateCache, FileDebateCache, CacheBehavior, DebateCacheKeyGenerator
 ├── Compression/          ← Semantic / Deduplication / Summarization / Hybrid
 ├── Providers/
 │   ├── LLM/              ← OllamaProvider, ChatClientLLMProvider, EmbeddingGeneratorProvider
@@ -655,6 +660,13 @@ Delibera.Core
 ├── Knowledge/            ← MarkdownKnowledgeBase
 ├── Models/               ← CouncilMember, DebateResult, DebateRound, TokenStatistics, DebateExecutionOptions, ...
 └── Interfaces/           ← ILLMProvider, IRagProvider, IContextCompressor, IDebateStrategy, ...
+
+Delibera.Redis
+├── Orchestration/        ← RedisDebateOrchestrator (Redis Streams), RedisDebateCache
+
+Delibera.Server
+├── Minimal API endpoints ← REST + SSE streaming
+└── DebateWorkerService   ← Background service for debate orchestration
 ```
 
 ---

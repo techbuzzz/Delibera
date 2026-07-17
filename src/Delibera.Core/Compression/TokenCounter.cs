@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Threading;
 
 namespace Delibera.Core.Compression;
 
@@ -29,7 +30,7 @@ public sealed class TokenCounter
    // ──────────────────────────────────────────────
 
    private readonly ConcurrentDictionary<string, int> _memo = new();
-   private readonly object _memoLock = new();
+   private readonly ReaderWriterLockSlim _lruLock = new();
    private readonly LinkedList<string> _memoOrder = new(); // LRU access order
 
    /// <summary>Gets the shared default <see cref="TokenCounter" /> instance.</summary>
@@ -161,25 +162,35 @@ public sealed class TokenCounter
 
    private void TrackMemoEntry(string key)
    {
-      lock (_memoLock)
+      _lruLock.EnterWriteLock();
+      try
       {
          _memoOrder.AddLast(key);
+      }
+      finally
+      {
+         _lruLock.ExitWriteLock();
       }
    }
 
    private void TouchMemoEntry(string key)
    {
-      lock (_memoLock)
+      _lruLock.EnterWriteLock();
+      try
       {
-         // Remove and re-add to move to end (most recently used).
          _memoOrder.Remove(key);
          _memoOrder.AddLast(key);
+      }
+      finally
+      {
+         _lruLock.ExitWriteLock();
       }
    }
 
    private void EvictMemoEntries(int count)
    {
-      lock (_memoLock)
+      _lruLock.EnterWriteLock();
+      try
       {
          var removed = 0;
          var node = _memoOrder.First;
@@ -191,6 +202,10 @@ public sealed class TokenCounter
             node = next;
             removed++;
          }
+      }
+      finally
+      {
+         _lruLock.ExitWriteLock();
       }
    }
 

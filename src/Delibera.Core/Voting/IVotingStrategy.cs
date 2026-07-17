@@ -5,7 +5,7 @@ namespace Delibera.Core.Voting;
 /// </summary>
 /// <param name="Name">Option name (e.g. a proposed answer, a candidate solution).</param>
 /// <param name="Rank">Rank position — 1 is the top preference. Lower rank = preferred.</param>
-public sealed record RankedOption(string Name, int Rank);
+public readonly record struct RankedOption(string Name, int Rank);
 
 /// <summary>
 ///    A single participant's ballot in a council vote.
@@ -140,7 +140,7 @@ public sealed class BordaCountVotingStrategy : IVotingStrategy
 ///    <see cref="MemberWeights" /> to give specific members more influence
 ///    (e.g. a SecurityExpert's vote counts double).
 /// </summary>
-public sealed class WeightedVotingStrategy : IVotingStrategy
+public sealed class WeightedVotingStrategy(double defaultWeight = 1.0) : IVotingStrategy
 {
    /// <summary>
    ///    Per-member weight overrides. Keyed by <see cref="ParticipantBallot.MemberName" />

@@ -71,14 +71,14 @@ public sealed class McpClientAdapter : IMcpClient
       if (_client is not null) return;
 
       var transport = CreateTransport(_config, _httpClientFactory, _httpClientName, LoggerFactory);
-      _client = await McpClient.CreateAsync(transport, cancellationToken: ct);
+      _client = await McpClient.CreateAsync(transport, cancellationToken: ct).ConfigureAwait(false);
    }
 
    /// <inheritdoc />
    public async Task<IReadOnlyList<OperatorTool>> ListToolsAsync(CancellationToken ct = default)
    {
       EnsureConnected();
-      var tools = await _client!.ListToolsAsync(cancellationToken: ct);
+      var tools = await _client!.ListToolsAsync(cancellationToken: ct).ConfigureAwait(false);
 
       return tools
          .Select(t => new OperatorTool(
@@ -103,7 +103,7 @@ public sealed class McpClientAdapter : IMcpClient
       CallToolResult result;
       try
       {
-         result = await _client!.CallToolAsync(toolName, arguments, cancellationToken: ct);
+         result = await _client!.CallToolAsync(toolName, arguments, cancellationToken: ct).ConfigureAwait(false);
       }
       catch (Exception ex)
       {
@@ -127,7 +127,7 @@ public sealed class McpClientAdapter : IMcpClient
       _disposed = true;
 
       if (_client is not null)
-         await _client.DisposeAsync();
+         await _client.DisposeAsync().ConfigureAwait(false);
    }
 
    private void EnsureConnected()

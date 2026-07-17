@@ -2,8 +2,11 @@
   <Folder Name="/src/">
     <Project Path="src/Delibera.ConsoleApp/Delibera.ConsoleApp.csproj" />
     <Project Path="src/Delibera.Core/Delibera.Core.csproj" />
+    <Project Path="src/Delibera.Redis/Delibera.Redis.csproj" />
+    <Project Path="src/Delibera.Server/Delibera.Server.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Delibera.Core.Tests/Delibera.Core.Tests.csproj" />
+    <Project Path="tests/Delibera.Server.Tests/Delibera.Server.Tests.csproj" />
   </Folder>
 </Solution>

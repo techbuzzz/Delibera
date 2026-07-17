@@ -1,20 +1,21 @@
 using Delibera.Core.Providers.LLM;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
+using System.Collections.Concurrent;
 
 namespace Delibera.Core.Providers;
 
 /// <summary>
 ///    Generic registry-and-cache factory shared by <see cref="ProviderFactory" /> and
-///    <see cref="RAG.RagProviderFactory" />. Stores builders keyed by name and the instances
+///    <see cref="RAG.VectorStoreFactory" />. Stores builders keyed by name and the instances
 ///    they have produced so subsequent <c>Create</c> calls return the same object.
 /// </summary>
 public abstract class CachingFactory<TBuilder, TInstance>
    : IDisposable
    where TInstance : class
 {
-   private readonly Dictionary<string, TBuilder> _builders = new(StringComparer.OrdinalIgnoreCase);
-   private readonly Dictionary<string, TInstance> _instances = new(StringComparer.OrdinalIgnoreCase);
+   private readonly ConcurrentDictionary<string, TBuilder> _builders = new(StringComparer.OrdinalIgnoreCase);
+   private readonly ConcurrentDictionary<string, TInstance> _instances = new(StringComparer.OrdinalIgnoreCase);
    private bool _disposed;
 
    /// <summary>Registered provider type names (read-only view).</summary>
@@ -56,14 +57,13 @@ public abstract class CachingFactory<TBuilder, TInstance>
    /// </summary>
    protected TInstance GetOrCreate(string name, string providerType, Func<TBuilder, TInstance> build)
    {
-      if (_instances.TryGetValue(name, out var existing)) return existing;
-      if (!_builders.TryGetValue(providerType, out var builder))
-         throw new InvalidOperationException(
-            $"Unknown provider type '{providerType}'. Registered: {string.Join(", ", _builders.Keys)}");
-
-      var instance = build(builder);
-      _instances[name] = instance;
-      return instance;
+      return _instances.GetOrAdd(name, _ =>
+      {
+         if (!_builders.TryGetValue(providerType, out var builder))
+            throw new InvalidOperationException(
+               $"Unknown provider type '{providerType}'. Registered: {string.Join(", ", _builders.Keys)}");
+         return build(builder);
+      });
    }
 
    /// <summary>

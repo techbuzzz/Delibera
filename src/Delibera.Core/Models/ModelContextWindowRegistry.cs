@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+
 namespace Delibera.Core.Models;
 
 /// <summary>
@@ -8,7 +10,8 @@ namespace Delibera.Core.Models;
 ///    <para>
 ///       The registry is consulted by <see cref="Chunking.AutoChunkingOrchestrator" />
 ///       when <see cref="Interfaces.ILLMProvider.GetModelCapabilitiesAsync" /> returns
-///       <c>null</c> or a <see cref="ModelCapabilities" /> with an unknown context window.
+///       a <see cref="ModelCapabilities" /> where <see cref="ModelCapabilities.IsUnknown" />
+///       is <c>true</c> or <see cref="ModelCapabilities.ContextWindowTokens" /> is <c>null</c>.
 ///    </para>
 ///    <para>
 ///       Call <see cref="Register" /> to add custom models at startup. The lookup is
@@ -18,7 +21,7 @@ namespace Delibera.Core.Models;
 /// </remarks>
 public static class ModelContextWindowRegistry
 {
-   private static readonly Dictionary<string, int> KnownWindows = new(StringComparer.OrdinalIgnoreCase)
+   private static readonly Dictionary<string, int> _windowsBuilder = new(StringComparer.OrdinalIgnoreCase)
    {
       // ── Llama family ──
       ["llama3.2"] = 131_072,
@@ -77,22 +80,59 @@ public static class ModelContextWindowRegistry
       ["yandexgpt-32k"] = 32_768,
       ["yandexgpt"] = 8_000,
 
-       // ── Other ──
-       ["nomic"] = 8_192,
-       ["mxbai"] = 32_768,
-       ["tinyllama"] = 2_048,
-       ["stable-code"] = 16_384
-    };
+      // ── Other ──
+      ["nomic"] = 8_192,
+      ["mxbai"] = 32_768,
+      ["tinyllama"] = 2_048,
+      ["stable-code"] = 16_384
+   };
 
    // ── Vision-capable model name patterns (case-insensitive substring match) ──
    // When a model name contains any of these substrings, it is treated as vision-capable.
-   private static readonly HashSet<string> KnownVisionPatterns = new(StringComparer.OrdinalIgnoreCase)
+   private static readonly HashSet<string> _visionPatternsBuilder = new(StringComparer.OrdinalIgnoreCase)
    {
       "llava", "gemma3", "llama3.2-vision", "minicpm-v",
       "gpt-4o", "gpt-4-vision", "claude-3", "qwen-vl", "internvl",
       "qwen2-vl", "qwen2.5-vl", "cogvlm", "yi-vl", "deepseek-vl",
       "pixtral", "llama4"
    };
+
+   private static FrozenDictionary<string, int> _frozenWindows = FrozenDictionary<string, int>.Empty;
+   private static FrozenSet<string> _frozenVisionPatterns = FrozenSet<string>.Empty;
+
+   private static FrozenDictionary<string, int> KnownWindows =>
+      _frozenWindows.Count == 0
+         ? FreezeWindows()
+         : _frozenWindows;
+
+   private static FrozenSet<string> KnownVisionPatterns =>
+      _frozenVisionPatterns.Count == 0
+         ? FreezeVisionPatterns()
+         : _frozenVisionPatterns;
+
+   private static FrozenDictionary<string, int> FreezeWindows()
+   {
+      _frozenWindows = _windowsBuilder.ToFrozenDictionary();
+      return _frozenWindows;
+   }
+
+   private static FrozenSet<string> FreezeVisionPatterns()
+   {
+      _frozenVisionPatterns = _visionPatternsBuilder.ToFrozenSet();
+      return _frozenVisionPatterns;
+   }
+
+   /// <summary>
+   ///    Freezes the registered model data so subsequent lookups use read-only
+   ///    frozen collections for optimal read performance. Call once at startup
+   ///    after all <see cref="Register" /> / <see cref="RegisterVisionPattern" />
+   ///    calls are complete.
+   /// </summary>
+   public static void Freeze()
+   {
+      _frozenWindows = _windowsBuilder.ToFrozenDictionary();
+      _frozenVisionPatterns = _visionPatternsBuilder.ToFrozenSet();
+   }
 
    /// <summary>
    ///    Returns <c>true</c> when the model name matches a known vision-capable pattern.
@@ -138,7 +178,8 @@ public static class ModelContextWindowRegistry
    public static void RegisterVisionPattern(string modelNamePattern)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(modelNamePattern);
-      KnownVisionPatterns.Add(modelNamePattern);
+      _visionPatternsBuilder.Add(modelNamePattern);
+      _frozenVisionPatterns = FrozenSet<string>.Empty; // invalidate frozen cache
    }
 
    /// <summary>
@@ -177,7 +218,8 @@ public static class ModelContextWindowRegistry
       ArgumentException.ThrowIfNullOrWhiteSpace(modelNamePattern);
       ArgumentOutOfRangeException.ThrowIfNegativeOrZero(contextWindowTokens);
 
-      KnownWindows[modelNamePattern] = contextWindowTokens;
+      _windowsBuilder[modelNamePattern] = contextWindowTokens;
+      _frozenWindows = FrozenDictionary<string, int>.Empty; // invalidate frozen cache
    }
 
    /// <summary>
@@ -185,6 +227,6 @@ public static class ModelContextWindowRegistry
    /// </summary>
    public static IReadOnlyDictionary<string, int> GetAll()
    {
-      return KnownWindows.AsReadOnly();
+      return KnownWindows;
    }
 }

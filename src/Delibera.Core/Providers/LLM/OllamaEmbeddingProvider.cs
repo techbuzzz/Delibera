@@ -53,7 +53,7 @@ public sealed class OllamaEmbeddingProvider : IEmbeddingProvider
       ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
       var request = new EmbedRequest { Model = EmbeddingModelName, Input = [text] };
-      var response = await _client.EmbedAsync(request, ct);
+      var response = await _client.EmbedAsync(request, ct).ConfigureAwait(false);
 
       var embedding = response.Embeddings.FirstOrDefault() ?? throw new InvalidOperationException($"No embedding returned by model '{EmbeddingModelName}'.");
 
@@ -69,7 +69,7 @@ public sealed class OllamaEmbeddingProvider : IEmbeddingProvider
       if (texts.Count == 0) return [];
 
       var request = new EmbedRequest { Model = EmbeddingModelName, Input = texts.ToList() };
-      var response = await _client.EmbedAsync(request, ct);
+      var response = await _client.EmbedAsync(request, ct).ConfigureAwait(false);
 
       var result = new List<float[]>(texts.Count);
       foreach (var emb in response.Embeddings)

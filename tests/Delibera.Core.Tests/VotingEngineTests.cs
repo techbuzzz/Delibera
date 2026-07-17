@@ -310,6 +310,8 @@ public class VotingEngineTests
                 return Task.FromResult(rankingReply);
             return Task.FromResult(debateReply);
         }
+        public Task<ModelCapabilities> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
+            => Task.FromResult(ModelCapabilities.Unknown(model));
         public void Dispose() { }
     }
 

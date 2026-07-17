@@ -9,11 +9,11 @@ namespace Delibera.Core.Models;
 [Flags]
 public enum MemberCapabilities
 {
-    /// <summary>The member can process text prompts. Always set for all LLMs.</summary>
-    Text = 1,
+   /// <summary>The member can process text prompts. Always set for all LLMs.</summary>
+   Text = 1,
 
-    /// <summary>The member can process image / vision inputs (e.g. llava, gpt-4o).</summary>
-    Vision = 2
+   /// <summary>The member can process image / vision inputs (e.g. llava, gpt-4o).</summary>
+   Vision = 2
 }
 
 /// <summary>
@@ -29,6 +29,11 @@ public enum MemberCapabilities
 ///       When a provider cannot determine the context window, <see cref="ContextWindowTokens" />
 ///       remains <c>null</c> and the AutoChunking orchestrator falls back to the registry or
 ///       a conservative default.
+///    </para>
+///    <para>
+///       Providers that cannot introspect model metadata at all return
+///       <see cref="Unknown" />, which callers check with
+///       <see cref="IsUnknown" />.
 ///    </para>
 /// </remarks>
 public sealed record ModelCapabilities
@@ -62,8 +67,17 @@ public sealed record ModelCapabilities
    public string? Family { get; init; }
 
    /// <summary>
+   ///    <c>true</c> when this instance was created via <see cref="Unknown" />,
+   ///    meaning the provider could not determine any capabilities for this model.
+   ///    Callers should fall back to <see cref="ModelContextWindowRegistry" /> or
+   ///    conservative defaults.
+   /// </summary>
+   public bool IsUnknown => ContextWindowTokens is null && MaxOutputTokens is null && !SupportsVision && !SupportsTools && Family is null;
+
+   /// <summary>
    ///    Creates a placeholder instance for a model whose capabilities are unknown.
    ///    All optional fields are left at their default (<c>null</c> / <c>false</c>).
+   ///    Callers can check for this via <see cref="IsUnknown" />.
    /// </summary>
    public static ModelCapabilities Unknown(string modelName)
    {

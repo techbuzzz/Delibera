@@ -36,7 +36,14 @@ public static class Program
          if (!appCts.IsCancellationRequested)
          {
             AnsiConsole.MarkupLine("\n[yellow]⚠️  Ctrl+C detected — canceling the debate...[/]");
-            try { appCts.Cancel(); } catch (ObjectDisposedException) { /* race */ }
+            try
+            {
+               appCts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+               /* race */
+            }
          }
       };
 
@@ -140,6 +147,7 @@ public static class Program
             choices.Add($"── {ex.Category} ──");
             lastCategory = ex.Category;
          }
+
          var label = $"  {ex.Title}";
          choices.Add(label);
          choiceToEntry[label] = ex;
@@ -159,7 +167,9 @@ public static class Program
       if (selected.Contains("Full Council Debate", StringComparison.OrdinalIgnoreCase))
          return null;
 
-      return choiceToEntry.TryGetValue(selected, out var entry) ? entry : null;
+      return choiceToEntry.TryGetValue(selected, out var entry)
+         ? entry
+         : null;
    }
 
    private static void PrintExampleCatalog(IReadOnlyList<ExampleEntry> examples)
@@ -269,7 +279,7 @@ public static class Program
                AnsiConsole.MarkupLine("\n📚 [bold]Setting up RAG with Qdrant...[/]");
                try
                {
-                  var ragFactory = new RagProviderFactory();
+                  var ragFactory = new VectorStoreFactory();
                   activeRagProvider = ragFactory.CreateQdrant(
                      embeddingProvider,
                      qdrantCfg["Host"] ?? "localhost",
@@ -289,7 +299,7 @@ public static class Program
                try
                {
                   var connStr = pgCfg["ConnectionString"] ?? "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres";
-                  var ragFactory = new RagProviderFactory();
+                  var ragFactory = new VectorStoreFactory();
                   activeRagProvider = ragFactory.CreatePgVector(embeddingProvider, connStr);
                   AnsiConsole.MarkupLine("  [green]✅ pgvector RAG ready[/]");
                }

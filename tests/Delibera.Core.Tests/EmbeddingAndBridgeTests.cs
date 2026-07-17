@@ -1,5 +1,6 @@
 using Delibera.Core.Extensions;
 using Delibera.Core.Interfaces;
+using Delibera.Core.Models;
 using Delibera.Core.Providers;
 using Delibera.Core.Providers.LLM;
 using Delibera.Core.Tests.Fakes;
@@ -111,8 +112,10 @@ public class MicrosoftAIExtensionsTests
       public Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<string>>([]);
       public Task<string> ChatAsync(string model, string systemPrompt, string userPrompt, float temperature = 0.7f, CancellationToken ct = default)
          => Task.FromResult($"echo:{userPrompt}");
-      public void Dispose() { }
-   }
+       public Task<ModelCapabilities> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
+          => Task.FromResult(ModelCapabilities.Unknown(model));
+       public void Dispose() { }
+    }
 }
 
 public class ProviderFactoryChatClientTests

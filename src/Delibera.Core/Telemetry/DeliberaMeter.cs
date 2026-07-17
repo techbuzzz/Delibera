@@ -65,6 +65,7 @@ public static class DeliberaMeter
    private static Counter<long>? _tokensTotal;
    private static Gauge<double>? _compressionRatio;
    private static Counter<long>? _debatesCompleted;
+   private static Counter<long>? _cacheHits;
 
    /// <summary>
    ///    The current <see cref="Meter" />. Lazily initialised on first access using
@@ -124,6 +125,16 @@ public static class DeliberaMeter
          "Total completed debates, tagged by strategy and success.");
 
    /// <summary>
+   ///    Counter incrementing each time a debate result is served from the
+   ///    <see cref="Interfaces.IDebateCache" />. Tagged with <c>cache_backend</c>.
+   /// </summary>
+   public static Counter<long> CacheHits =>
+      _cacheHits ??= Instance.CreateCounter<long>(
+         "delibera.cache.hit",
+         "{hits}",
+         "Total debate cache hits, tagged by backend type.");
+
+   /// <summary>
    ///    Configures the meter name and version. Call once at startup
    ///    (before any debate execution) when wiring through DI with a non-default
    ///    <see cref="TelemetryOptions.MeterName" />.
@@ -143,6 +154,7 @@ public static class DeliberaMeter
       _tokensTotal = null;
       _compressionRatio = null;
       _debatesCompleted = null;
+      _cacheHits = null;
    }
 
    /// <summary>

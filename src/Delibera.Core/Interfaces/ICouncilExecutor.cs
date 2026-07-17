@@ -89,23 +89,30 @@ public interface ICouncilExecutor
    /// </summary>
    string? ResumeFromDebateId { get; }
 
-    /// <summary>
-    ///    The agent memory backend, or <c>null</c> when agent memory is disabled.
-    ///    Set via <see cref="ICouncilBuilder.WithAgentMemory(IAgentMemory?)"/>.
-    /// </summary>
-    IAgentMemory? AgentMemory { get; }
+   /// <summary>
+   ///    The agent memory backend, or <c>null</c> when agent memory is disabled.
+   ///    Set via <see cref="ICouncilBuilder.WithAgentMemory(IAgentMemory?)"/>.
+   /// </summary>
+   IAgentMemory? AgentMemory { get; }
 
-    /// <summary>
-    ///    File attachments configured for this debate (F-06 Multi-Modal).
-    ///    Empty when no attachments were configured.
-    /// </summary>
-    IReadOnlyList<FileAttachment> Attachments { get; }
+   /// <summary>
+   ///    File attachments configured for this debate (F-06 Multi-Modal).
+   ///    Empty when no attachments were configured.
+   /// </summary>
+   IReadOnlyList<FileAttachment> Attachments { get; }
 
-    /// <summary>
-    ///    The file-content reader registry used to read attachments (F-06 Multi-Modal).
-    ///    Pre-populated with built-in readers for text and image files.
-    /// </summary>
-    FileContentReaderRegistry FileReaders { get; }
+   /// <summary>
+   ///    The file-content reader registry used to read attachments (F-06 Multi-Modal).
+   ///    Pre-populated with built-in readers for text and image files.
+   /// </summary>
+   FileContentReaderRegistry FileReaders { get; }
+
+   /// <summary>
+   ///    Cache behavior for this executor. When not <see cref="CacheBehavior.Disabled" />,
+   ///    the executor checks <see cref="IDebateCache" /> before running a debate.
+   ///    Set via <see cref="ICouncilBuilder.WithCacheBehavior(CacheBehavior)" />.
+   /// </summary>
+   CacheBehavior CacheBehavior { get; }
 
    /// <summary>
    ///    The result of the most recent <see cref="StreamDebateAsync" /> call, once the

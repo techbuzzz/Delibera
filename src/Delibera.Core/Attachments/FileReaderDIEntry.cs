@@ -7,5 +7,5 @@ namespace Delibera.Core.Attachments;
 ///    <see cref="Council.CouncilBuilder"/> can pick up custom readers automatically.
 /// </summary>
 public sealed record FileReaderDIEntry(
-    string Extension,
-    Func<IServiceProvider, IFileContentReader> ReaderFactory);
+   string Extension,
+   Func<IServiceProvider, IFileContentReader> ReaderFactory);

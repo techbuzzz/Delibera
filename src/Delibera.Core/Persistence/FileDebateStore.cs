@@ -16,11 +16,11 @@ namespace Delibera.Core.Persistence;
 ///    </para>
 ///    <para>
 ///       <b>Retention</b>: optionally delete checkpoints older than
-///       <see cref="RetentionDays" /> days. The retention sweep runs lazily on
+///       the configured retention period. The retention sweep runs lazily on
 ///       each <see cref="ListAsync" /> call (cheap; only reads file metadata).
 ///    </para>
 /// </remarks>
-public sealed class FileDebateStore : IDebateStore
+public sealed class FileDebateStore : IDebateStore, IDisposable
 {
    private static readonly JsonSerializerOptions JsonOptions = new()
    {
@@ -51,7 +51,7 @@ public sealed class FileDebateStore : IDebateStore
    }
 
    /// <inheritdoc />
-   public async Task<string> SaveCheckpointAsync(DebateCheckpoint checkpoint, CancellationToken ct = default)
+   public async ValueTask<string> SaveCheckpointAsync(DebateCheckpoint checkpoint, CancellationToken ct = default)
    {
       ArgumentNullException.ThrowIfNull(checkpoint);
       ct.ThrowIfCancellationRequested();
@@ -104,7 +104,7 @@ public sealed class FileDebateStore : IDebateStore
    }
 
    /// <inheritdoc />
-   public async Task<DebateCheckpoint?> LoadCheckpointAsync(string debateId, CancellationToken ct = default)
+   public async ValueTask<DebateCheckpoint?> LoadCheckpointAsync(string debateId, CancellationToken ct = default)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
       var path = GetFilePath(debateId);
@@ -114,7 +114,7 @@ public sealed class FileDebateStore : IDebateStore
    }
 
    /// <inheritdoc />
-   public async Task<IReadOnlyList<DebateCheckpointMeta>> ListAsync(CancellationToken ct = default)
+   public async ValueTask<IReadOnlyList<DebateCheckpointMeta>> ListAsync(CancellationToken ct = default)
    {
       if (!Directory.Exists(_directory)) return [];
 
@@ -159,12 +159,12 @@ public sealed class FileDebateStore : IDebateStore
    }
 
    /// <inheritdoc />
-   public Task DeleteAsync(string debateId, CancellationToken ct = default)
+   public ValueTask DeleteAsync(string debateId, CancellationToken ct = default)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
       var path = GetFilePath(debateId);
       if (File.Exists(path)) File.Delete(path);
-      return Task.CompletedTask;
+      return ValueTask.CompletedTask;
    }
 
    private string GetFilePath(string id)
@@ -175,5 +175,11 @@ public sealed class FileDebateStore : IDebateStore
    private static string TruncateForList(string s)
    {
       return string.IsNullOrEmpty(s) ? string.Empty : s.Length <= 80 ? s : s[..80] + "…";
+   }
+
+   /// <inheritdoc />
+   public void Dispose()
+   {
+      _writeLock.Dispose();
    }
 }

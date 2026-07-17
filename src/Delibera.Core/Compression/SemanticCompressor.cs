@@ -44,11 +44,11 @@ public sealed class SemanticCompressor(IEmbeddingProvider embeddingProvider) : I
       // Compute topic embedding (centroid of entire text)
       var topicVector = await _embeddingProvider.EmbedAsync(text.Length > 2000
          ? text[..2000]
-         : text, ct);
+         : text, ct).ConfigureAwait(false);
 
       // Compute sentence embeddings
       var sentenceTexts = sentences.Select(s => s.Text).ToList();
-      var sentenceVectors = await _embeddingProvider.EmbedBatchAsync(sentenceTexts, ct);
+      var sentenceVectors = await _embeddingProvider.EmbedBatchAsync(sentenceTexts, ct).ConfigureAwait(false);
 
       // Score each sentence by similarity to topic
       var scored = new List<ScoredSentence>(sentences.Count);
@@ -74,7 +74,7 @@ public sealed class SemanticCompressor(IEmbeddingProvider embeddingProvider) : I
    {
       ArgumentNullException.ThrowIfNull(texts);
       var merged = string.Join("\n\n", texts);
-      return await CompressAsync(merged, options, ct);
+      return await CompressAsync(merged, options, ct).ConfigureAwait(false);
    }
 
    // ──────────────────────────────────────────────
