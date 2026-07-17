@@ -44,6 +44,9 @@ well-reasoned outcomes** rather than single-model guesses.
 | **🐘 Qdrant + pgvector**      | Pluggable vector stores — use a dedicated DB or your existing PostgreSQL              |
 | **🗜️ Context Compression**   | 4 strategies (Semantic, Deduplication, Summarization, Hybrid) save 30–70% of tokens   |
 | **✂️ AutoChunking**           | Progressive disclosure of large documents across rounds — respects model context windows |
+| **🌐 Distributed Debates**    | `IDebateOrchestrator` with local and Redis backends — parallelize debates across machines |
+| **💾 Result Caching**          | `IDebateCache` with in-memory, file, and Redis backends — skip re-running identical debates |
+| **🖥️ Delibera.Server**        | ASP.NET Core 10 Minimal API with REST + SSE streaming for debates over HTTP           |
 | **💉 Dependency Injection**   | `AddDelibera()` extension for `IServiceCollection` with full options binding          |
 | **📋 Execution Logging**      | `ExecutionLog` model with `LogLevel` — Chairman, KK, Compression & participant events |
 | **📁 Separate File Output**   | Export `result.md`, `statistics.md`, and `logs.md` independently                      |
@@ -52,21 +55,16 @@ well-reasoned outcomes** rather than single-model guesses.
 | **🛑 Cooperative Cancellation**| Every public async method accepts a `CancellationToken`; a host shutdown or user cancel aborts the debate mid-flight (rounds, LLM calls, MCP tools, RAG, file saves) |
 | **🧱 Modern C# 15 (preview)** | Built on .NET 10 with `LangVersion=preview`, file-scoped namespaces, records, span/SIMD hot paths |
 
-### 🆕 What's new in v10.2.6
+### 🆕 What's new in v10.3.0
 
 | Feature | Description |
 | --- | --- |
-| **🌊 Async Streaming Council** | `ICouncilExecutor.StreamDebateAsync` yields each `DebateRound` live via an internal `Channel<DebateRound>` bridge — perfect for ASP.NET Core SSE, WebSocket, Blazor, and CLI live output. `DebateRound.Total` + `IsFinal` + `LastStreamedResult` round metadata included. |
-| **🗳️ Pluggable Vote Engine** | `IVotingStrategy` with built-in `MajorityVotingStrategy`, `BordaCountVotingStrategy`, `WeightedVotingStrategy` (per-member `MemberWeights`). `Chairman.CreateVoting(...)` swaps the synthesis path for a verifiable decision tally rendered as a 🗳️ Voting Tally section in the Markdown output. |
-| **💾 Debate Persistence & Resume** | `IDebateStore` + `FileDebateStore` (atomic JSON write-then-rename, `RetentionDays`) + `InMemoryDebateStore`. `CouncilBuilder.WithPersistence(...)` saves a checkpoint after every round; `ResumeFrom(debateId)` continues from the last completed round after a crash or pause. |
-| **🧠 Agent Memory** | `IAgentMemory` with `InMemoryAgentMemory` (Jaccard similarity), `QdrantAgentMemory` (per-agent collection), `PgVectorAgentMemory` (shared table filtered by `agent_name`). `CouncilBuilder.WithAgentMemory(...)` recalls before + persists after every debate. |
-| **📊 OpenTelemetry-style Observability** | `DeliberaActivitySource` + `DeliberaMeter` with histograms, counters, and gauge for spans like `delibera.council.execute`, `delibera.council.round`, `delibera.compression`. Zero-overhead when no listener is attached. `CouncilBuilder.WithTelemetry(...)` enables it. |
-| **📋 Structured Output** | `IStructuredOutputSerializer` + `JsonSchemaOutputSerializer` (uses .NET 10 `JsonSchemaExporter`). `ICouncilExecutor.ExecuteTypedAsync<TVerdict>` returns a strongly-typed verdict deserialised from the Chairman's response. One automatic retry on deserialisation failure. |
-| **🔄 Adaptive Strategy Switching** | `IStrategySelector` + `AdaptiveStrategySelector` swap the debate strategy mid-flight when responses stagnate (`StagnationThreshold` consecutive low-diversity rounds, Levenshtein fallback when no embedding provider). |
-| **📋 Debate Templates** | 6 built-in templates (`DebateTemplate.ArchitectureReview`, `RiskAssessment`, `CodeReview`, `ProductDecision`, `SecurityAudit`, `DataArchitecture`) with pre-configured participants, personas, strategies, and chairmen. |
-| **⚡ Quick Wins** | `DebateResult.ToHtml()` + `SaveToHtmlAsync()`; `CouncilBuilder.WithTimeout(TimeSpan)`; `Persona` presets; `CouncilBenchmark` for side-by-side model comparison; `WithParticipantLimit(int)` safety guard. |
+| **🌐 Distributed Debates** | `IDebateOrchestrator` interface with `LocalDebateOrchestrator` (single-process) and `RedisDebateOrchestrator` (Redis pub/sub for round dispatch + result collection). `DebateHandle`, `DebateOrchestrationStatus`, `DebateRoundEvent`, `DebateWorkerService`, `RedisOrchestratorOptions`, `RedisOrchestratorExtensions`. Wire via `ICouncilBuilder.WithOrchestrator(IDebateOrchestrator)`. |
+| **💾 Result Caching** | `IDebateCache` interface with `InMemoryDebateCache`, `FileDebateCache`, `RedisDebateCache`. `CacheBehavior` enum (`UseCache`, `BypassCache`, `RefreshCache`). `DebateCacheKeyGenerator` for deterministic cache keys. Cache metadata on `DebateResult` (`CacheHit`, `CacheKey`, `CachedAt`). `ICouncilBuilder.WithCacheBehavior()` / `WithCache()`. DI extensions + OTEL counter `delibera.cache.hits`/`misses`. |
+| **🖥️ Delibera.Server** | ASP.NET Core 10 Minimal API hosting Delibera over HTTP. REST API (`POST /api/debates`, `GET /api/debates/{id}`, `DELETE /api/debates/{id}`), SSE streaming via `GET /api/debates/{id}/stream` powered by `IDebateOrchestrator.StreamAsync()`, background queue via `IHostedService` + `System.Threading.Channels`. |
+| **⚠️ Breaking Changes** | `Moderator` → `Chairman`; removed `IDebateStrategyWithOptions`; `ModelCapabilities` non-nullable (use `IsUnknown`); `RagProviderFactory` → `VectorStoreFactory`; removed `DebateStatus.Paused`, `DebateOrchestrationStatus.Pending`; `SseDebateStreamWriter` rewritten for `IDebateOrchestrator.StreamAsync()`; removed `DebateRecord._channel`/`RoundWriter`/`RoundReader`. |
 
-> See [CHANGELOG.md](CHANGELOG.md) for the full v10.2.6 release notes and [docs/v10.2.6.md](docs/v10.2.6.md) for the original roadmap.
+> See [CHANGELOG.md](CHANGELOG.md) for the full v10.3.0 release notes and [docs/ROADMAP.md](docs/ROADMAP.md) for the roadmap.
 
 ---
 
@@ -770,6 +768,7 @@ docker exec -it <container> psql -U postgres -d council_vectors -c "CREATE EXTEN
 | `ModelContextProtocol`   | MCP client for the Operator role |
 | `Microsoft.Extensions.AI`| Unified `IChatClient` / `IEmbeddingGenerator` AI abstractions & middleware |
 | `Microsoft.Extensions.*` | Configuration, DI and Options    |
+| `StackExchange.Redis`   | Redis client for distributed debates and caching |
 
 ---
 
@@ -860,6 +859,8 @@ services.AddDeliberaEmbeddingGenerator(
 Delibera.Core
 ├── Council/              ← CouncilBuilder, CouncilExecutor, Chairman, KnowledgeKeeper, Operator
 ├── Debate/               ← StandardDebate, CritiqueDebate, ConsensusDebate
+├── Orchestration/        ← IDebateOrchestrator, LocalDebateOrchestrator, DebateHandle, DebateRoundEvent
+├── Cache/                ← IDebateCache, InMemoryDebateCache, FileDebateCache, CacheBehavior, DebateCacheKeyGenerator
 ├── Compression/          ← Semantic / Deduplication / Summarization / Hybrid
 ├── Chunking/             ← AutoChunker, AutoChunkingOrchestrator, AutoChunkingOptions
 ├── Providers/
@@ -871,6 +872,15 @@ Delibera.Core
 ├── Knowledge/            ← MarkdownKnowledgeBase
 ├── Models/               ← CouncilMember, DebateResult, DebateRound, TokenStatistics, ...
 └── Interfaces/           ← ILLMProvider, IRagProvider, IContextCompressor, IOperator, IMcpClient, ...
+
+Delibera.Redis
+├── Orchestration/        ← RedisDebateOrchestrator, DebateWorkerService, RedisOrchestratorOptions, RedisOrchestratorExtensions
+└── Cache/                ← RedisDebateCache
+
+Delibera.Server
+├── Endpoints/            ← Minimal API endpoints (POST /api/debates, GET /stream, etc.)
+├── Services/             ← DebateOrchestrationService, SseDebateStreamWriter
+└── Configuration/        ← AddDeliberaServer(), DeliberaServerOptions
 ```
 
 ---

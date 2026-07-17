@@ -3,7 +3,11 @@ using Delibera.Server.Api.Contracts;
 
 namespace Delibera.Server.Services;
 
-/// <summary>In-memory runtime record for a single debate lifecycle.</summary>
+/// <summary>
+///    In-memory runtime record for a single debate lifecycle.
+///    Holds status, result, and metadata. Round streaming is handled
+///    via <see cref="IDebateOrchestrator.StreamAsync" />, not this record.
+/// </summary>
 public sealed class DebateRecord
 {
     public required string      DebateId   { get; init; }
@@ -15,12 +19,5 @@ public sealed class DebateRecord
     public          string?     ErrorMessage { get; set; }
     public          DateTimeOffset CreatedAt   { get; } = DateTimeOffset.UtcNow;
     public          DateTimeOffset? CompletedAt { get; set; }
-
-    // SSE channel: completed rounds are broadcast to streaming consumers
-    private readonly System.Threading.Channels.Channel<DebateRound> _channel =
-        System.Threading.Channels.Channel.CreateUnbounded<DebateRound>();
-
-    public System.Threading.Channels.ChannelWriter<DebateRound>  RoundWriter => _channel.Writer;
-    public System.Threading.Channels.ChannelReader<DebateRound>  RoundReader => _channel.Reader;
-    public string Label { get; set; }
+    public          string      Label { get; set; } = string.Empty;
 }

@@ -48,18 +48,12 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
         CancellationToken ct = default)
     {
         var builder = ResolveTemplateBuilder(request);
-        var record = CreateRecord(request.TemplateId, tenantId, request.Question);
-
         var result = await _orchestrator.ExecuteAsync(builder, ct);
+        var record = CreateRecord(request.TemplateId, tenantId, request.Question);
         record.Result = result;
         record.Status = DebateStatus.Completed;
         record.CompletedAt = DateTimeOffset.UtcNow;
         record.Rounds.AddRange(result.Rounds);
-
-        _logger.LogInformation(
-            "[Template] Debate {DebateId} completed — {Rounds} rounds, {Tokens} tokens.",
-            record.DebateId, record.Rounds.Count, result.TokenStats?.GrandTotal);
-
         return record;
     }
 
@@ -81,18 +75,12 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
         CancellationToken ct = default)
     {
         var builder = ScenarioBuilder.Build(scenario, _configuration);
-        var record = CreateRecord("scenario", tenantId, scenario.Label ?? scenario.Question);
-
         var result = await _orchestrator.ExecuteAsync(builder, ct);
+        var record = CreateRecord("scenario", tenantId, scenario.Label ?? scenario.Question);
         record.Result = result;
         record.Status = DebateStatus.Completed;
         record.CompletedAt = DateTimeOffset.UtcNow;
         record.Rounds.AddRange(result.Rounds);
-
-        _logger.LogInformation(
-            "[Scenario] Debate {DebateId} completed — {Rounds} rounds, {Tokens} tokens.",
-            record.DebateId, record.Rounds.Count, result.TokenStats?.GrandTotal);
-
         return record;
     }
 
@@ -136,10 +124,9 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
     public bool Cancel(string debateId)
     {
         if (!_records.TryGetValue(debateId, out var record)) return false;
-        if (record.Status is DebateStatus.Completed or DebateStatus.Failed) return false;
+        if (record.Status is DebateStatus.Completed or DebateStatus.Failed or DebateStatus.Cancelled) return false;
 
         record.Status = DebateStatus.Cancelled;
-        record.RoundWriter.TryComplete();
         _logger.LogInformation("Debate {DebateId} cancelled.", debateId);
 
         _ = _orchestrator.CancelAsync(debateId);
@@ -175,55 +162,38 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
         record.Status = DebateStatus.Running;
         _logger.LogInformation("Debate {DebateId} started (enqueued).", record.DebateId);
 
-        // Subscribe to round events from the orchestrator
-        var streamTask = Task.Run(async () =>
+        try
         {
+            await _orchestrator.EnqueueAsync(record.DebateId, builder);
+
             await foreach (var evt in _orchestrator.StreamAsync(record.DebateId))
             {
                 switch (evt)
                 {
                     case DebateRoundEvent.RoundCompleted rc:
                         record.Rounds.Add(rc.Round);
-                        record.RoundWriter.TryWrite(rc.Round);
                         break;
-                    case DebateRoundEvent.DebateCompleted:
-                    case DebateRoundEvent.DebateFailed:
+                    case DebateRoundEvent.DebateCompleted dc:
+                        record.Result = dc.Result;
+                        record.Status = DebateStatus.Completed;
+                        record.CompletedAt = dc.Result?.CompletedAt ?? DateTimeOffset.UtcNow;
+                        _logger.LogInformation(
+                            "Debate {DebateId} completed — {Rounds} rounds.",
+                            record.DebateId, record.Rounds.Count);
+                        return;
+                    case DebateRoundEvent.DebateFailed df:
+                        record.ErrorMessage = df.Error;
+                        record.Status = DebateStatus.Failed;
+                        record.CompletedAt = DateTimeOffset.UtcNow;
+                        _logger.LogError("Debate {DebateId} failed: {Error}", record.DebateId, df.Error);
+                        return;
                     case DebateRoundEvent.DebateCancelled:
-                        break;
+                        record.Status = DebateStatus.Cancelled;
+                        record.CompletedAt = DateTimeOffset.UtcNow;
+                        _logger.LogInformation("Debate {DebateId} was cancelled.", record.DebateId);
+                        return;
                 }
             }
-        });
-
-        try
-        {
-            var handle = await _orchestrator.EnqueueAsync(record.DebateId, builder);
-
-            // Poll until completion
-            while (true)
-            {
-                await Task.Delay(200);
-                var status = await _orchestrator.GetStatusAsync(record.DebateId);
-                if (status?.Status is DebateOrchestrationStatus.Completed
-                                 or DebateOrchestrationStatus.Failed
-                                 or DebateOrchestrationStatus.Cancelled)
-                {
-                    record.Result = status.Result;
-                    record.ErrorMessage = status.ErrorMessage;
-                    record.CompletedAt = status.CompletedAt;
-                    record.Status = status.Status switch
-                    {
-                        DebateOrchestrationStatus.Completed => DebateStatus.Completed,
-                        DebateOrchestrationStatus.Failed => DebateStatus.Failed,
-                        DebateOrchestrationStatus.Cancelled => DebateStatus.Cancelled,
-                        _ => DebateStatus.Failed
-                    };
-                    break;
-                }
-            }
-
-            _logger.LogInformation(
-                "Debate {DebateId} {Status} — {Rounds} rounds.",
-                record.DebateId, record.Status, record.Rounds.Count);
         }
         catch (OperationCanceledException)
         {
@@ -235,11 +205,6 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
             record.Status = DebateStatus.Failed;
             record.ErrorMessage = ex.Message;
             _logger.LogError(ex, "Debate {DebateId} failed.", record.DebateId);
-        }
-        finally
-        {
-            record.RoundWriter.TryComplete();
-            await streamTask; // ensure streaming completes
         }
     }
 }

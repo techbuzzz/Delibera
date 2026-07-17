@@ -1,3 +1,4 @@
+using Delibera.Core.Interfaces;
 using Delibera.Server.Api.Contracts;
 using Delibera.Server.Api.Mapping;
 using Delibera.Server.Middleware;
@@ -112,6 +113,7 @@ public static class ScenarioEndpoints
     private static async Task StreamScenarioAsync(
         string                      id,
         IDebateOrchestrationService orchestration,
+        IDebateOrchestrator         debateOrchestrator,
         HttpContext                  ctx,
         CancellationToken           ct)
     {
@@ -121,7 +123,7 @@ public static class ScenarioEndpoints
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return;
         }
-        await SseDebateStreamWriter.WriteAsync(record, ctx, ct);
+        await SseDebateStreamWriter.WriteAsync(record, debateOrchestrator, ctx, ct);
     }
 }
 

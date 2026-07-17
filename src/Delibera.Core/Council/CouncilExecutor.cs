@@ -172,9 +172,9 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
     /// <summary>
     ///    The file-content reader registry used to read attachments (F-06 Multi-Modal).
-    ///    Pre-populated with built-in <see cref="Readers.PlainTextFileReader"/>,
-    ///    <see cref="Readers.ImageFileReader"/>, and
-    ///    <see cref="Readers.FallbackFileReader"/>.
+    ///    Pre-populated with built-in <see cref="Delibera.Core.Attachments.Readers.PlainTextFileReader"/>,
+    ///    <see cref="Delibera.Core.Attachments.Readers.ImageFileReader"/>, and
+    ///    <see cref="Delibera.Core.Attachments.Readers.FallbackFileReader"/>.
     /// </summary>
     public FileContentReaderRegistry FileReaders { get; }
 

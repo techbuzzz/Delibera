@@ -13,10 +13,11 @@ public sealed record DebateResponse
     public          string?     ErrorMessage { get; init; }
     public          bool?       CacheHit     { get; init; }
     public          string?     CacheKey     { get; init; }
+    public          string?     Label        { get; init; }
     public required string      StreamUrl   { get; init; }    // SSE endpoint
     public required string      ResultUrl   { get; init; }
     public required DateTimeOffset CreatedAt { get; init; }
     public          DateTimeOffset? CompletedAt { get; init; }
 }
 
-public enum DebateStatus { Pending, Running, Completed, Failed, Cancelled, Paused }
+public enum DebateStatus { Pending, Running, Completed, Failed, Cancelled }

@@ -16,7 +16,7 @@ namespace Delibera.Core.Persistence;
 ///    </para>
 ///    <para>
 ///       <b>Retention</b>: optionally delete checkpoints older than
-///       <see cref="RetentionDays" /> days. The retention sweep runs lazily on
+///       the configured retention period. The retention sweep runs lazily on
 ///       each <see cref="ListAsync" /> call (cheap; only reads file metadata).
 ///    </para>
 /// </remarks>

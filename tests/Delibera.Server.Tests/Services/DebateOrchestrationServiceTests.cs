@@ -1,3 +1,5 @@
+using Delibera.Core.Council;
+using Delibera.Core.Interfaces;
 using Delibera.Server.Api.Contracts;
 using Delibera.Server.Services;
 using Delibera.Server.Templates.Registry;
@@ -19,7 +21,8 @@ public sealed class DebateOrchestrationServiceTests
             NullLogger<DebateOrchestrationService>.Instance,
             sp.GetRequiredService<ITemplateRegistry>(),
             sp,
-            FakeConfiguration.Default());
+            FakeConfiguration.Default(),
+            new LocalDebateOrchestrator());
     }
 
     // ── Empty store ────────────────────────────────────────────────────────────

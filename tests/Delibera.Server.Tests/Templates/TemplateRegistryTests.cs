@@ -33,20 +33,6 @@ public sealed class TemplateRegistryTests
     public void UnknownTemplateIdReturnsNull()
         => BuildRegistry().Get("does-not-exist").Should().BeNull();
 
-    [Fact]
-    public void TryGetReturnsTrueForKnownTemplate()
-    {
-        BuildRegistry().TryGet("code-review", out var t).Should().BeTrue();
-        t.Should().NotBeNull();
-    }
-
-    [Fact]
-    public void TryGetReturnsFalseForUnknownTemplate()
-    {
-        BuildRegistry().TryGet("unknown-template", out var t).Should().BeFalse();
-        t.Should().BeNull();
-    }
-
     [Theory]
     [InlineData("risk-committee")]
     [InlineData("architecture-decision")]

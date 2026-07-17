@@ -16,6 +16,12 @@ public sealed class InMemoryDebateCache : IDebateCache
     private readonly TimeSpan _defaultTtl;
     private readonly ILogger<InMemoryDebateCache> _logger;
 
+    /// <summary>
+    ///    Creates a new in-memory cache.
+    /// </summary>
+    /// <param name="cache">The underlying memory cache.</param>
+    /// <param name="defaultTtl">Default TTL for cache entries. Defaults to 1 hour.</param>
+    /// <param name="logger">Optional logger.</param>
     public InMemoryDebateCache(IMemoryCache cache, TimeSpan? defaultTtl = null, ILogger<InMemoryDebateCache>? logger = null)
     {
         _cache = cache;
@@ -23,6 +29,7 @@ public sealed class InMemoryDebateCache : IDebateCache
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<InMemoryDebateCache>.Instance;
     }
 
+    /// <inheritdoc />
     public Task<DebateResult?> GetAsync(string cacheKey, CancellationToken ct = default)
     {
         _cache.TryGetValue<DebateResult>(cacheKey, out var result);
@@ -34,6 +41,7 @@ public sealed class InMemoryDebateCache : IDebateCache
         return Task.FromResult(result);
     }
 
+    /// <inheritdoc />
     public Task SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
     {
         var effectiveTtl = ttl ?? _defaultTtl;
@@ -48,6 +56,7 @@ public sealed class InMemoryDebateCache : IDebateCache
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc />
     public Task InvalidateAsync(string cacheKey, CancellationToken ct = default)
     {
         _cache.Remove(cacheKey);
@@ -55,6 +64,7 @@ public sealed class InMemoryDebateCache : IDebateCache
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc />
     public Task<bool> ExistsAsync(string cacheKey, CancellationToken ct = default)
     {
         return Task.FromResult(_cache.TryGetValue(cacheKey, out _));

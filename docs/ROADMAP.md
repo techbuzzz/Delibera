@@ -1,6 +1,6 @@
 # 🗺️ Delibera — Multi-Version Roadmap
 
-> **Current stable:** `10.2.7`  
+> **Current stable:** `10.3.0`  
 > **Active branch:** `develop`  
 > **Document date:** July 2026  
 > **Versioning:** `NET_MAJOR.FEATURE.PATCH` — first digit matches the target .NET runtime (`10` = .NET 10, `11` = .NET 11). Breaking changes are allowed at .NET-major boundaries only.
@@ -13,9 +13,9 @@
 |---------|-------|-----------------|--------|
 | **10.2.6** | _Feature Bundle_ | F-01 Streaming, F-02 Voting, F-03 Persistence, F-04 Memory, F-05 Structured Output, F-07 Templates, F-08 OpenTelemetry, F-09 Adaptive Strategy, F-10 Quick Wins | ✅ Released |
 | **10.2.7** | _Multi-Modal_ | F-06 Vision + Document Attachments | ✅ Released |
-| **10.3.0** | _Platform Release_ | ASP.NET Core Server, gRPC API, NuGet GA, breaking-change cleanup | 🔵 Next |
+| **10.3.0** | _Platform Release_ | Breaking-change cleanup, Distributed Debates, Result Caching, Delibera.Server, Delibera.Redis | ✅ Released |
 | **10.4.0** | _Intelligence & DX_ | Function Calling / Tool Use, Debate Result Diff, CLI improvements | 🔷 Planned |
-| **10.5.0** | _Scale & Reliability_ | Distributed debates, rate-limiting & cost gates, result caching | 🔷 Planned |
+| **10.5.0** | _Scale & Reliability_ | Rate-limiting & cost gates | 🔷 Planned |
 | **11.0.0** | _.NET 11 Migration_ | Target .NET 11, C# 14 idioms, performance tuning for new runtime | 🔶 Future (.NET 11 GA) |
 
 ---
@@ -103,34 +103,66 @@ Example: `MultiModalExample.cs`
 
 ---
 
-## 🔵 v10.3.0 — Platform Release
+## ✅ v10.3.0 — Platform Release
 
 > _Theme: Delibera as a platform, not just a library_
 
+Released 2026-07-17.
+
 ### P-01 · Breaking-Change Cleanup
 
-Items deferred from v10.2.x to maintain backward compatibility:
-
-- Remove all `[Obsolete]` members accumulated since v10.1
-- Consolidate `CouncilBuilder` method overloads (reduce API surface)
-- `ILLMProvider` — make `GetModelCapabilitiesAsync` non-optional (remove default `null` return)
-- Unify `IDebateStrategy.ExecuteAsync` signatures (remove `IDebateStrategyWithOptions` shim)
-- Rename `RagProviderFactory` → `VectorStoreFactory` for clarity
-
-**Effort:** S · 1–2 days
+- Rename `Moderator` → `Chairman` across all public APIs
+- Remove `IDebateStrategyWithOptions` — unified `IDebateStrategy.ExecuteAsync` signatures
+- `ModelCapabilities` is now non-nullable; use `ModelCapabilities.IsUnknown` sentinel
+- Rename `RagProviderFactory` → `VectorStoreFactory`
+- Fix `WeightedVotingStrategy.ResolveWeight` edge case
+- Remove `DebateStatus.Paused` and `DebateOrchestrationStatus.Pending`
+- Fix `DebateRecord.Label` default value
+- Rewrite `SseDebateStreamWriter` to use `IDebateOrchestrator.StreamAsync()`
+- Remove `DebateRecord._channel`, `RoundWriter`, `RoundReader`
+- Rewrite `DebateOrchestrationService` to use event-driven streaming
+- Fix `FakeLLMProvider` + `TemplateRegistryTests` for new API surface
 
 ---
 
-### P-02 · Delibera.Server — ASP.NET Core Hosted Service
+### S-01 · Distributed Debates
 
-New NuGet package: **`Delibera.Server`**
+- `IDebateOrchestrator` interface — assign rounds to workers, collect results
+- `LocalDebateOrchestrator` — single-process orchestrator for local execution
+- `RedisDebateOrchestrator` — Redis pub/sub for round dispatch + result collection
+- `DebateHandle` — opaque handle for tracking debate execution
+- `DebateOrchestrationStatus` — status enum for orchestration lifecycle
+- `DebateRoundEvent` — event model for round completion notifications
+- `DebateWorkerService` — background worker that picks up and processes debate rounds
+- `RedisOrchestratorOptions` — configuration for Redis-based orchestration
+- `RedisOrchestratorExtensions` — DI registration helpers for Redis orchestration
+- `ICouncilBuilder.WithOrchestrator(IDebateOrchestrator)` fluent API
 
+---
+
+### S-03 · Result Caching
+
+- `IDebateCache` interface — `GetAsync(CacheKey)` / `SetAsync(CacheKey, DebateResult)`
+- `CacheBehavior` enum: `UseCache`, `BypassCache`, `RefreshCache`
+- `DebateCacheKeyGenerator` — deterministic key from question + config + model versions
+- `InMemoryDebateCache` — in-process LRU cache
+- `FileDebateCache` — file-system cache with atomic writes
+- `RedisDebateCache` — Redis-backed distributed cache
+- Cache metadata on `DebateResult` (`CacheHit`, `CacheKey`, `CachedAt`)
+- `ICouncilBuilder.WithCacheBehavior(CacheBehavior)` / `WithCache(IDebateCache, CacheBehavior)`
+- DI extension methods for cache registration
+- OpenTelemetry counter: `delibera.cache.hits` / `delibera.cache.misses`
+
+---
+
+### P-02 · Delibera.Server — ASP.NET Core Minimal API
+
+New project: **`Delibera.Server`**
+
+- ASP.NET Core 10 Minimal API hosting Delibera over HTTP
 - REST API: `POST /api/debates` (start), `GET /api/debates/{id}` (status), `DELETE /api/debates/{id}` (cancel)
-- SSE endpoint: `GET /api/debates/{id}/stream` — powered by F-01 Streaming Council
-- WebSocket support for bidirectional debate interaction (inject questions mid-debate)
+- SSE endpoint: `GET /api/debates/{id}/stream` — powered by `IDebateOrchestrator.StreamAsync()`
 - Background queue via `IHostedService` + `System.Threading.Channels`
-- OpenAPI/Swagger spec included
-- Docker-ready: extends existing `docker-compose.yml`
 
 ```csharp
 builder.Services.AddDeliberaServer(options =>
@@ -141,33 +173,16 @@ builder.Services.AddDeliberaServer(options =>
 app.MapDeliberaEndpoints();
 ```
 
-**Effort:** L · 7–10 days
-
----
-
-### P-03 · Delibera.Grpc — gRPC API
-
-New NuGet package: **`Delibera.Grpc`**
-
-- `.proto` schema for streaming debate execution
-- Bi-directional streaming: client sends config, server streams rounds back
-- Auto-generated C# client + server stubs
-- Suitable for high-throughput internal microservice integration
-
-**Effort:** M · 3–5 days
-
 ---
 
 ### P-04 · NuGet GA Milestone
 
 - Stable `10.3.0` on NuGet (exit preview)
 - `Delibera.Core` — core library (no ASP.NET dep)
-- `Delibera.Server` — ASP.NET Core hosted service
-- `Delibera.Grpc` — gRPC interface
+- `Delibera.Server` — ASP.NET Core Minimal API
+- `Delibera.Redis` — Redis orchestration + caching
 - `Delibera.Templates` — presets library (optional)
 - Symbol packages + source link for all packages
-
-**Effort:** S · 1 day
 
 ---
 
@@ -229,21 +244,6 @@ New NuGet package: **`Delibera.Grpc`**
 
 > _Theme: Production-grade throughput and cost control_
 
-### S-01 · Distributed Debates
-
-**Why:** Multi-model debates with large contexts can be parallelized across machines for throughput.
-
-**What:**
-- `IDistributedDebateOrchestrator` — assign rounds to workers, collect results
-- `RedisDebateOrchestrator` — Redis pub/sub for round dispatch + result collection
-- `CouncilBuilder.WithDistributedOrchestrator(IDistributedDebateOrchestrator)`
-- Each worker picks up a round, calls its LLM, publishes the response
-- Chairman runs on the coordinator node
-
-**Effort:** L · 7–10 days
-
----
-
 ### S-02 · Rate-Limiting & Cost Gates
 
 **Why:** Cloud LLM calls cost real money. Users need guardrails before launching expensive 5-round multi-model debates.
@@ -255,24 +255,6 @@ New NuGet package: **`Delibera.Grpc`**
 - `CostLimitExceededException` — clear exception with partial results attached
 
 **Effort:** M · 3–5 days
-
----
-
-### S-03 · Result Caching
-
-**Why:** Re-running identical debates (same question, same config, same model versions) wastes tokens and time.
-
-**What:**
-- `IDebateCache` interface — `GetAsync(CacheKey)` / `SetAsync(CacheKey, DebateResult)`
-- `FileDebateCache`, `InMemoryDebateCache`, `RedisDebateCache`
-- `CouncilBuilder.WithCache(IDebateCache)` — cache key = hash(question + config + model versions)
-- `CacheBehavior` enum: `UseCache`, `BypassCache`, `RefreshCache`
-
-```csharp
-.WithCache(new FileDebateCache("./cache"), CacheBehavior.UseCache)
-```
-
-**Effort:** S · 2–3 days
 
 ---
 
@@ -329,7 +311,7 @@ release/10.3.0                 ← release stabilization branch
 |---------|-----------|--------|
 | 10.2.6 | 2026-07-06 | ✅ Released |
 | 10.2.7 | 2026-07-07 | ✅ Released |
-| 10.3.0 | Q3 2026 | 🔵 Next |
+| 10.3.0 | 2026-07-17 | ✅ Released |
 | 10.4.0 | Q4 2026 | 🔷 Planned |
 | 10.5.0 | Q1 2027 | 🔷 Planned |
 | 11.0.0 | .NET 11 GA | 🔶 Future |

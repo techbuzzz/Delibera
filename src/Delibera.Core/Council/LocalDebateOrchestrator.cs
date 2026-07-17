@@ -8,7 +8,7 @@ namespace Delibera.Core.Council;
 /// <summary>
 ///    In-process orchestrator that executes debates using <see cref="CouncilExecutor" />.
 ///    This is the default implementation — no external infrastructure required.
-///    Round events are published via an in-process <see cref="Channel{T}" />.
+///    Round events are published via an in-process channel.
 /// </summary>
 public sealed class LocalDebateOrchestrator : IDebateOrchestrator
 {

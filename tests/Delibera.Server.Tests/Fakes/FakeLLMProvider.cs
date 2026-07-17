@@ -1,4 +1,5 @@
 using Delibera.Core.Interfaces;
+using Delibera.Core.Models;
 
 namespace Delibera.Server.Tests.Fakes;
 
@@ -32,6 +33,9 @@ public sealed class FakeLLMProvider(
             await Task.Delay(chatDelayMs, ct);
         return reply;
     }
+
+    public Task<ModelCapabilities> GetModelCapabilitiesAsync(string model, CancellationToken ct = default)
+        => Task.FromResult(ModelCapabilities.Unknown(model));
 
     public void Dispose() { /* no-op */ }
 }

@@ -4,6 +4,39 @@
 It supports synchronous execution, fire-and-forget background runs, and live **Server-Sent Events** streaming of debate rounds.
 All logging is provided by **Microsoft.Extensions.Logging** — no third-party logging framework is required.
 
+## Architecture
+
+The server delegates debate execution to `IDebateOrchestrator` — by default `LocalDebateOrchestrator` (in-process), or `RedisDebateOrchestrator` for distributed deployments. SSE streaming consumes `IDebateOrchestrator.StreamAsync()` so that any API server node can stream rounds regardless of where the debate is executing.
+
+```
+┌──────────────────────────────────────────────┐
+│  Delibera.Server (ASP.NET Core 10)          │
+│  ┌──────────────┐  ┌──────────────────────┐ │
+│  │ DebateEndpoints│  │ ScenarioEndpoints   │ │
+│  └──────┬───────┘  └──────┬───────────────┘ │
+│         │                  │                 │
+│  ┌──────▼──────────────────▼──────────────┐  │
+│  │ DebateOrchestrationService             │  │
+│  │  - RunAsync / Enqueue                  │  │
+│  │  - delegates to IDebateOrchestrator    │  │
+│  └──────┬────────────────────────────────┘  │
+│         │                                    │
+│  ┌──────▼────────────────────────────────┐  │
+│  │ IDebateOrchestrator                    │  │
+│  │  ├─ LocalDebateOrchestrator (default) │  │
+│  │  └─ RedisDebateOrchestrator          │  │
+│  └───────────────────────────────────────┘  │
+│                                              │
+│  ┌───────────────────────────────────────┐  │
+│  │ SseDebateStreamWriter                │  │
+│  │  - consumes StreamAsync() events     │  │
+│  │  - emits SSE: debate-round,          │  │
+│  │    debate-completed, debate-failed,  │  │
+│  │    debate-cancelled                  │  │
+│  └───────────────────────────────────────┘  │
+└──────────────────────────────────────────────┘
+```
+
 ---
 
 ## Quick Start
@@ -117,9 +150,25 @@ data: { "roundNumber": 1, "strategy": "CritiqueDebate", "messages": [...], "chai
 
 event: debate-completed
 data: { "debateId": "abc123", "status": "Completed", "verdict": "Approve with conditions.", "completedAt": "..." }
+
+event: debate-error
+data: { "debateId": "abc123", "status": "Failed", "error": "LLM provider timeout" }
+
+event: debate-cancelled
+data: { "debateId": "abc123" }
 ```
 
-The stream first replays all rounds completed before the client connected, then emits live rounds, and closes with `debate-completed`.
+The stream first replays all rounds completed before the client connected, then streams live rounds from `IDebateOrchestrator.StreamAsync()`, and closes with a terminal event (`debate-completed`, `debate-error`, or `debate-cancelled`).
+
+### Response Fields
+
+`DebateResponse` includes these additional fields as of v10.3.0:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `label` | `string?` | Human-readable label for the debate (from `ScenarioRequest.Label` or `CreateDebateRequest.Question`) |
+| `cacheHit` | `bool?` | `true` if the result was served from cache |
+| `cacheKey` | `string?` | The SHA-256 cache key when caching is enabled |
 
 ---
 
@@ -201,3 +250,49 @@ cd src
 dotnet run --project Delibera.Server
 # OpenAPI UI available at https://localhost:5001/openapi
 ```
+
+---
+
+## Distributed Debates (Redis)
+
+By default, `Delibera.Server` uses `LocalDebateOrchestrator` — all debates run in-process. To enable multi-instance deployments with Redis Streams for event broadcasting:
+
+```csharp
+// Program.cs
+builder.Services.AddDelibera(builder.Configuration);
+builder.Services.AddRedisDebateOrchestrator(builder.Configuration);
+```
+
+```json
+{
+  "Delibera:Redis": {
+    "ConnectionString": "localhost:6379,abortConnect=false",
+    "EventStreamKey": "delibera:events",
+    "StateKeyPrefix": "delibera:state:"
+  }
+}
+```
+
+See [docs/distributed-debates.md](distributed-debates.md) for the full architecture diagram and configuration reference.
+
+---
+
+## Result Caching
+
+Enable debate result caching to avoid re-running identical debates:
+
+```csharp
+// In-Memory (development)
+builder.Services.AddDelibera(builder.Configuration)
+    .UseInMemoryCache(ttl: TimeSpan.FromHours(1));
+
+// File-based
+builder.Services.AddDelibera(builder.Configuration)
+    .UseFileCache(directory: "./debate-cache", ttl: TimeSpan.FromDays(7));
+
+// Redis (production)
+builder.Services.AddRedisDebateOrchestrator(builder.Configuration);
+builder.Services.UseRedisCache(ttl: TimeSpan.FromHours(24));
+```
+
+See [docs/caching.md](caching.md) for `CacheBehavior` modes and cache key generation.

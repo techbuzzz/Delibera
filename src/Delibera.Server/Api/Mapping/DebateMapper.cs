@@ -23,6 +23,7 @@ public static class DebateMapper
          ErrorMessage = record.ErrorMessage,
          CacheHit = record.Result?.CacheHit,
          CacheKey = record.Result?.CacheKey,
+         Label = record.Label,
          StreamUrl = $"{baseUrl}/api/v1/debates/{record.DebateId}/stream",
          ResultUrl = $"{baseUrl}/api/v1/debates/{record.DebateId}/result",
          CreatedAt = record.CreatedAt,

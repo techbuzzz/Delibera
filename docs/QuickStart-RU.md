@@ -441,6 +441,8 @@ var (resultPath, statsPath, logsPath) = await result.SaveAllAsync("./output");
 ## Дальнейшие шаги
 
 - Прочитайте [README](../README-RU.md) для полного обзора возможностей, архитектуры и паттернов проектирования.
+- См. [docs/Server.md](Server.md) — ASP.NET Core хостинг с REST API и SSE-стримингом.
+- См. [docs/caching.md](caching.md) для кэширования результатов и [docs/distributed-debates.md](distributed-debates.md) для распределённой оркестрации дебатов.
 - См. [CONTRIBUTING.md](../CONTRIBUTING.md), если хотите внести вклад.
 
 ---

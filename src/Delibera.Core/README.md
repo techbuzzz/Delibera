@@ -46,8 +46,11 @@ outcomes** rather than single-model guesses.
 - 🔌 **Interface-First** — clean abstractions for providers, factories, builders and executors
 - 🧱 **Modern C# 15** — file-scoped namespaces, records, init-only properties, global usings
 
-### v10.2.6 — New Features
+### v10.3.0 — New Features
 
+- 🌐 **Distributed Debates** — `IDebateOrchestrator` with `LocalDebateOrchestrator` (in-process) and `RedisDebateOrchestrator` (Redis Streams). `DebateHandle`, `DebateRoundEvent` discriminated union, `EnqueueAsync`/`StreamAsync`/`CancelAsync` API.
+- 💾 **Result Caching** — `IDebateCache` with `InMemoryDebateCache`, `FileDebateCache`, `RedisDebateCache`. `CacheBehavior` enum (Disabled/ReadWrite/ReadOnly/WriteThrough/Bypass). `DebateCacheKeyGenerator` (SHA-256). Per-debate cache control via `WithCacheBehavior()`.
+- 🖥️ **Delibera.Server** — ASP.NET Core 10 Minimal API with REST + SSE streaming. Debate orchestration via `IDebateOrchestrator`.
 - 🌊 **Async Streaming Council** — `ICouncilExecutor.StreamDebateAsync(CancellationToken)` yields each `DebateRound` live as it completes via an internal `Channel<DebateRound>` bridge. Perfect for ASP.NET Core SSE, WebSocket, Blazor, and CLI live output. `DebateRound.Total` + `IsFinal` + `LastStreamedResult` round metadata included.
 - 🗳️ **Pluggable Vote Engine** — `IVotingStrategy` with built-in `MajorityVotingStrategy`, `BordaCountVotingStrategy`, and `WeightedVotingStrategy` (per-member `MemberWeights`). `Chairman.CreateVoting(...)` swaps the synthesis path for a verifiable decision tally rendered as a 🗳️ Voting Tally section in the Markdown output.
 - 💾 **Debate Persistence & Resume** — `IDebateStore` + `FileDebateStore` (atomic JSON write-then-rename, `RetentionDays`) + `InMemoryDebateStore`. `CouncilBuilder.WithPersistence(...)` saves a checkpoint after every round; `ResumeFrom(debateId)` continues from the last completed round after a crash or pause.

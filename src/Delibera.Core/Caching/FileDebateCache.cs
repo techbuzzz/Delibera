@@ -23,6 +23,12 @@ public sealed class FileDebateCache : IDebateCache
         WriteIndented = false,
     };
 
+    /// <summary>
+    ///    Creates a new file-system cache.
+    /// </summary>
+    /// <param name="cacheDirectory">Directory where cache files are stored.</param>
+    /// <param name="defaultTtl">Default TTL for cache entries. Defaults to 7 days.</param>
+    /// <param name="logger">Optional logger.</param>
     public FileDebateCache(string cacheDirectory, TimeSpan? defaultTtl = null, ILogger<FileDebateCache>? logger = null)
     {
         _cacheDirectory = cacheDirectory;
@@ -33,6 +39,7 @@ public sealed class FileDebateCache : IDebateCache
             Directory.CreateDirectory(_cacheDirectory);
     }
 
+    /// <inheritdoc />
     public Task<DebateResult?> GetAsync(string cacheKey, CancellationToken ct = default)
     {
         var filePath = GetFilePath(cacheKey);
@@ -64,6 +71,7 @@ public sealed class FileDebateCache : IDebateCache
         }
     }
 
+    /// <inheritdoc />
     public Task SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
     {
         var filePath = GetFilePath(cacheKey);
@@ -80,6 +88,7 @@ public sealed class FileDebateCache : IDebateCache
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc />
     public Task InvalidateAsync(string cacheKey, CancellationToken ct = default)
     {
         var filePath = GetFilePath(cacheKey);
@@ -91,6 +100,7 @@ public sealed class FileDebateCache : IDebateCache
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc />
     public Task<bool> ExistsAsync(string cacheKey, CancellationToken ct = default)
     {
         var filePath = GetFilePath(cacheKey);

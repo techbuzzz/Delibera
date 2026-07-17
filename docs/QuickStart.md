@@ -440,6 +440,8 @@ The repository ships with a runnable demo under
 ## Next Steps
 
 - Read the [README](../README.md) for the full feature overview, architecture, and design patterns.
+- See [docs/Server.md](Server.md) for the ASP.NET Core hosted service with REST API and SSE streaming.
+- See [docs/caching.md](caching.md) for result caching and [docs/distributed-debates.md](distributed-debates.md) for distributed debate orchestration.
 - See [CONTRIBUTING.md](../CONTRIBUTING.md) if you'd like to contribute.
 
 ---

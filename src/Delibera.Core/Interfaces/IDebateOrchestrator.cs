@@ -63,11 +63,17 @@ public interface IDebateOrchestrator
 /// </summary>
 public sealed class DebateHandle
 {
+   /// <summary>Unique identifier for the debate.</summary>
    public required string DebateId { get; init; }
+   /// <summary>Current orchestration status of the debate.</summary>
    public required DebateOrchestrationStatus Status { get; init; }
+   /// <summary>The completed debate result, or <c>null</c> if still running.</summary>
    public DebateResult? Result { get; init; }
+   /// <summary>Error message when <see cref="Status" /> is <see cref="DebateOrchestrationStatus.Failed" />.</summary>
    public string? ErrorMessage { get; init; }
+   /// <summary>When the debate was created.</summary>
    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+   /// <summary>When the debate reached a terminal state, or <c>null</c> if still running.</summary>
    public DateTimeOffset? CompletedAt { get; init; }
 }
 
@@ -76,10 +82,13 @@ public sealed class DebateHandle
 /// </summary>
 public enum DebateOrchestrationStatus
 {
-   Pending,
+   /// <summary>The debate is currently executing rounds.</summary>
    Running,
+   /// <summary>The debate completed successfully and produced a result.</summary>
    Completed,
+   /// <summary>The debate failed with an error.</summary>
    Failed,
+   /// <summary>The debate was cancelled by the user.</summary>
    Cancelled
 }
 

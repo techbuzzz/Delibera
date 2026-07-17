@@ -591,7 +591,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
 
     /// <summary>
     ///    Registers a delegate-based reader for a specific file extension. The delegate
-    ///    is wrapped in a <see cref="Readers.DelegateFileContentReader"/> adapter — no
+    ///    is wrapped in a delegate adapter — no class needed.
     ///    class needed.
     /// </summary>
     /// <param name="extension">File extension including the leading dot.</param>

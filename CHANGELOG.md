@@ -60,6 +60,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`WeightedVotingStrategy.ResolveWeight`** now uses `ballot.Weight` as fallback instead of constructor `defaultWeight`, fixing `WeightedVoting_All_Zero_Weights_Throws`.
 
+### Removed (Pre-merge Cleanup)
+
+- **`DebateStatus.Paused`** — dead enum value never assigned; removed from `DebateResponse` contract.
+- **`DebateOrchestrationStatus.Pending`** — dead enum value never assigned; removed from `DebateHandle` contract.
+- **`DebateRecord._channel`**, **`RoundWriter`**, **`RoundReader`** — SSE channel moved to `IDebateOrchestrator.StreamAsync()`.
+- **`SseDebateStreamWriter`** rewritten to consume `IDebateOrchestrator.StreamAsync()` instead of `DebateRecord.RoundReader`.
+- **`DebateOrchestrationService.RunOrchestratorEnqueuedAsync`** rewritten from 200ms polling to event-driven `StreamAsync()`.
+
+### Changed (Pre-merge Cleanup)
+
+- **`DebateRecord.Label`** now defaults to `string.Empty` (was CS8618 warning).
+- **`DebateResponse`** now includes a `Label` field mapped from `DebateRecord.Label`.
+- **`DebateOrchestrationService.Enqueue`/`EnqueueScenario`** now call `_orchestrator.EnqueueAsync()` before streaming, ensuring the orchestrator registers the debate.
+- **`SseDebateStreamWriter.WriteAsync`** signature changed to accept `IDebateOrchestrator` parameter (was `DebateRecord` + `HttpContext` + `CancellationToken` only).
+- **`DebateEndpoints.StreamDebateAsync`** and **`ScenarioEndpoints.StreamScenarioAsync`** now receive `IDebateOrchestrator` via DI.
+- **`FakeLLMProvider`** now implements `GetModelCapabilitiesAsync` (required by P-01 breaking change).
+- Removed `TryGet` tests from `TemplateRegistryTests` (method removed in P-01).
+- Fixed all CS1591 and CS1574 XML-doc warnings across `Delibera.Core`.
+
 ## [10.2.7] - 2026
 
 Multi-Modal Council (F-06): bring images, diagrams, and documents into the
