@@ -45,7 +45,7 @@ public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvide
          return CompressedContextFactory.PassThrough(text, originalTokens, StrategyName, sw.Elapsed);
 
       var unique = _embeddingProvider is not null
-          ? await DeduplicateWithEmbeddingsAsync(sentences, options.DeduplicationThreshold, ct).ConfigureAwait(false)
+         ? await DeduplicateWithEmbeddingsAsync(sentences, options.DeduplicationThreshold, ct).ConfigureAwait(false)
          : DeduplicateWithHeuristics(sentences, options.DeduplicationThreshold);
 
       var compressedText = string.Join(" ", unique);
@@ -60,7 +60,7 @@ public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvide
    {
       ArgumentNullException.ThrowIfNull(texts);
       var merged = string.Join("\n\n", texts);
-       return await CompressAsync(merged, options, ct).ConfigureAwait(false);
+      return await CompressAsync(merged, options, ct).ConfigureAwait(false);
    }
 
    // ──────────────────────────────────────────────
@@ -71,7 +71,7 @@ public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvide
       CancellationToken ct)
    {
       var texts = sentences.Select(s => s.Text).ToList();
-       var vectors = await _embeddingProvider!.EmbedBatchAsync(texts, ct).ConfigureAwait(false);
+      var vectors = await _embeddingProvider!.EmbedBatchAsync(texts, ct).ConfigureAwait(false);
 
       var kept = new List<string>();
       var keptVectors = new List<float[]>();

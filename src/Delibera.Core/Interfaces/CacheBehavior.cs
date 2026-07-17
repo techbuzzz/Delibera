@@ -6,28 +6,28 @@ namespace Delibera.Core.Interfaces;
 /// </summary>
 public enum CacheBehavior
 {
-    /// <summary>
-    ///    Cache disabled entirely. Default when no <see cref="IDebateCache" /> is registered.
-    /// </summary>
-    Disabled,
+   /// <summary>
+   ///    Cache disabled entirely. Default when no <see cref="IDebateCache" /> is registered.
+   /// </summary>
+   Disabled,
 
-    /// <summary>
-    ///    Return cached result if hit; execute and cache if miss.
-    /// </summary>
-    ReadWrite,
+   /// <summary>
+   ///    Return cached result if hit; execute and cache if miss.
+   /// </summary>
+   ReadWrite,
 
-    /// <summary>
-    ///    Return cached result if hit; do NOT cache new results.
-    /// </summary>
-    ReadOnly,
+   /// <summary>
+   ///    Return cached result if hit; do NOT cache new results.
+   /// </summary>
+   ReadOnly,
 
-    /// <summary>
-    ///    Always execute; always overwrite cache with new result.
-    /// </summary>
-    WriteThrough,
+   /// <summary>
+   ///    Always execute; always overwrite cache with new result.
+   /// </summary>
+   WriteThrough,
 
-    /// <summary>
-    ///    Bypass cache for this run; do not read or write.
-    /// </summary>
-    Bypass
+   /// <summary>
+   ///    Bypass cache for this run; do not read or write.
+   /// </summary>
+   Bypass
 }

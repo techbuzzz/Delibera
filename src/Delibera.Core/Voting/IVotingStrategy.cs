@@ -148,6 +148,7 @@ public sealed class WeightedVotingStrategy(double defaultWeight = 1.0) : IVoting
    ///    <see cref="ParticipantBallot.Weight" /> is used.
    /// </summary>
    public Dictionary<string, double> MemberWeights { get; init; } = new(StringComparer.Ordinal);
+
    /// <inheritdoc />
    public string MethodName => "Weighted";
 
@@ -179,6 +180,8 @@ public sealed class WeightedVotingStrategy(double defaultWeight = 1.0) : IVoting
 
    private double ResolveWeight(ParticipantBallot ballot)
    {
-      return MemberWeights.TryGetValue(ballot.MemberName, out var w) ? w : ballot.Weight;
+      return MemberWeights.TryGetValue(ballot.MemberName, out var w)
+         ? w
+         : ballot.Weight;
    }
 }

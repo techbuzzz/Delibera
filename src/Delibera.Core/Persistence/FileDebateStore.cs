@@ -172,14 +172,14 @@ public sealed class FileDebateStore : IDebateStore, IDisposable
       return Path.Combine(_directory, $"{id}.checkpoint.json");
    }
 
-    private static string TruncateForList(string s)
-    {
-       return string.IsNullOrEmpty(s) ? string.Empty : s.Length <= 80 ? s : s[..80] + "…";
-    }
+   private static string TruncateForList(string s)
+   {
+      return string.IsNullOrEmpty(s) ? string.Empty : s.Length <= 80 ? s : s[..80] + "…";
+   }
 
-    /// <inheritdoc />
-    public void Dispose()
-    {
-       _writeLock.Dispose();
-    }
+   /// <inheritdoc />
+   public void Dispose()
+   {
+      _writeLock.Dispose();
+   }
 }

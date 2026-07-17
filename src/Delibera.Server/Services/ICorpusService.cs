@@ -8,12 +8,12 @@ namespace Delibera.Server.Services;
 /// </summary>
 public interface ICorpusService
 {
-    // ── Corpus CRUD ───────────────────────────────────────────────────────────
-    IReadOnlyCollection<CorpusDto>  ListCorpora();
-    CorpusDto                       CreateCorpus(CreateCorpusRequest request);
+   // ── Corpus CRUD ───────────────────────────────────────────────────────────
+   IReadOnlyCollection<CorpusDto> ListCorpora();
+   CorpusDto CreateCorpus(CreateCorpusRequest request);
 
-    // ── Document operations ───────────────────────────────────────────────────
-    Task<DocumentDto?>              IndexDocumentAsync(string corpusId, IndexDocumentRequest request, CancellationToken ct);
-    DocumentDto[]?                  ListDocuments(string corpusId);
-    void                            DeleteDocument(string corpusId, string documentId);
+   // ── Document operations ───────────────────────────────────────────────────
+   Task<DocumentDto?> IndexDocumentAsync(string corpusId, IndexDocumentRequest request, CancellationToken ct);
+   DocumentDto[]? ListDocuments(string corpusId);
+   void DeleteDocument(string corpusId, string documentId);
 }

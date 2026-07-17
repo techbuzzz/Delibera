@@ -74,7 +74,7 @@ public sealed class SemanticCompressor(IEmbeddingProvider embeddingProvider) : I
    {
       ArgumentNullException.ThrowIfNull(texts);
       var merged = string.Join("\n\n", texts);
-       return await CompressAsync(merged, options, ct).ConfigureAwait(false);
+      return await CompressAsync(merged, options, ct).ConfigureAwait(false);
    }
 
    // ──────────────────────────────────────────────

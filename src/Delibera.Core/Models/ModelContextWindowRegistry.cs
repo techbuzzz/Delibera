@@ -80,11 +80,11 @@ public static class ModelContextWindowRegistry
       ["yandexgpt-32k"] = 32_768,
       ["yandexgpt"] = 8_000,
 
-       // ── Other ──
-       ["nomic"] = 8_192,
-       ["mxbai"] = 32_768,
-       ["tinyllama"] = 2_048,
-       ["stable-code"] = 16_384
+      // ── Other ──
+      ["nomic"] = 8_192,
+      ["mxbai"] = 32_768,
+      ["tinyllama"] = 2_048,
+      ["stable-code"] = 16_384
    };
 
    // ── Vision-capable model name patterns (case-insensitive substring match) ──
@@ -101,10 +101,14 @@ public static class ModelContextWindowRegistry
    private static FrozenSet<string> _frozenVisionPatterns = FrozenSet<string>.Empty;
 
    private static FrozenDictionary<string, int> KnownWindows =>
-      _frozenWindows.Count == 0 ? FreezeWindows() : _frozenWindows;
+      _frozenWindows.Count == 0
+         ? FreezeWindows()
+         : _frozenWindows;
 
    private static FrozenSet<string> KnownVisionPatterns =>
-      _frozenVisionPatterns.Count == 0 ? FreezeVisionPatterns() : _frozenVisionPatterns;
+      _frozenVisionPatterns.Count == 0
+         ? FreezeVisionPatterns()
+         : _frozenVisionPatterns;
 
    private static FrozenDictionary<string, int> FreezeWindows()
    {
@@ -171,12 +175,12 @@ public static class ModelContextWindowRegistry
    ///    Overwrites any existing entry for the same pattern.
    /// </summary>
    /// <param name="modelNamePattern">Substring pattern to match against model names.</param>
-    public static void RegisterVisionPattern(string modelNamePattern)
-    {
-       ArgumentException.ThrowIfNullOrWhiteSpace(modelNamePattern);
-       _visionPatternsBuilder.Add(modelNamePattern);
-       _frozenVisionPatterns = FrozenSet<string>.Empty; // invalidate frozen cache
-    }
+   public static void RegisterVisionPattern(string modelNamePattern)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(modelNamePattern);
+      _visionPatternsBuilder.Add(modelNamePattern);
+      _frozenVisionPatterns = FrozenSet<string>.Empty; // invalidate frozen cache
+   }
 
    /// <summary>
    ///    Returns a read-only snapshot of all registered vision-capable model patterns.
@@ -209,14 +213,14 @@ public static class ModelContextWindowRegistry
    ///    E.g. "my-fine-tuned-llama" will match "my-fine-tuned-llama:v2".
    /// </param>
    /// <param name="contextWindowTokens">Context window size in tokens.</param>
-    public static void Register(string modelNamePattern, int contextWindowTokens)
-    {
-       ArgumentException.ThrowIfNullOrWhiteSpace(modelNamePattern);
-       ArgumentOutOfRangeException.ThrowIfNegativeOrZero(contextWindowTokens);
+   public static void Register(string modelNamePattern, int contextWindowTokens)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(modelNamePattern);
+      ArgumentOutOfRangeException.ThrowIfNegativeOrZero(contextWindowTokens);
 
-       _windowsBuilder[modelNamePattern] = contextWindowTokens;
-       _frozenWindows = FrozenDictionary<string, int>.Empty; // invalidate frozen cache
-    }
+      _windowsBuilder[modelNamePattern] = contextWindowTokens;
+      _frozenWindows = FrozenDictionary<string, int>.Empty; // invalidate frozen cache
+   }
 
    /// <summary>
    ///    Returns a read-only snapshot of all registered model patterns and their context windows.

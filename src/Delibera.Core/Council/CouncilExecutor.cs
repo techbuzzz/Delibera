@@ -30,11 +30,11 @@ public sealed class CouncilExecutor : ICouncilExecutor
    private readonly List<ExecutionLog> _executionLogs = [];
    private readonly int _maxRounds;
    private readonly string? _outputPath;
-    private readonly string? _resumeFromDebateId;
-    private readonly TelemetryOptions? _telemetryOptions;
-    private readonly float _temperature;
-    private readonly CacheBehavior _cacheBehavior;
-    private readonly IDebateCache? _cache;
+   private readonly string? _resumeFromDebateId;
+   private readonly TelemetryOptions? _telemetryOptions;
+   private readonly float _temperature;
+   private readonly CacheBehavior _cacheBehavior;
+   private readonly IDebateCache? _cache;
 
    internal CouncilExecutor(
       IReadOnlyList<CouncilMember> members,
@@ -59,11 +59,11 @@ public sealed class CouncilExecutor : ICouncilExecutor
       Type? structuredOutputType = null,
       IDebateStore? debateStore = null,
       string? resumeFromDebateId = null,
-       IAgentMemory? agentMemory = null,
-       IReadOnlyList<FileAttachment>? attachments = null,
-       FileContentReaderRegistry? fileReaders = null,
-       CacheBehavior cacheBehavior = CacheBehavior.Disabled,
-       IDebateCache? cache = null)
+      IAgentMemory? agentMemory = null,
+      IReadOnlyList<FileAttachment>? attachments = null,
+      FileContentReaderRegistry? fileReaders = null,
+      CacheBehavior cacheBehavior = CacheBehavior.Disabled,
+      IDebateCache? cache = null)
    {
       Members = members;
       Chairman = chairman;
@@ -87,11 +87,11 @@ public sealed class CouncilExecutor : ICouncilExecutor
       StructuredOutputType = structuredOutputType;
       DebateStore = debateStore;
       _resumeFromDebateId = resumeFromDebateId;
-       AgentMemory = agentMemory;
-       Attachments = attachments ?? [];
-       FileReaders = fileReaders ?? new FileContentReaderRegistry();
-       _cacheBehavior = cacheBehavior;
-       _cache = cache;
+      AgentMemory = agentMemory;
+      Attachments = attachments ?? [];
+      FileReaders = fileReaders ?? new FileContentReaderRegistry();
+      _cacheBehavior = cacheBehavior;
+      _cache = cache;
 
       // When telemetry is enabled with a non-default source/meter name, configure the
       // global activity source and meter to honour the user's OpenTelemetry builder setup.
@@ -170,19 +170,19 @@ public sealed class CouncilExecutor : ICouncilExecutor
    /// </summary>
    public IReadOnlyList<FileAttachment> Attachments { get; }
 
-    /// <summary>
-    ///    The file-content reader registry used to read attachments (F-06 Multi-Modal).
-    ///    Pre-populated with built-in <see cref="Delibera.Core.Attachments.Readers.PlainTextFileReader"/>,
-    ///    <see cref="Delibera.Core.Attachments.Readers.ImageFileReader"/>, and
-    ///    <see cref="Delibera.Core.Attachments.Readers.FallbackFileReader"/>.
-    /// </summary>
-    public FileContentReaderRegistry FileReaders { get; }
+   /// <summary>
+   ///    The file-content reader registry used to read attachments (F-06 Multi-Modal).
+   ///    Pre-populated with built-in <see cref="Delibera.Core.Attachments.Readers.PlainTextFileReader"/>,
+   ///    <see cref="Delibera.Core.Attachments.Readers.ImageFileReader"/>, and
+   ///    <see cref="Delibera.Core.Attachments.Readers.FallbackFileReader"/>.
+   /// </summary>
+   public FileContentReaderRegistry FileReaders { get; }
 
-    /// <summary>
-    ///    Cache behavior for this executor. When not <see cref="CacheBehavior.Disabled" />,
-    ///    the executor checks <see cref="IDebateCache" /> before running a debate.
-    /// </summary>
-    public CacheBehavior CacheBehavior => _cacheBehavior;
+   /// <summary>
+   ///    Cache behavior for this executor. When not <see cref="CacheBehavior.Disabled" />,
+   ///    the executor checks <see cref="IDebateCache" /> before running a debate.
+   /// </summary>
+   public CacheBehavior CacheBehavior => _cacheBehavior;
 
    /// <summary>
    ///    Whether telemetry instrumentation is active for this executor. When <c>true</c>,
@@ -268,8 +268,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
       try
       {
-          var retryResponse = await Chairman.AskAsync(
-             _context.SystemPrompt, correctionPrompt, _temperature, ct).ConfigureAwait(false);
+         var retryResponse = await Chairman.AskAsync(
+            _context.SystemPrompt, correctionPrompt, _temperature, ct).ConfigureAwait(false);
          verdict = serializer.Deserialize<TVerdict>(retryResponse);
          if (verdict is not null)
          {
@@ -293,59 +293,59 @@ public sealed class CouncilExecutor : ICouncilExecutor
    /// <summary>
    ///    Runs the debate and returns the full result.
    /// </summary>
-    public async Task<DebateResult> ExecuteAsync(CancellationToken ct = default)
-    {
-       _executionLogs.Clear();
+   public async Task<DebateResult> ExecuteAsync(CancellationToken ct = default)
+   {
+      _executionLogs.Clear();
 
-       // ── Cache check ─────────────────────────────────────────────────────────
-        if (_cache is not null && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.ReadOnly)
-        {
-           var cacheKey = DebateCacheKeyGenerator.Generate(
-              _context, Members.Select(m => m.DisplayName).ToList(),
-              Strategy.StrategyName, _maxRounds, _temperature,
-              _context.SystemPrompt);
+      // ── Cache check ─────────────────────────────────────────────────────────
+      if (_cache is not null && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.ReadOnly)
+      {
+         var cacheKey = DebateCacheKeyGenerator.Generate(
+            _context, Members.Select(m => m.DisplayName).ToList(),
+            Strategy.StrategyName, _maxRounds, _temperature,
+            _context.SystemPrompt);
 
-           var cached = await _cache.GetAsync(cacheKey, ct).ConfigureAwait(false);
-           if (cached is not null)
-           {
-              Log(ExecutionLog.Info("Cache", $"Cache HIT for key {cacheKey}."));
-              DeliberaMeter.CacheHits.Add(1, new KeyValuePair<string, object?>("cache_backend", _cache.GetType().Name));
-              return cached with { CacheHit = true, CacheKey = cacheKey, CachedAt = cached.StartedAt };
-           }
-       }
+         var cached = await _cache.GetAsync(cacheKey, ct).ConfigureAwait(false);
+         if (cached is not null)
+         {
+            Log(ExecutionLog.Info("Cache", $"Cache HIT for key {cacheKey}."));
+            DeliberaMeter.CacheHits.Add(1, new KeyValuePair<string, object?>("cache_backend", _cache.GetType().Name));
+            return cached with { CacheHit = true, CacheKey = cacheKey, CachedAt = cached.StartedAt };
+         }
+      }
 
-       // When a debate-level timeout is configured (F-10b WithTimeout), link it to the
-       // caller's CT so either signal cancels the whole pipeline. The linked CTS is
-       // disposed in the finally block below.
-       CancellationTokenSource? timeoutCts = null;
-       CancellationTokenSource? linkedCts = null;
-       var effectiveToken = ct;
-       if (DebateTimeout is { } timeout && timeout != Timeout.InfiniteTimeSpan)
-       {
-          timeoutCts = new CancellationTokenSource(timeout);
-          linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-          effectiveToken = linkedCts.Token;
-          Log(ExecutionLog.Info("Council", $"Debate timeout configured: {timeout.TotalSeconds:F1}s"));
-       }
+      // When a debate-level timeout is configured (F-10b WithTimeout), link it to the
+      // caller's CT so either signal cancels the whole pipeline. The linked CTS is
+      // disposed in the finally block below.
+      CancellationTokenSource? timeoutCts = null;
+      CancellationTokenSource? linkedCts = null;
+      var effectiveToken = ct;
+      if (DebateTimeout is { } timeout && timeout != Timeout.InfiniteTimeSpan)
+      {
+         timeoutCts = new CancellationTokenSource(timeout);
+         linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+         effectiveToken = linkedCts.Token;
+         Log(ExecutionLog.Info("Council", $"Debate timeout configured: {timeout.TotalSeconds:F1}s"));
+      }
 
-       try
-       {
-           var result = await ExecuteCoreAsync(effectiveToken).ConfigureAwait(false);
+      try
+      {
+         var result = await ExecuteCoreAsync(effectiveToken).ConfigureAwait(false);
 
-          // ── Cache write ──────────────────────────────────────────────────────
-          if (_cache is not null && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.WriteThrough)
-          {
-             var cacheKey = DebateCacheKeyGenerator.Generate(
-                _context, Members.Select(m => m.DisplayName).ToList(),
-                Strategy.StrategyName, _maxRounds, _temperature,
-                _context.SystemPrompt);
+         // ── Cache write ──────────────────────────────────────────────────────
+         if (_cache is not null && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.WriteThrough)
+         {
+            var cacheKey = DebateCacheKeyGenerator.Generate(
+               _context, Members.Select(m => m.DisplayName).ToList(),
+               Strategy.StrategyName, _maxRounds, _temperature,
+               _context.SystemPrompt);
 
-              await _cache.SetAsync(cacheKey, result, ct: ct).ConfigureAwait(false);
-             Log(ExecutionLog.Info("Cache", $"Cache SET for key {cacheKey}."));
-             result = result with { CacheKey = cacheKey };
-          }
+            await _cache.SetAsync(cacheKey, result, ct: ct).ConfigureAwait(false);
+            Log(ExecutionLog.Info("Cache", $"Cache SET for key {cacheKey}."));
+            result = result with { CacheKey = cacheKey };
+         }
 
-          return result;
+         return result;
       }
       finally
       {
@@ -527,7 +527,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
       CompressedContext result;
       try
       {
-          result = await Compressor.CompressAsync(text, _compressionOptions, ct).ConfigureAwait(false);
+         result = await Compressor.CompressAsync(text, _compressionOptions, ct).ConfigureAwait(false);
          DeliberaTelemetry.MarkSucceeded(compressionActivity);
       }
       catch (Exception ex)
@@ -742,8 +742,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
                                 {effectiveContext.SystemPrompt}
                                 """;
                effectiveContext = effectiveContext with { SystemPrompt = augmented };
-                Log(ExecutionLog.Info("AgentMemory", $"Recalled {allMemories.Count} memory entries from previous sessions."));
-             }
+               Log(ExecutionLog.Info("AgentMemory", $"Recalled {allMemories.Count} memory entries from previous sessions."));
+            }
          }
 
          // ── F-06 Multi-Modal: read attachments and inject text content into the prompt ──
@@ -761,6 +761,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
                      var label = attachment.Description ?? Path.GetFileName(attachment.FilePath);
                      attachmentTexts.Add($"── Attachment: {label} ──\n{readResult.TextContent}");
                   }
+
                   Log(ExecutionLog.Info("Attachments",
                      $"Read {Path.GetFileName(attachment.FilePath)}: " +
                      $"{(readResult.TextContent?.Length ?? 0)} chars text, " +
@@ -771,6 +772,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
                   ReportError(ex, "Attachments");
                }
             }
+
             if (attachmentTexts.Count > 0)
             {
                var attachmentBlock = string.Join("\n\n", attachmentTexts);
@@ -791,8 +793,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
             Log(ExecutionLog.Info("AutoChunking", "AutoChunking enabled — analysing model context windows…"));
 
             var orchestrator = new AutoChunkingOrchestrator(_autoChunkingOptions, ExecutionOptions.Logger);
-             effectiveContext = await orchestrator.PrepareContextAsync(
-                effectiveContext, Members, Chairman, ct).ConfigureAwait(false);
+            effectiveContext = await orchestrator.PrepareContextAsync(
+               effectiveContext, Members, Chairman, ct).ConfigureAwait(false);
 
             if (effectiveContext.AutoChunkingEnabled && effectiveContext.ChunkingPlan is { } plan)
                Log(ExecutionLog.Info("AutoChunking",
@@ -905,7 +907,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
             Log(ExecutionLog.Info("Voting", $"Running voting engine: {votingStrategy.MethodName}"));
             try
             {
-                var tally = await RunVotingAsync(votingStrategy, result, ct).ConfigureAwait(false);
+               var tally = await RunVotingAsync(votingStrategy, result, ct).ConfigureAwait(false);
                if (tally is not null)
                {
                   result = result with { VotingTally = tally };
@@ -939,7 +941,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
          if (!string.IsNullOrWhiteSpace(_outputPath))
          {
-             await result.SaveToFileAsync(_outputPath, ct).ConfigureAwait(false);
+            await result.SaveToFileAsync(_outputPath, ct).ConfigureAwait(false);
             Log(ExecutionLog.Info("Output", $"Result saved to: {_outputPath}"));
          }
 
@@ -1166,32 +1168,39 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
    private static int LevenshteinDistance(string a, string b)
    {
-       if (a.Length < b.Length)
-           (a, b) = (b, a);
+      if (a.Length < b.Length)
+         (a, b) = (b, a);
 
-       var n = b.Length;
-       Span<int> prevRow = n <= 128 ? stackalloc int[n + 1] : new int[n + 1];
-       Span<int> currRow = n <= 128 ? stackalloc int[n + 1] : new int[n + 1];
+      var n = b.Length;
+      Span<int> prevRow = n <= 128
+         ? stackalloc int[n + 1]
+         : new int[n + 1];
+      Span<int> currRow = n <= 128
+         ? stackalloc int[n + 1]
+         : new int[n + 1];
 
-       for (var i = 0; i <= n; i++)
-           prevRow[i] = i;
+      for (var i = 0; i <= n; i++)
+         prevRow[i] = i;
 
-       for (var i = 1; i <= a.Length; i++)
-       {
-           currRow[0] = i;
-           for (var j = 1; j <= n; j++)
-           {
-               var cost = a[i - 1] == b[j - 1] ? 0 : 1;
-               currRow[j] = Math.Min(
-                   Math.Min(prevRow[j] + 1, currRow[j - 1] + 1),
-                   prevRow[j - 1] + cost);
-           }
-           var tmp = prevRow;
-           prevRow = currRow;
-           currRow = tmp;
-       }
+      for (var i = 1; i <= a.Length; i++)
+      {
+         currRow[0] = i;
+         for (var j = 1; j <= n; j++)
+         {
+            var cost = a[i - 1] == b[j - 1]
+               ? 0
+               : 1;
+            currRow[j] = Math.Min(
+               Math.Min(prevRow[j] + 1, currRow[j - 1] + 1),
+               prevRow[j - 1] + cost);
+         }
 
-       return prevRow[n];
+         var tmp = prevRow;
+         prevRow = currRow;
+         currRow = tmp;
+      }
+
+      return prevRow[n];
    }
 
    /// <summary>
@@ -1229,20 +1238,20 @@ public sealed class CouncilExecutor : ICouncilExecutor
       // Ask each member to rank (in parallel, bounded by ExecutionOptions).
       var parallelOpts = ExecutionOptions.ToParallelOptions(ct);
       var ballots = new ConcurrentBag<ParticipantBallot>();
-       await Parallel.ForEachAsync(Members, parallelOpts, async (member, token) =>
-       {
-          try
-          {
-             var response = await member.AskAsync(_context.SystemPrompt, rankPrompt, _temperature, token).ConfigureAwait(false);
+      await Parallel.ForEachAsync(Members, parallelOpts, async (member, token) =>
+      {
+         try
+         {
+            var response = await member.AskAsync(_context.SystemPrompt, rankPrompt, _temperature, token).ConfigureAwait(false);
             var rankings = ParseRankings(response, options);
             if (rankings.Count > 0)
                ballots.Add(new ParticipantBallot(member.DisplayName, 1.0, rankings));
          }
          catch (Exception ex)
          {
-             Log(ExecutionLog.Warn("Voting", $"{member.DisplayName} failed to rank: {ex.Message}"));
-          }
-       }).ConfigureAwait(false);
+            Log(ExecutionLog.Warn("Voting", $"{member.DisplayName} failed to rank: {ex.Message}"));
+         }
+      }).ConfigureAwait(false);
 
       if (ballots.IsEmpty)
       {
@@ -1250,7 +1259,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
          return null;
       }
 
-       return await votingStrategy.TallyAsync(ballots.ToList(), ct).ConfigureAwait(false);
+      return await votingStrategy.TallyAsync(ballots.ToList(), ct).ConfigureAwait(false);
    }
 
    /// <summary>

@@ -187,31 +187,38 @@ public sealed class AdaptiveStrategySelector : IStrategySelector
 
    private static int LevenshteinDistance(string a, string b)
    {
-       if (a.Length < b.Length)
-           (a, b) = (b, a);
+      if (a.Length < b.Length)
+         (a, b) = (b, a);
 
-       var n = b.Length;
-       Span<int> prevRow = n <= 128 ? stackalloc int[n + 1] : new int[n + 1];
-       Span<int> currRow = n <= 128 ? stackalloc int[n + 1] : new int[n + 1];
+      var n = b.Length;
+      Span<int> prevRow = n <= 128
+         ? stackalloc int[n + 1]
+         : new int[n + 1];
+      Span<int> currRow = n <= 128
+         ? stackalloc int[n + 1]
+         : new int[n + 1];
 
-       for (var i = 0; i <= n; i++)
-           prevRow[i] = i;
+      for (var i = 0; i <= n; i++)
+         prevRow[i] = i;
 
-       for (var i = 1; i <= a.Length; i++)
-       {
-           currRow[0] = i;
-           for (var j = 1; j <= n; j++)
-           {
-               var cost = a[i - 1] == b[j - 1] ? 0 : 1;
-               currRow[j] = Math.Min(
-                   Math.Min(prevRow[j] + 1, currRow[j - 1] + 1),
-                   prevRow[j - 1] + cost);
-           }
-           var tmp = prevRow;
-           prevRow = currRow;
-           currRow = tmp;
-       }
+      for (var i = 1; i <= a.Length; i++)
+      {
+         currRow[0] = i;
+         for (var j = 1; j <= n; j++)
+         {
+            var cost = a[i - 1] == b[j - 1]
+               ? 0
+               : 1;
+            currRow[j] = Math.Min(
+               Math.Min(prevRow[j] + 1, currRow[j - 1] + 1),
+               prevRow[j - 1] + cost);
+         }
 
-       return prevRow[n];
+         var tmp = prevRow;
+         prevRow = currRow;
+         currRow = tmp;
+      }
+
+      return prevRow[n];
    }
 }

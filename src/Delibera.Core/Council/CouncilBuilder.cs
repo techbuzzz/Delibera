@@ -53,9 +53,9 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private TelemetryOptions? _telemetryOptions;
    private float _temperature = 0.7f;
    private string _userPrompt = string.Empty;
-    private IVotingStrategy? _votingStrategy;
-    private CacheBehavior _cacheBehavior;
-    private IDebateCache? _cache;
+   private IVotingStrategy? _votingStrategy;
+   private CacheBehavior _cacheBehavior;
+   private IDebateCache? _cache;
    private readonly List<FileAttachment> _attachments = [];
    private readonly FileContentReaderRegistry _fileReaders = new();
 
@@ -88,45 +88,48 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
-    /// <inheritdoc />
-    public ICouncilBuilder AddMember(string modelName, ILLMProvider provider, string? role = null, string? persona = null)
-    {
-       var member = new CouncilMember(modelName, provider, role, persona);
-       // Auto-detect capabilities from model name.
-       if (ModelContextWindowRegistry.SupportsVision(modelName))
-          member.Capabilities |= MemberCapabilities.Vision;
-       _members.Add(member);
-       return this;
-    }
+   /// <inheritdoc />
+   public ICouncilBuilder AddMember(string modelName, ILLMProvider provider, string? role = null, string? persona = null)
+   {
+      var member = new CouncilMember(modelName, provider, role, persona);
+      // Auto-detect capabilities from model name.
+      if (ModelContextWindowRegistry.SupportsVision(modelName))
+         member.Capabilities |= MemberCapabilities.Vision;
+      _members.Add(member);
+      return this;
+   }
 
-    // ── Members with capabilities (F-06 Multi-Modal) ──
+   // ── Members with capabilities (F-06 Multi-Modal) ──
 
-    /// <summary>
-    ///    Adds a participant with explicit <see cref="MemberCapabilities"/>. When
-    ///    <see cref="MemberCapabilities.Vision"/> is set, the member receives image
-    ///    attachments as <c>ImageContent</c> via Microsoft.Extensions.AI; text-only
-    ///    members receive a textual placeholder for binary attachments.
-    /// </summary>
-    /// <param name="modelName">Model name (e.g. "llava:13b").</param>
-    /// <param name="provider">LLM provider instance.</param>
-    /// <param name="role">Role label.</param>
-    /// <param name="capabilities">
-    ///    Member capabilities. Pass <see cref="MemberCapabilities.Vision"/> |
-    ///    <see cref="MemberCapabilities.Text"/> for a vision-capable member.
-    ///    Vision is auto-detected from the model name when not set here.
-    /// </param>
-    /// <param name="persona">Optional persona prompt.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder AddMember(string modelName, ILLMProvider provider, string role,
-        MemberCapabilities capabilities, string? persona = null)
-    {
-       var member = new CouncilMember(modelName, provider, role, persona)
-       {
-          Capabilities = capabilities | (ModelContextWindowRegistry.SupportsVision(modelName) ? MemberCapabilities.Vision : 0)
-       };
-       _members.Add(member);
-       return this;
-    }
+   /// <summary>
+   ///    Adds a participant with explicit <see cref="MemberCapabilities"/>. When
+   ///    <see cref="MemberCapabilities.Vision"/> is set, the member receives image
+   ///    attachments as <c>ImageContent</c> via Microsoft.Extensions.AI; text-only
+   ///    members receive a textual placeholder for binary attachments.
+   /// </summary>
+   /// <param name="modelName">Model name (e.g. "llava:13b").</param>
+   /// <param name="provider">LLM provider instance.</param>
+   /// <param name="role">Role label.</param>
+   /// <param name="capabilities">
+   ///    Member capabilities. Pass <see cref="MemberCapabilities.Vision"/> |
+   ///    <see cref="MemberCapabilities.Text"/> for a vision-capable member.
+   ///    Vision is auto-detected from the model name when not set here.
+   /// </param>
+   /// <param name="persona">Optional persona prompt.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder AddMember(string modelName, ILLMProvider provider, string role,
+      MemberCapabilities capabilities, string? persona = null)
+   {
+      var member = new CouncilMember(modelName, provider, role, persona)
+      {
+         Capabilities = capabilities |
+                        (ModelContextWindowRegistry.SupportsVision(modelName)
+                           ? MemberCapabilities.Vision
+                           : 0)
+      };
+      _members.Add(member);
+      return this;
+   }
 
    // ── Chairman ──
 
@@ -502,31 +505,31 @@ public sealed class CouncilBuilder : ICouncilBuilder
    /// </summary>
    /// <param name="debateId">The debate identifier to resume.</param>
    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder ResumeFrom(string debateId)
-    {
-       ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
-       _resumeFromDebateId = debateId;
-       return this;
-    }
+   public ICouncilBuilder ResumeFrom(string debateId)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
+      _resumeFromDebateId = debateId;
+      return this;
+   }
 
-    /// <inheritdoc />
-    public ICouncilBuilder WithCacheBehavior(CacheBehavior behavior)
-    {
-       _cacheBehavior = behavior;
-       return this;
-    }
+   /// <inheritdoc />
+   public ICouncilBuilder WithCacheBehavior(CacheBehavior behavior)
+   {
+      _cacheBehavior = behavior;
+      return this;
+   }
 
-    /// <summary>
-    ///    Sets the caching behavior and cache backend for this debate.
-    /// </summary>
-    public ICouncilBuilder WithCache(CacheBehavior behavior, IDebateCache cache)
-    {
-       _cacheBehavior = behavior;
-       _cache = cache;
-       return this;
-    }
+   /// <summary>
+   ///    Sets the caching behavior and cache backend for this debate.
+   /// </summary>
+   public ICouncilBuilder WithCache(CacheBehavior behavior, IDebateCache cache)
+   {
+      _cacheBehavior = behavior;
+      _cache = cache;
+      return this;
+   }
 
-    // ── Agent memory (F-04) ──
+   // ── Agent memory (F-04) ──
 
    /// <summary>
    ///    Attaches an <see cref="IAgentMemory" /> so council members can recall
@@ -536,74 +539,74 @@ public sealed class CouncilBuilder : ICouncilBuilder
    /// </summary>
    /// <param name="memory">Memory backend. <c>null</c> disables memory.</param>
    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder WithAgentMemory(IAgentMemory? memory = null)
-    {
-       _agentMemory = memory ?? new InMemoryAgentMemory();
-       return this;
-    }
+   public ICouncilBuilder WithAgentMemory(IAgentMemory? memory = null)
+   {
+      _agentMemory = memory ?? new InMemoryAgentMemory();
+      return this;
+   }
 
-    // ── Multi-Modal attachments (F-06) ──
+   // ── Multi-Modal attachments (F-06) ──
 
-    /// <summary>
-    ///    Attaches a file to the debate. The file is read lazily by the
-    ///    <see cref="FileContentReaderRegistry"/> when the debate starts.
-    ///    Vision-capable members receive image attachments as
-    ///    <c>ImageContent</c>; text-only members receive a textual placeholder.
-    /// </summary>
-    /// <param name="filePath">Absolute or relative path to the file.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder WithAttachment(string filePath)
-    {
-       ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-       _attachments.Add(new FileAttachment(filePath));
-       return this;
-    }
+   /// <summary>
+   ///    Attaches a file to the debate. The file is read lazily by the
+   ///    <see cref="FileContentReaderRegistry"/> when the debate starts.
+   ///    Vision-capable members receive image attachments as
+   ///    <c>ImageContent</c>; text-only members receive a textual placeholder.
+   /// </summary>
+   /// <param name="filePath">Absolute or relative path to the file.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder WithAttachment(string filePath)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+      _attachments.Add(new FileAttachment(filePath));
+      return this;
+   }
 
-    /// <summary>
-    ///    Attaches a file with a human-readable description. The description is shown
-    ///    to text-only members that cannot process binary attachments.
-    /// </summary>
-    /// <param name="filePath">Absolute or relative path to the file.</param>
-    /// <param name="description">Human-readable description (e.g. "System Architecture diagram").</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder WithAttachment(string filePath, string description)
-    {
-       ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-       ArgumentException.ThrowIfNullOrWhiteSpace(description);
-       _attachments.Add(new FileAttachment(filePath, description));
-       return this;
-    }
+   /// <summary>
+   ///    Attaches a file with a human-readable description. The description is shown
+   ///    to text-only members that cannot process binary attachments.
+   /// </summary>
+   /// <param name="filePath">Absolute or relative path to the file.</param>
+   /// <param name="description">Human-readable description (e.g. "System Architecture diagram").</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder WithAttachment(string filePath, string description)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+      ArgumentException.ThrowIfNullOrWhiteSpace(description);
+      _attachments.Add(new FileAttachment(filePath, description));
+      return this;
+   }
 
-    /// <summary>
-    ///    Registers a custom <see cref="IFileContentReader"/> for a specific file
-    ///    extension (e.g. <c>.pdf</c>). Overwrites any existing reader for the extension.
-    /// </summary>
-    /// <param name="extension">File extension including the leading dot (e.g. ".pdf").</param>
-    /// <param name="reader">Reader instance.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder WithFileReader(string extension, IFileContentReader reader)
-    {
-       ArgumentException.ThrowIfNullOrWhiteSpace(extension);
-       ArgumentNullException.ThrowIfNull(reader);
-       _fileReaders.Register(extension, reader);
-       return this;
-    }
+   /// <summary>
+   ///    Registers a custom <see cref="IFileContentReader"/> for a specific file
+   ///    extension (e.g. <c>.pdf</c>). Overwrites any existing reader for the extension.
+   /// </summary>
+   /// <param name="extension">File extension including the leading dot (e.g. ".pdf").</param>
+   /// <param name="reader">Reader instance.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder WithFileReader(string extension, IFileContentReader reader)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(extension);
+      ArgumentNullException.ThrowIfNull(reader);
+      _fileReaders.Register(extension, reader);
+      return this;
+   }
 
-    /// <summary>
-    ///    Registers a delegate-based reader for a specific file extension. The delegate
-    ///    is wrapped in a delegate adapter — no class needed.
-    ///    class needed.
-    /// </summary>
-    /// <param name="extension">File extension including the leading dot.</param>
-    /// <param name="handler">Delegate that reads the file and returns a <see cref="FileReadResult"/>.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    public ICouncilBuilder WithFileReader(string extension, Func<string, CancellationToken, Task<FileReadResult>> handler)
-    {
-       ArgumentException.ThrowIfNullOrWhiteSpace(extension);
-       ArgumentNullException.ThrowIfNull(handler);
-       _fileReaders.Register(extension, handler);
-       return this;
-    }
+   /// <summary>
+   ///    Registers a delegate-based reader for a specific file extension. The delegate
+   ///    is wrapped in a delegate adapter — no class needed.
+   ///    class needed.
+   /// </summary>
+   /// <param name="extension">File extension including the leading dot.</param>
+   /// <param name="handler">Delegate that reads the file and returns a <see cref="FileReadResult"/>.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   public ICouncilBuilder WithFileReader(string extension, Func<string, CancellationToken, Task<FileReadResult>> handler)
+   {
+      ArgumentException.ThrowIfNullOrWhiteSpace(extension);
+      ArgumentNullException.ThrowIfNull(handler);
+      _fileReaders.Register(extension, handler);
+      return this;
+   }
 
    // ── Options (bulk configuration) ──
 
@@ -783,9 +786,9 @@ public sealed class CouncilBuilder : ICouncilBuilder
          _debateStore,
          _resumeFromDebateId,
          _agentMemory,
-          _attachments.AsReadOnly(),
-          _fileReaders,
-          _cacheBehavior,
-          _cache);
+         _attachments.AsReadOnly(),
+         _fileReaders,
+         _cacheBehavior,
+         _cache);
    }
 }

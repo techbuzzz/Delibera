@@ -17,9 +17,9 @@ builder.Services.AddDeliberaServer(builder.Configuration);
 // ── JSON ──────────────────────────────────────────────────────────────────────
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
-    o.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
-    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
-    o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+   o.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+   o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+   o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
 });
 
 // ── OpenAPI ───────────────────────────────────────────────────────────────────
@@ -27,7 +27,7 @@ builder.Services.AddOpenApi();
 
 // ── Health checks ─────────────────────────────────────────────────────────────
 builder.Services.AddHealthChecks()
-    .AddCheck<DeliberaCoreHealthCheck>("delibera-core");
+   .AddCheck<DeliberaCoreHealthCheck>("delibera-core");
 
 var app = builder.Build();
 
@@ -36,11 +36,11 @@ app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<TenantResolutionMiddleware>();
 
 if (app.Environment.IsDevelopment())
-    app.MapOpenApi();
+   app.MapOpenApi();
 
 // ── REST endpoint groups ──────────────────────────────────────────────────────
 var api = app.MapGroup("/api/v1")
-             .AddEndpointFilter<ValidationFilter>();
+   .AddEndpointFilter<ValidationFilter>();
 
 api.MapDebateEndpoints();
 api.MapTemplateEndpoints();

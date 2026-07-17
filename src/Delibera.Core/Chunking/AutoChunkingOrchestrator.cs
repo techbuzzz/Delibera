@@ -237,19 +237,19 @@ public sealed class AutoChunkingOrchestrator
       // Query all models in parallel — each provider call is I/O-bound.
       var tasks = models.Select(async m =>
       {
-          int? window = null;
+         int? window = null;
 
-          // 1. Try the provider's dynamic capabilities.
-          try
-          {
-              var caps = await m.Provider.GetModelCapabilitiesAsync(m.ModelName, ct).ConfigureAwait(false);
-             if (!caps.IsUnknown && caps.ContextWindowTokens is { } w and > 0)
-                window = w;
-          }
-          catch
-          {
-             // Provider introspection failed — fall through to registry.
-          }
+         // 1. Try the provider's dynamic capabilities.
+         try
+         {
+            var caps = await m.Provider.GetModelCapabilitiesAsync(m.ModelName, ct).ConfigureAwait(false);
+            if (!caps.IsUnknown && caps.ContextWindowTokens is { } w and > 0)
+               window = w;
+         }
+         catch
+         {
+            // Provider introspection failed — fall through to registry.
+         }
 
          // 2. Fall back to the static registry.
          window ??= ModelContextWindowRegistry.GetContextWindow(m.ModelName);
@@ -257,7 +257,7 @@ public sealed class AutoChunkingOrchestrator
          return (Window: window, m.DisplayName);
       });
 
-       var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+      var results = await Task.WhenAll(tasks).ConfigureAwait(false);
 
       int? minWindow = null;
       string? minModel = null;

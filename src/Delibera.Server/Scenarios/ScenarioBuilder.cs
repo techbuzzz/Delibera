@@ -9,9 +9,9 @@ namespace Delibera.Server.Scenarios;
 
 public static class ScenarioBuilder
 {
-    public static ICouncilBuilder Build(
-        ScenarioRequest request,
-        IConfiguration configuration)
+   public static ICouncilBuilder Build(
+      ScenarioRequest request,
+      IConfiguration configuration)
    {
       if (request.Members is not { Length: > 0 })
          throw new ArgumentException("A scenario must have at least one member.", nameof(request));
@@ -20,38 +20,38 @@ public static class ScenarioBuilder
       var apiKey = configuration["Delibera:Providers:ApiKey"];
       var fastModel = configuration["Delibera:Models:Fast"] ?? "llama3.2:3b";
       var strongModel = configuration["Delibera:Models:Strong"] ?? "qwen2.5:7b";
-       using var factory = new ProviderFactory();
+      using var factory = new ProviderFactory();
 
       ILLMProvider DefaultProvider() =>
-          string.IsNullOrEmpty(apiKey)
-              ? factory.CreateLocalOllama(endpoint)
-              : factory.CreateCloudOllama(endpoint, apiKey);
+         string.IsNullOrEmpty(apiKey)
+            ? factory.CreateLocalOllama(endpoint)
+            : factory.CreateCloudOllama(endpoint, apiKey);
 
-       ILLMProvider ResolveProvider(string? providerType) =>
-           providerType?.ToLowerInvariant() switch
-           {
-              _ => DefaultProvider(),
-           };
+      ILLMProvider ResolveProvider(string? providerType) =>
+         providerType?.ToLowerInvariant() switch
+         {
+            _ => DefaultProvider(),
+         };
 
       string ResolveModel(string? model, bool preferStrong = true) =>
-          !string.IsNullOrWhiteSpace(model) ? model
-              : preferStrong ? strongModel : fastModel;
+         !string.IsNullOrWhiteSpace(model) ? model
+         : preferStrong ? strongModel : fastModel;
 
       var builder = new CouncilBuilder()
-          .WithMaxRounds(request.MaxRounds)
-          .WithTemperature(request.Temperature);
+         .WithMaxRounds(request.MaxRounds)
+         .WithTemperature(request.Temperature);
 
       if (!string.IsNullOrWhiteSpace(request.SystemPrompt))
          builder.WithSystemPrompt(request.SystemPrompt);
       else
       {
          var ctx = request.InputData.HasValue
-             ? request.InputData.Value.ToString()
-             : string.Empty;
+            ? request.InputData.Value.ToString()
+            : string.Empty;
          builder.WithSystemPrompt(
-             string.IsNullOrWhiteSpace(ctx)
-                 ? request.Question
-                 : $"{request.Question}\n\nContext:\n{ctx}");
+            string.IsNullOrWhiteSpace(ctx)
+               ? request.Question
+               : $"{request.Question}\n\nContext:\n{ctx}");
       }
 
       builder.WithUserPrompt(request.Question);
@@ -92,18 +92,18 @@ public static class ScenarioBuilder
          var chModel = strongModel;
          var chProvider = DefaultProvider();
 
-          IVotingStrategy voting = request.VotingStrategy.ToLowerInvariant() switch
-          {
-             "bordacount" or "borda" => new BordaCountVotingStrategy(),
-             "weighted" =>
-                 new WeightedVotingStrategy
-                 {
-                     MemberWeights = request.MemberWeights is { Count: > 0 }
-                         ? request.MemberWeights.ToDictionary(kv => kv.Key, kv => (double)kv.Value)
-                         : request.Members.ToDictionary(m => m.Role, m => (double)m.Weight),
-                 },
-             _ => new MajorityVotingStrategy(),
-          };
+         IVotingStrategy voting = request.VotingStrategy.ToLowerInvariant() switch
+         {
+            "bordacount" or "borda" => new BordaCountVotingStrategy(),
+            "weighted" =>
+               new WeightedVotingStrategy
+               {
+                  MemberWeights = request.MemberWeights is { Count: > 0 }
+                     ? request.MemberWeights.ToDictionary(kv => kv.Key, kv => (double)kv.Value)
+                     : request.Members.ToDictionary(m => m.Role, m => (double)m.Weight),
+               },
+            _ => new MajorityVotingStrategy(),
+         };
          builder.WithVotingChairman(chModel, chProvider, voting);
       }
 
@@ -111,10 +111,9 @@ public static class ScenarioBuilder
       if (!string.IsNullOrWhiteSpace(request.KnowledgeText))
       {
          var existing = builder.GetSystemPrompt(); // если метод есть, иначе — пересобрать
-                                                   // Т.к. WithKnowledgeText нет в ICouncilBuilder, инжектируем в system prompt:
+         // Т.к. WithKnowledgeText нет в ICouncilBuilder, инжектируем в system prompt:
          builder.WithSystemPrompt(
-             (request.SystemPrompt ?? request.Question)
-             + $"\n\n## Knowledge Context\n{request.KnowledgeText}");
+            (request.SystemPrompt ?? request.Question) + $"\n\n## Knowledge Context\n{request.KnowledgeText}");
       }
 
       // ── Compression ───────────────────────────────────────────────────────
@@ -122,8 +121,8 @@ public static class ScenarioBuilder
           !string.Equals(request.CompressionStrategy, "None", StringComparison.OrdinalIgnoreCase))
       {
          var llm = DefaultProvider();
-          if (Enum.TryParse<CompressionStrategy>(
-                  request.CompressionStrategy, true, out var cs))
+         if (Enum.TryParse<CompressionStrategy>(
+                request.CompressionStrategy, true, out var cs))
             builder.WithCompression(cs, llm, strongModel);
       }
 

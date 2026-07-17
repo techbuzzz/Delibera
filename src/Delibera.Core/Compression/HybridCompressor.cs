@@ -73,7 +73,7 @@ public sealed class HybridCompressor : IContextCompressor
 
       // ── Stage 1: Deduplication ──
       _dedup ??= new DeduplicationCompressor(_embeddingProvider);
-       var dedupResult = await _dedup.CompressAsync(currentText, options, ct).ConfigureAwait(false);
+      var dedupResult = await _dedup.CompressAsync(currentText, options, ct).ConfigureAwait(false);
       currentText = dedupResult.Text;
 
       var currentTokens = counter.EstimateTokens(currentText);
@@ -112,6 +112,6 @@ public sealed class HybridCompressor : IContextCompressor
    {
       ArgumentNullException.ThrowIfNull(texts);
       var merged = string.Join("\n\n", texts);
-       return await CompressAsync(merged, options, ct).ConfigureAwait(false);
+      return await CompressAsync(merged, options, ct).ConfigureAwait(false);
    }
 }

@@ -144,7 +144,7 @@ public sealed class ChatClientLLMProvider : ILLMProvider
       var messages = BuildMessages(systemPrompt, userPrompt);
       var options = BuildOptions(model, temperature);
 
-         await foreach (var update in ChatClient.GetStreamingResponseAsync(messages, options, ct).ConfigureAwait(false))
+      await foreach (var update in ChatClient.GetStreamingResponseAsync(messages, options, ct).ConfigureAwait(false))
       {
          var text = update.Text;
          if (!string.IsNullOrEmpty(text))

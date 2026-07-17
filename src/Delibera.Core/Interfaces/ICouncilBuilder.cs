@@ -319,23 +319,23 @@ public interface ICouncilBuilder
    /// <returns>This builder for fluent chaining.</returns>
    ICouncilBuilder WithPersistence(IDebateStore store);
 
-    /// <summary>
-    ///    Resumes a debate from the given <paramref name="debateId" /> (F-03). The
-    ///    corresponding checkpoint must exist in the configured
-    ///    <see cref="IDebateStore" />.
-    /// </summary>
-    /// <param name="debateId">The debate identifier to resume.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder ResumeFrom(string debateId);
+   /// <summary>
+   ///    Resumes a debate from the given <paramref name="debateId" /> (F-03). The
+   ///    corresponding checkpoint must exist in the configured
+   ///    <see cref="IDebateStore" />.
+   /// </summary>
+   /// <param name="debateId">The debate identifier to resume.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder ResumeFrom(string debateId);
 
-    /// <summary>
-    ///    Sets the caching behavior for this debate. When an <see cref="IDebateCache" />
-    ///    is registered in DI, the executor will check the cache before running a debate
-    ///    and store results after completion according to the specified behavior.
-    /// </summary>
-    /// <param name="behavior">Cache behavior (<see cref="CacheBehavior" />).</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithCacheBehavior(CacheBehavior behavior);
+   /// <summary>
+   ///    Sets the caching behavior for this debate. When an <see cref="IDebateCache" />
+   ///    is registered in DI, the executor will check the cache before running a debate
+   ///    and store results after completion according to the specified behavior.
+   /// </summary>
+   /// <param name="behavior">Cache behavior (<see cref="CacheBehavior" />).</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithCacheBehavior(CacheBehavior behavior);
 
    /// <summary>
    ///    Attaches an <see cref="IAgentMemory" /> (F-04) so council members can recall
@@ -344,57 +344,57 @@ public interface ICouncilBuilder
    /// </summary>
    /// <param name="memory">Memory backend. <c>null</c> uses <see cref="InMemoryAgentMemory" />.</param>
    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithAgentMemory(IAgentMemory? memory = null);
+   ICouncilBuilder WithAgentMemory(IAgentMemory? memory = null);
 
-    // ── Multi-Modal attachments (F-06) ──
+   // ── Multi-Modal attachments (F-06) ──
 
-    /// <summary>
-    ///    Adds a participant with explicit <see cref="MemberCapabilities"/>. When
-    ///    <see cref="MemberCapabilities.Vision"/> is set, the member receives image
-    ///    attachments as <c>ImageContent</c> via Microsoft.Extensions.AI.
-    /// </summary>
-    /// <param name="modelName">Model name (e.g. "llava:13b").</param>
-    /// <param name="provider">LLM provider instance.</param>
-    /// <param name="role">Role label.</param>
-    /// <param name="capabilities">Member capabilities (Text, Vision).</param>
-    /// <param name="persona">Optional persona prompt.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder AddMember(string modelName, ILLMProvider provider, string role,
-        MemberCapabilities capabilities, string? persona = null);
+   /// <summary>
+   ///    Adds a participant with explicit <see cref="MemberCapabilities"/>. When
+   ///    <see cref="MemberCapabilities.Vision"/> is set, the member receives image
+   ///    attachments as <c>ImageContent</c> via Microsoft.Extensions.AI.
+   /// </summary>
+   /// <param name="modelName">Model name (e.g. "llava:13b").</param>
+   /// <param name="provider">LLM provider instance.</param>
+   /// <param name="role">Role label.</param>
+   /// <param name="capabilities">Member capabilities (Text, Vision).</param>
+   /// <param name="persona">Optional persona prompt.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder AddMember(string modelName, ILLMProvider provider, string role,
+      MemberCapabilities capabilities, string? persona = null);
 
-    /// <summary>
-    ///    Attaches a file to the debate. Read lazily by the
-    ///    <see cref="FileContentReaderRegistry"/> when the debate starts.
-    /// </summary>
-    /// <param name="filePath">Path to the file.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithAttachment(string filePath);
+   /// <summary>
+   ///    Attaches a file to the debate. Read lazily by the
+   ///    <see cref="FileContentReaderRegistry"/> when the debate starts.
+   /// </summary>
+   /// <param name="filePath">Path to the file.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithAttachment(string filePath);
 
-    /// <summary>
-    ///    Attaches a file with a human-readable description. The description is shown
-    ///    to text-only members that cannot process binary attachments.
-    /// </summary>
-    /// <param name="filePath">Path to the file.</param>
-    /// <param name="description">Human-readable description.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithAttachment(string filePath, string description);
+   /// <summary>
+   ///    Attaches a file with a human-readable description. The description is shown
+   ///    to text-only members that cannot process binary attachments.
+   /// </summary>
+   /// <param name="filePath">Path to the file.</param>
+   /// <param name="description">Human-readable description.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithAttachment(string filePath, string description);
 
-    /// <summary>
-    ///    Registers a custom <see cref="IFileContentReader"/> for a specific file
-    ///    extension (e.g. <c>.pdf</c>).
-    /// </summary>
-    /// <param name="extension">File extension including the leading dot.</param>
-    /// <param name="reader">Reader instance.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithFileReader(string extension, IFileContentReader reader);
+   /// <summary>
+   ///    Registers a custom <see cref="IFileContentReader"/> for a specific file
+   ///    extension (e.g. <c>.pdf</c>).
+   /// </summary>
+   /// <param name="extension">File extension including the leading dot.</param>
+   /// <param name="reader">Reader instance.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithFileReader(string extension, IFileContentReader reader);
 
-    /// <summary>
-    ///    Registers a delegate-based reader for a specific file extension.
-    /// </summary>
-    /// <param name="extension">File extension including the leading dot.</param>
-    /// <param name="handler">Delegate that reads the file and returns a <see cref="FileReadResult"/>.</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    ICouncilBuilder WithFileReader(string extension, Func<string, CancellationToken, Task<FileReadResult>> handler);
+   /// <summary>
+   ///    Registers a delegate-based reader for a specific file extension.
+   /// </summary>
+   /// <param name="extension">File extension including the leading dot.</param>
+   /// <param name="handler">Delegate that reads the file and returns a <see cref="FileReadResult"/>.</param>
+   /// <returns>This builder for fluent chaining.</returns>
+   ICouncilBuilder WithFileReader(string extension, Func<string, CancellationToken, Task<FileReadResult>> handler);
 
    /// <summary>
    ///    Applies a pre-built <see cref="CouncilOptions" /> snapshot to the builder.

@@ -151,7 +151,7 @@ public abstract class DebateScenario : IDebateStrategy
 
       try
       {
-          var answer = await keeper.AnswerQuestionAsync(query, 5, temperature, ct).ConfigureAwait(false);
+         var answer = await keeper.AnswerQuestionAsync(query, 5, temperature, ct).ConfigureAwait(false);
          var interaction = new KnowledgeInteraction(query, answer, 5);
          return (answer, interaction);
       }
@@ -189,8 +189,8 @@ public abstract class DebateScenario : IDebateStrategy
                   r.Responses.Select(kv => $"{kv.Key}: {kv.Value[..Math.Min(200, kv.Value.Length)]}"))))
             : null;
 
-          var roundCtx = await keeper.ProvideContextForRoundAsync(
-             topic, roundNumber, previousSummary, ct: ct).ConfigureAwait(false);
+         var roundCtx = await keeper.ProvideContextForRoundAsync(
+            topic, roundNumber, previousSummary, ct: ct).ConfigureAwait(false);
 
          return (roundCtx.Answer, roundCtx.Interaction);
       }
@@ -236,7 +236,7 @@ public abstract class DebateScenario : IDebateStrategy
       IReadOnlyDictionary<string, string> responses,
       CancellationToken ct = default)
    {
-       return await ProcessOperatorRequestsAsync(@operator, responses, DebateExecutionOptions.Default, ct).ConfigureAwait(false);
+      return await ProcessOperatorRequestsAsync(@operator, responses, DebateExecutionOptions.Default, ct).ConfigureAwait(false);
    }
 
    /// <summary>
@@ -275,13 +275,13 @@ public abstract class DebateScenario : IDebateStrategy
       // Parallel.ForEachAsync gives us a concurrent, optionally-bounded execution of the
       // delegated Operator tasks. Results are collected in a thread-safe list.
       await Parallel.ForEachAsync(
-          pending,
-          parallelOpts,
-          async (item, token) =>
-          {
-             try
-             {
-                var result = await @operator.ExecuteTaskAsync(item.Member, item.Task, token).ConfigureAwait(false);
+         pending,
+         parallelOpts,
+         async (item, token) =>
+         {
+            try
+            {
+               var result = await @operator.ExecuteTaskAsync(item.Member, item.Task, token).ConfigureAwait(false);
                var interaction = result.ToInteraction();
                lock (interactions)
                {

@@ -96,8 +96,8 @@ public sealed class Operator : IOperator
       foreach (var client in _mcpClients.Values)
          try
          {
-             await client.ConnectAsync(ct).ConfigureAwait(false);
-             var tools = await client.ListToolsAsync(ct).ConfigureAwait(false);
+            await client.ConnectAsync(ct).ConfigureAwait(false);
+            var tools = await client.ListToolsAsync(ct).ConfigureAwait(false);
             _tools.AddRange(tools);
          }
          catch (Exception ex)
@@ -151,12 +151,12 @@ public sealed class Operator : IOperator
       ArgumentException.ThrowIfNullOrWhiteSpace(task);
 
       if (!IsInitialized)
-          await InitializeAsync(ct).ConfigureAwait(false);
+         await InitializeAsync(ct).ConfigureAwait(false);
 
       // 1. Plan: ask the model which tool(s) to call.
       var plannedCalls = _tools.Count == 0
          ? []
-          : await PlanToolCallsAsync(task, ct).ConfigureAwait(false);
+         : await PlanToolCallsAsync(task, ct).ConfigureAwait(false);
 
       // 2. Execute the planned tool calls in parallel when independent.
       var executed = new List<OperatorToolCall>();
@@ -168,12 +168,12 @@ public sealed class Operator : IOperator
                return new OperatorToolCall(plan.ServerName, plan.ToolName, plan.Arguments,
                   $"[Unknown MCP server '{plan.ServerName}']", true);
 
-             var toolResult = await client.CallToolAsync(plan.ToolName, plan.Arguments, ct).ConfigureAwait(false);
-             return new OperatorToolCall(plan.ServerName, plan.ToolName, plan.Arguments,
-                toolResult.Text, toolResult.IsError);
-          });
+            var toolResult = await client.CallToolAsync(plan.ToolName, plan.Arguments, ct).ConfigureAwait(false);
+            return new OperatorToolCall(plan.ServerName, plan.ToolName, plan.Arguments,
+               toolResult.Text, toolResult.IsError);
+         });
 
-          executed.AddRange(await Task.WhenAll(callTasks).ConfigureAwait(false));
+         executed.AddRange(await Task.WhenAll(callTasks).ConfigureAwait(false));
       }
       else
       {
@@ -186,21 +186,21 @@ public sealed class Operator : IOperator
                continue;
             }
 
-             var toolResult = await client.CallToolAsync(plan.ToolName, plan.Arguments, ct).ConfigureAwait(false);
+            var toolResult = await client.CallToolAsync(plan.ToolName, plan.Arguments, ct).ConfigureAwait(false);
             executed.Add(new OperatorToolCall(plan.ServerName, plan.ToolName, plan.Arguments,
                toolResult.Text, toolResult.IsError));
          }
       }
 
       // 3. Interpret the results (or answer directly if no tools were used).
-       var answer = await InterpretAsync(requesterName, task, executed, ct).ConfigureAwait(false);
+      var answer = await InterpretAsync(requesterName, task, executed, ct).ConfigureAwait(false);
 
       // 4. Optionally compress the answer using the debate's compression strategy.
       var compressed = false;
       if (_compressor is not null && !string.IsNullOrWhiteSpace(answer))
          try
          {
-             var result = await _compressor.CompressAsync(answer, _compressionOptions, ct).ConfigureAwait(false);
+            var result = await _compressor.CompressAsync(answer, _compressionOptions, ct).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(result.Text))
             {
                answer = result.Text;
@@ -223,7 +223,7 @@ public sealed class Operator : IOperator
       foreach (var client in _mcpClients.Values)
          try
          {
-             await client.DisposeAsync().ConfigureAwait(false);
+            await client.DisposeAsync().ConfigureAwait(false);
          }
          catch
          {
@@ -356,7 +356,7 @@ public sealed class Operator : IOperator
 
       try
       {
-          return await _model.AskAsync(systemPrompt, userPrompt, 0.3f, ct).ConfigureAwait(false);
+         return await _model.AskAsync(systemPrompt, userPrompt, 0.3f, ct).ConfigureAwait(false);
       }
       catch (Exception ex)
       {

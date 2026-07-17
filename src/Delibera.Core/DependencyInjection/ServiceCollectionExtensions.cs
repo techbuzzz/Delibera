@@ -79,33 +79,33 @@ public static class ServiceCollectionExtensions
          // ResilienceOptions is a sub-section; bind it independently so
          // IOptionsMonitor<ResilienceOptions> gets a typed configuration that
          // AddDeliberaResilience can read.
-          var resilienceSection = configuration.GetSection($"{sectionName}:Resilience");
-          if (resilienceSection.Exists())
-             services.Configure<ResilienceOptions>(resilienceSection);
+         var resilienceSection = configuration.GetSection($"{sectionName}:Resilience");
+         if (resilienceSection.Exists())
+            services.Configure<ResilienceOptions>(resilienceSection);
 
-          // CacheOptions is a sub-section; bind and register the cache backend.
-          var cacheSection = configuration.GetSection($"{sectionName}:Cache");
-          if (cacheSection.Exists())
-          {
-             var cacheOptions = new CacheOptions();
-             cacheSection.Bind(cacheOptions);
-             services.Configure<CacheOptions>(cacheSection);
+         // CacheOptions is a sub-section; bind and register the cache backend.
+         var cacheSection = configuration.GetSection($"{sectionName}:Cache");
+         if (cacheSection.Exists())
+         {
+            var cacheOptions = new CacheOptions();
+            cacheSection.Bind(cacheOptions);
+            services.Configure<CacheOptions>(cacheSection);
 
-             if (cacheOptions.Provider is not ("None" or ""))
-             {
-                var ttl = TimeSpan.FromMinutes(cacheOptions.DefaultTtlMinutes);
-                switch (cacheOptions.Provider.ToLowerInvariant())
-                {
-                   case "inmemory":
-                      services.UseInMemoryCache(ttl);
-                      break;
-                   case "file":
-                      services.UseFileCache(cacheOptions.FileDirectory, ttl);
-                      break;
-                   // "redis" is registered separately via AddRedisDebateOrchestrator + UseRedisCache
-                }
-             }
-          }
+            if (cacheOptions.Provider is not ("None" or ""))
+            {
+               var ttl = TimeSpan.FromMinutes(cacheOptions.DefaultTtlMinutes);
+               switch (cacheOptions.Provider.ToLowerInvariant())
+               {
+                  case "inmemory":
+                     services.UseInMemoryCache(ttl);
+                     break;
+                  case "file":
+                     services.UseFileCache(cacheOptions.FileDirectory, ttl);
+                     break;
+                  // "redis" is registered separately via AddRedisDebateOrchestrator + UseRedisCache
+               }
+            }
+         }
 
          return services;
       }
@@ -326,59 +326,59 @@ public static class ServiceCollectionExtensions
                vectorSize,
                false));
 
-          return services;
-       }
-    }
+         return services;
+      }
+   }
 
-    extension(IServiceCollection services)
-    {
-       /// <summary>
-       ///    Registers a file-content reader for a specific extension via DI factory
-       ///    (F-06 Multi-Modal). The reader is stored as a singleton
-       ///    <see cref="Delibera.Core.Attachments.IFileContentReader"/> keyed by
-       ///    extension so that resolved <see cref="CouncilBuilder"/> instances can
-       ///    pick it up automatically.
-       /// </summary>
-       /// <param name="extension">File extension including the leading dot (e.g. ".pdf").</param>
-       /// <param name="readerFactory">Factory that creates the reader from the service provider.</param>
-       /// <returns>The service collection for chaining.</returns>
-        public IServiceCollection AddFileReader(string extension,
-           Func<IServiceProvider, Delibera.Core.Attachments.IFileContentReader> readerFactory)
-        {
-           ArgumentException.ThrowIfNullOrWhiteSpace(extension);
-           ArgumentNullException.ThrowIfNull(readerFactory);
-           var key = $"Delibera.FileReader.{extension.ToLowerInvariant()}";
-           services.TryAddSingleton(new Delibera.Core.Attachments.FileReaderDIEntry(extension, readerFactory));
-           return services;
-        }
-     }
+   extension(IServiceCollection services)
+   {
+      /// <summary>
+      ///    Registers a file-content reader for a specific extension via DI factory
+      ///    (F-06 Multi-Modal). The reader is stored as a singleton
+      ///    <see cref="Delibera.Core.Attachments.IFileContentReader"/> keyed by
+      ///    extension so that resolved <see cref="CouncilBuilder"/> instances can
+      ///    pick it up automatically.
+      /// </summary>
+      /// <param name="extension">File extension including the leading dot (e.g. ".pdf").</param>
+      /// <param name="readerFactory">Factory that creates the reader from the service provider.</param>
+      /// <returns>The service collection for chaining.</returns>
+      public IServiceCollection AddFileReader(string extension,
+         Func<IServiceProvider, Delibera.Core.Attachments.IFileContentReader> readerFactory)
+      {
+         ArgumentException.ThrowIfNullOrWhiteSpace(extension);
+         ArgumentNullException.ThrowIfNull(readerFactory);
+         var key = $"Delibera.FileReader.{extension.ToLowerInvariant()}";
+         services.TryAddSingleton(new Delibera.Core.Attachments.FileReaderDIEntry(extension, readerFactory));
+         return services;
+      }
+   }
 
-    // ── Cache extensions ───────────────────────────────────────────────────────
+   // ── Cache extensions ───────────────────────────────────────────────────────
 
-    /// <summary>
-    ///    Registers an in-memory <see cref="IDebateCache" /> with the specified TTL.
-    /// </summary>
-    public static IServiceCollection UseInMemoryCache(
-        this IServiceCollection services,
-        TimeSpan? ttl = null)
-    {
-        services.TryAddSingleton<IDebateCache>(sp =>
-            new InMemoryDebateCache(
-                sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(),
-                ttl));
-        return services;
-    }
+   /// <summary>
+   ///    Registers an in-memory <see cref="IDebateCache" /> with the specified TTL.
+   /// </summary>
+   public static IServiceCollection UseInMemoryCache(
+      this IServiceCollection services,
+      TimeSpan? ttl = null)
+   {
+      services.TryAddSingleton<IDebateCache>(sp =>
+         new InMemoryDebateCache(
+            sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(),
+            ttl));
+      return services;
+   }
 
-    /// <summary>
-    ///    Registers a file-system <see cref="IDebateCache" /> that persists results as JSON.
-    /// </summary>
-    public static IServiceCollection UseFileCache(
-        this IServiceCollection services,
-        string cacheDirectory,
-        TimeSpan? ttl = null)
-    {
-        services.TryAddSingleton<IDebateCache>(_ =>
-            new FileDebateCache(cacheDirectory, ttl));
-        return services;
-    }
+   /// <summary>
+   ///    Registers a file-system <see cref="IDebateCache" /> that persists results as JSON.
+   /// </summary>
+   public static IServiceCollection UseFileCache(
+      this IServiceCollection services,
+      string cacheDirectory,
+      TimeSpan? ttl = null)
+   {
+      services.TryAddSingleton<IDebateCache>(_ =>
+         new FileDebateCache(cacheDirectory, ttl));
+      return services;
+   }
 }

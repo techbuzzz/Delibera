@@ -285,8 +285,8 @@ public static class Chairman
       if (knowledgeKeeper is not null)
          try
          {
-             knowledgeNote = await knowledgeKeeper.AnswerQuestionAsync(
-                $"Provide key facts relevant to: {context.UserPrompt}", 3, 0.3f, ct).ConfigureAwait(false);
+            knowledgeNote = await knowledgeKeeper.AnswerQuestionAsync(
+               $"Provide key facts relevant to: {context.UserPrompt}", 3, 0.3f, ct).ConfigureAwait(false);
             knowledgeNote = $"\n\n📚 Knowledge Keeper's fact summary:\n{knowledgeNote}";
          }
          catch
@@ -312,8 +312,6 @@ public static class Chairman
                     6. **Recommendations** — actionable next steps (if applicable)
                     """;
 
-       return await chairman.AskAsync(context.SystemPrompt, prompt, temperature, ct).ConfigureAwait(false);
+      return await chairman.AskAsync(context.SystemPrompt, prompt, temperature, ct).ConfigureAwait(false);
    }
 }
-
-

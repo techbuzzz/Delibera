@@ -433,9 +433,9 @@ public sealed class AutoChunkingConfig
          SafetyMargin = Math.Clamp(SafetyMargin, 0.0, 0.5),
          MaxChunksPerRound = Math.Max(1, MaxChunksPerRound),
          EnableMapReduce = EnableMapReduce,
-          EnableProgressiveDisclosure = EnableProgressiveDisclosure
-       };
-    }
+         EnableProgressiveDisclosure = EnableProgressiveDisclosure
+      };
+   }
 }
 
 /// <summary>
@@ -461,5 +461,7 @@ public sealed class CacheOptions
 
    /// <summary>Parses <see cref="Behavior" /> into a <see cref="CacheBehavior" /> enum value.</summary>
    public CacheBehavior GetBehavior() =>
-       Enum.TryParse<CacheBehavior>(Behavior, true, out var b) ? b : CacheBehavior.Disabled;
+      Enum.TryParse<CacheBehavior>(Behavior, true, out var b)
+         ? b
+         : CacheBehavior.Disabled;
 }

@@ -49,7 +49,7 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
       CancellationToken ct = default)
    {
       // 1. Retrieve context from RAG
-       var context = await _ragProvider.GetContextAsync(CollectionName, question, limit, ct).ConfigureAwait(false);
+      var context = await _ragProvider.GetContextAsync(CollectionName, question, limit, ct).ConfigureAwait(false);
 
       const string systemPrompt = """
                                   You are the Knowledge Keeper — a librarian and fact-checker for an AI council debate.
@@ -90,9 +90,9 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
       }
 
       // 2. Generate answer via dedicated LLM
-       var answer = await _model.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
+      var answer = await _model.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
 
-       // 3. Log the interaction
+      // 3. Log the interaction
       _interactions.Add(new KnowledgeInteraction(question, answer, sourceChunks));
 
       return answer;
@@ -131,9 +131,9 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
                         {question}
                         """;
 
-       var answer = await _model.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
-       _interactions.Add(new KnowledgeInteraction(question, answer, searchResults.Count));
-       return answer;
+      var answer = await _model.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
+      _interactions.Add(new KnowledgeInteraction(question, answer, searchResults.Count));
+      return answer;
    }
 
    /// <summary>
@@ -162,7 +162,7 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
          : $"{topic}\n\nContext from previous rounds:\n{previousRoundSummary ?? "(none)"}";
 
       // Search for relevant chunks
-       var searchResults = await _ragProvider.SearchAsync(CollectionName, query, limit, ct: ct).ConfigureAwait(false);
+      var searchResults = await _ragProvider.SearchAsync(CollectionName, query, limit, ct: ct).ConfigureAwait(false);
       var sources = searchResults.Select(r => new KnowledgeSource(
          r.Text,
          r.Score,
@@ -182,7 +182,7 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
                           Be concise, factual, and cite source numbers.
                           """;
 
-       var contextText = await _ragProvider.GetContextAsync(CollectionName, query, limit, ct).ConfigureAwait(false);
+      var contextText = await _ragProvider.GetContextAsync(CollectionName, query, limit, ct).ConfigureAwait(false);
       string answer;
 
       if (string.IsNullOrWhiteSpace(contextText))
@@ -201,7 +201,7 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
                            ### Round {roundNumber} — Provide structured knowledge context.
                            """;
 
-          answer = await _model.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
+         answer = await _model.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
       }
 
       var interaction = new KnowledgeInteraction(query, answer, sources.Count);

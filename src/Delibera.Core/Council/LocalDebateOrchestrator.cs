@@ -87,7 +87,8 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
    /// <inheritdoc />
    public async IAsyncEnumerable<DebateRoundEvent> StreamAsync(
       string debateId,
-      [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+      [System.Runtime.CompilerServices.EnumeratorCancellation]
+      CancellationToken ct = default)
    {
       if (!_entries.TryGetValue(debateId, out var entry))
          yield break;
@@ -135,8 +136,8 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
          return Task.FromResult(false);
 
       if (entry.Status is DebateOrchestrationStatus.Completed
-                       or DebateOrchestrationStatus.Failed
-                       or DebateOrchestrationStatus.Cancelled)
+          or DebateOrchestrationStatus.Failed
+          or DebateOrchestrationStatus.Cancelled)
          return Task.FromResult(false);
 
       entry.Cancel();
@@ -150,8 +151,7 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
       var cutoff = DateTimeOffset.UtcNow - _completedEntryLifetime;
       foreach (var kvp in _entries)
       {
-         if (kvp.Value.Status is not DebateOrchestrationStatus.Running
-             && kvp.Value.CompletedAt < cutoff)
+         if (kvp.Value.Status is not DebateOrchestrationStatus.Running && kvp.Value.CompletedAt < cutoff)
          {
             if (_entries.TryRemove(kvp.Key, out var entry))
                entry.Dispose();
@@ -173,6 +173,7 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
          kvp.Value.Cancel();
          kvp.Value.Dispose();
       }
+
       _entries.Clear();
    }
 
@@ -216,7 +217,7 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
       public ICouncilBuilder Builder { get; } = builder;
       public volatile int _status; // DebateOrchestrationStatus cast — volatile for cross-thread reads
 
-       public DebateOrchestrationStatus Status
+      public DebateOrchestrationStatus Status
       {
 #pragma warning disable CS0420 // Volatile.Read/Write on volatile field is intentional
          get => (DebateOrchestrationStatus)Volatile.Read(ref _status);
@@ -229,8 +230,10 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
       public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
       public DateTimeOffset? CompletedAt { get; set; }
       public List<DebateRound> CompletedRounds { get; } = [];
+
       public System.Threading.Channels.Channel<DebateRound> Channel { get; } =
          System.Threading.Channels.Channel.CreateUnbounded<DebateRound>();
+
       public CancellationTokenSource Cts { get; } = new();
 
       public void Cancel()

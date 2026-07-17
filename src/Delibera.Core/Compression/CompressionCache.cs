@@ -148,19 +148,19 @@ public sealed class CompressionCache(int maxEntries = 256) : IDisposable
       Interlocked.Exchange(ref _missCount, 0);
    }
 
-    /// <summary>
-    ///    Returns a formatted summary of cache performance.
-    /// </summary>
-    public string GetSummary()
-    {
-       return $"Cache: {Count} entries, {HitCount} hits / {MissCount} misses ({HitRate:P1} hit rate)";
-    }
+   /// <summary>
+   ///    Returns a formatted summary of cache performance.
+   /// </summary>
+   public string GetSummary()
+   {
+      return $"Cache: {Count} entries, {HitCount} hits / {MissCount} misses ({HitRate:P1} hit rate)";
+   }
 
-    /// <inheritdoc />
-    public void Dispose()
-    {
-       _lruLock.Dispose();
-    }
+   /// <inheritdoc />
+   public void Dispose()
+   {
+      _lruLock.Dispose();
+   }
 
    // ──────────────────────────────────────────────
 
