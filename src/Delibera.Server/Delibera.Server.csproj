@@ -19,10 +19,11 @@
   <ItemGroup>
     <!-- ASP.NET / Minimal API -->
     <!-- Microsoft.OpenApi 3.x makes IOpenApiMediaType.Example read-only, which breaks
-         the AspNetCore.OpenApi source generator. Pin to 2.7.x until the source
+         the AspNetCore.OpenApi source generator (it emits Example = ... in the
+         generated OpenApiXmlCommentSupport code). Pin to 2.7.x until the source
          generator is updated for v3. -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
-    <PackageReference Include="Microsoft.OpenApi" Version="3.9.0" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
 
     <!-- MCP Server (HTTP transport) -->
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
