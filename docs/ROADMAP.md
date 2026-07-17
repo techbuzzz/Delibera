@@ -186,6 +186,21 @@ app.MapDeliberaEndpoints();
 
 ---
 
+### P-05 · Performance & Integrity
+
+- Memory leak fixes: eviction timers on `LocalDebateOrchestrator`, `DebateOrchestrationService`, `RedisDebateOrchestrator`; `using var ProviderFactory` in all server templates
+- `IDisposable` on `CompressionCache` and `FileDebateStore` (dispose `ReaderWriterLockSlim` / `SemaphoreSlim`)
+- Thread safety: `volatile int` backing for `DebateRecord.Status` and `DebateEntry.Status`; `ConcurrentDictionary` + `GetOrAdd` in `ProviderFactory.CachingFactory`
+- `ConfigureAwait(false)` on all `await` in `Delibera.Core` and `Delibera.Redis` (~50+ sites)
+- `ValueTask<T>` on `IDebateCache`, `IDebateStore`, `IDebateOrchestrator.GetStatusAsync` — avoids `Task` allocation for sync paths
+- `FrozenDictionary` / `FrozenSet` in `ModelContextWindowRegistry` for O(1) lookups
+- `SerializeToUtf8Bytes` in `SseDebateStreamWriter` and `DebateCacheKeyGenerator`
+- Single-row Levenshtein with `Span<int>` + `stackalloc`
+- `ReaderWriterLockSlim` in `TokenCounter`; `readonly record struct RankedOption`
+- `StringBuilder` capacity hints in `DebateResult.ToMarkdown()`
+
+---
+
 ## 🔷 v10.4.0 — Intelligence & DX
 
 > _Theme: Smarter debates and better developer experience_

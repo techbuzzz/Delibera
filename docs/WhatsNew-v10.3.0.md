@@ -1,7 +1,7 @@
 # Delibera v10.3.0 — What's New
 
 > **Status:** ✅ Shipped — July 2026
-> **337 unit tests pass.**
+> **402 unit tests pass** (337 Core + 65 Server).
 > **Breaking changes** — see the migration guide below.
 
 This document covers the three major features and breaking changes in Delibera v10.3.0.
@@ -150,3 +150,39 @@ See [docs/Server.md](Server.md) for the full API reference.
 - `SseDebateStreamWriter` rewritten to consume `IDebateOrchestrator.StreamAsync()` instead of `DebateRecord.RoundReader`
 - `DebateOrchestrationService` rewritten from 200ms polling to event-driven `StreamAsync()`
 - All CS1591/CS1574 XML-doc warnings resolved across `Delibera.Core`
+
+---
+
+## Performance & Integrity (Phases 1–3)
+
+### Memory leak fixes
+
+| Component | Fix |
+|-----------|-----|
+| `LocalDebateOrchestrator` | 30-min eviction timer for completed `DebateEntry` instances |
+| `DebateOrchestrationService` | 30-min eviction timer for completed `DebateRecord` instances |
+| `RedisDebateOrchestrator` | 30-min eviction timer for completed `DebateEntry` instances |
+| Server templates × 5 + `ScenarioBuilder` | `ProviderFactory` now `using var` — properly disposed |
+| `CompressionCache` | `IDisposable` — disposes `ReaderWriterLockSlim` |
+| `FileDebateStore` | `IDisposable` — disposes `SemaphoreSlim` |
+
+### Thread safety
+
+- `DebateRecord.Status` and `RedisDebateOrchestrator.DebateEntry.Status` use `volatile int` + `Volatile.Read`/`Volatile.Write` for cross-thread visibility.
+- `ProviderFactory.CachingFactory` uses `ConcurrentDictionary<string, T>` + `GetOrAdd` instead of `Dictionary` + manual `lock`.
+
+### Async correctness
+
+- `ConfigureAwait(false)` added to all `await` expressions in `Delibera.Core` and `Delibera.Redis` (~50+ sites).
+- Fire-and-forget `CancelAsync` in `DebateOrchestrationService` now uses `Task.Run` with try/catch + logging.
+
+### Allocation optimisations
+
+- **SSE writer** — `JsonSerializer.SerializeToUtf8Bytes` + byte-level writes instead of string-based serialization.
+- **Cache key generator** — `SerializeToUtf8Bytes` avoids intermediate `string` allocation.
+- **`ModelContextWindowRegistry`** — `FrozenDictionary`/`FrozenSet` for O(1) lookups; `Register` invalidates the frozen cache.
+- **`IDebateCache` / `IDebateStore` / `IDebateOrchestrator.GetStatusAsync`** — `ValueTask<T>` instead of `Task<T>`; synchronous backends avoid `Task` allocation.
+- **Levenshtein distance** — single-row DP with `Span<int>` + `stackalloc` for strings ≤128 chars.
+- **`TokenCounter`** — `ReaderWriterLockSlim` instead of `lock` for concurrent reads.
+- **`RankedOption`** — `readonly record struct` instead of `sealed record` (avoids heap allocation).
+- **`StringBuilder`** — capacity hints in `ToMarkdown()` (4096), `ToStatisticsMarkdown()` (2048), `ToLogsMarkdown()` (2048).

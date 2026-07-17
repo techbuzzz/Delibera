@@ -56,6 +56,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`debate.cache_hit`** OpenTelemetry counter metric emitted on cache hits.
 - **`CacheHit`** / **`CacheKey`** fields added to `DebateResponse` DTO.
 
+### Changed — Performance & Integrity (Phases 1–3)
+
+- **Memory leak fixes:**
+  - `LocalDebateOrchestrator`, `DebateOrchestrationService`, `RedisDebateOrchestrator` now evict completed entries after 30 minutes (Timer-based) to prevent unbounded memory growth.
+  - `ProviderFactory` (created in server templates and `ScenarioBuilder`) is now `using var` — properly disposed.
+  - `CompressionCache` and `FileDebateStore` now implement `IDisposable` (dispose `ReaderWriterLockSlim` / `SemaphoreSlim`).
+- **Thread safety:**
+  - `DebateRecord.Status` uses `volatile int` backing field with `Volatile.Read`/`Volatile.Write` for cross-thread visibility.
+  - `RedisDebateOrchestrator.DebateEntry.Status` uses the same `volatile int` pattern.
+  - `ProviderFactory.CachingFactory` uses `ConcurrentDictionary<string, T>` + `GetOrAdd` instead of `Dictionary` + manual `lock`.
+- **Async correctness:**
+  - `ConfigureAwait(false)` added to all `await` expressions in `Delibera.Core` and `Delibera.Redis` (~50+ sites) — library code must never capture `SynchronizationContext`.
+  - Fire-and-forget `CancelAsync` in `DebateOrchestrationService` now uses `Task.Run` with try/catch + `_logger.LogWarning`.
+- **Allocation optimisations:**
+  - `SseDebateStreamWriter` uses `JsonSerializer.SerializeToUtf8Bytes` + byte-level writes instead of string-based SSE serialization.
+  - `DebateCacheKeyGenerator.Generate` uses `SerializeToUtf8Bytes` instead of `Serialize` + `Encoding.UTF8.GetBytes`.
+  - `ModelContextWindowRegistry` uses `FrozenDictionary<string, int>` / `FrozenSet<string>` for O(1) lookups; `Register`/`RegisterVisionPattern` invalidate the frozen cache.
+  - `IDebateCache` and `IDebateStore` interfaces now return `ValueTask<T>` instead of `Task<T>` — synchronous backends avoid `Task` allocation.
+  - `IDebateOrchestrator.GetStatusAsync` returns `ValueTask<DebateHandle?>`.
+- **Micro-optimisations:**
+  - `LevenshteinDistance` (in `CouncilExecutor` and `AdaptiveStrategySelector`) rewritten to single-row DP with `Span<int>` + `stackalloc` for strings ≤128 chars.
+  - `TokenCounter` LRU lock replaced with `ReaderWriterLockSlim` for concurrent reads.
+  - `RankedOption` changed from `sealed record` to `readonly record struct` — avoids heap allocation.
+  - `DebateResult.ToMarkdown()` / `.ToStatisticsMarkdown()` / `.ToLogsMarkdown()` now use `StringBuilder` with capacity hints (4096 / 2048 / 2048).
+
 ### Fixed
 
 - **`WeightedVotingStrategy.ResolveWeight`** now uses `ballot.Weight` as fallback instead of constructor `defaultWeight`, fixing `WeightedVoting_All_Zero_Weights_Throws`.

@@ -1,7 +1,7 @@
 # Delibera v10.3.0 — Что нового
 
 > **Статус:** ✅ Выпущен — Июль 2026
-> **337 модульных тестов пройдено.**
+> **402 модульных теста пройдено** (337 Core + 65 Server).
 > **Нарушающие изменения** — см. руководство по миграции ниже.
 
 Этот документ описывает три крупных функции и нарушающие изменения в Delibera v10.3.0.
@@ -150,3 +150,39 @@ Console.WriteLine($"Время кэширования: {result.CachedAt}"); // �
 - `SseDebateStreamWriter` переписан для использования `IDebateOrchestrator.StreamAsync()` вместо `DebateRecord.RoundReader`
 - `DebateOrchestrationService` переписан с опроса каждые 200мс на событийно-ориентированный `StreamAsync()`
 - Все предупреждения CS1591/CS1574 XML-doc исправлены в `Delibera.Core`
+
+---
+
+## Производительность и целостность (Фазы 1–3)
+
+### Исправление утечек памяти
+
+| Компонент | Исправление |
+|-----------|-------------|
+| `LocalDebateOrchestrator` | Таймер вытеснения завершённых записей через 30 мин |
+| `DebateOrchestrationService` | Таймер вытеснения завершённых записей через 30 мин |
+| `RedisDebateOrchestrator` | Таймер вытеснения завершённых записей через 30 мин |
+| Серверные шаблоны × 5 + `ScenarioBuilder` | `ProviderFactory` теперь `using var` — корректное освобождение |
+| `CompressionCache` | `IDisposable` — освобождает `ReaderWriterLockSlim` |
+| `FileDebateStore` | `IDisposable` — освобождает `SemaphoreSlim` |
+
+### Потокобезопасность
+
+- `DebateRecord.Status` и `RedisDebateOrchestrator.DebateEntry.Status` используют `volatile int` + `Volatile.Read`/`Volatile.Write`.
+- `ProviderFactory.CachingFactory` использует `ConcurrentDictionary<string, T>` + `GetOrAdd` вместо `Dictionary` + `lock`.
+
+### Корректность async
+
+- `ConfigureAwait(false)` добавлен ко всем `await` в `Delibera.Core` и `Delibera.Redis` (~50+ мест).
+- Fire-and-forget `CancelAsync` в `DebateOrchestrationService` использует `Task.Run` с try/catch + логированием.
+
+### Оптимизации аллокаций
+
+- **SSE writer** — `JsonSerializer.SerializeToUtf8Bytes` + побайтовая запись вместо строковой сериализации.
+- **Генератор ключей кэша** — `SerializeToUtf8Bytes` избегает промежуточной аллокации `string`.
+- **`ModelContextWindowRegistry`** — `FrozenDictionary`/`FrozenSet` для O(1) поиска; `Register` инвалидирует замороженный кэш.
+- **`IDebateCache` / `IDebateStore` / `IDebateOrchestrator.GetStatusAsync`** — `ValueTask<T>` вместо `Task<T>`; синхронные бэкенды избегают аллокации `Task`.
+- **Расстояние Левенштейна** — однорядный DP с `Span<int>` + `stackalloc` для строк ≤128 символов.
+- **`TokenCounter`** — `ReaderWriterLockSlim` вместо `lock` для конкурентных чтений.
+- **`RankedOption`** — `readonly record struct` вместо `sealed record` (без аллокации в куче).
+- **`StringBuilder`** — capacity hints в `ToMarkdown()` (4096), `ToStatisticsMarkdown()` (2048), `ToLogsMarkdown()` (2048).
