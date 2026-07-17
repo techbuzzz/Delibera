@@ -32,6 +32,12 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
     private readonly IDatabase _db;
     private readonly ConcurrentDictionary<string, DebateEntry> _entries = new();
 
+    /// <summary>
+    ///    Completed entries are evicted after this timeout to prevent unbounded memory growth.
+    /// </summary>
+    private static readonly TimeSpan CompletedEntryLifetime = TimeSpan.FromMinutes(30);
+
+    private readonly Timer _evictionTimer;
     private bool _disposed;
 
     public RedisDebateOrchestrator(
@@ -44,6 +50,8 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
         _options  = options.Value;
         _redis    = ConnectionMultiplexer.Connect(_options.ConnectionString);
         _db       = _redis.GetDatabase();
+
+        _evictionTimer = new(EvictCompletedEntries, null, CompletedEntryLifetime, CompletedEntryLifetime);
 
         _ = EnsureConsumerGroupsAsync();
     }
@@ -304,6 +312,21 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
         await CreateGroupIfNotExists(_options.JobStreamKey, _options.WorkerConsumerGroup).ConfigureAwait(false);
     }
 
+    // ── Eviction ───────────────────────────────────────────────────────────────
+
+    private void EvictCompletedEntries(object? state)
+    {
+        var cutoff = DateTimeOffset.UtcNow - CompletedEntryLifetime;
+        foreach (var kvp in _entries)
+        {
+            if (kvp.Value.Status is not DebateOrchestrationStatus.Running
+                && kvp.Value.CompletedAt < cutoff)
+            {
+                _entries.TryRemove(kvp.Key, out _);
+            }
+        }
+    }
+
     // ── Private: mapping ────────────────────────────────────────────────────────
 
     private static DebateHandle BuildHandle(string debateId, DebateEntry entry) => new()
@@ -357,7 +380,16 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
     private sealed class DebateEntry(ICouncilBuilder builder)
     {
         public ICouncilBuilder Builder { get; } = builder;
-        public DebateOrchestrationStatus Status { get; set; } = DebateOrchestrationStatus.Running;
+        private volatile int _status = (int)DebateOrchestrationStatus.Running;
+
+        public DebateOrchestrationStatus Status
+        {
+#pragma warning disable CS0420 // Volatile.Read/Write on volatile field is intentional
+            get => (DebateOrchestrationStatus)Volatile.Read(ref _status);
+            set => Volatile.Write(ref _status, (int)value);
+#pragma warning restore CS0420
+        }
+
         public DebateResult? Result { get; set; }
         public string? ErrorMessage { get; set; }
         public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
@@ -379,6 +411,8 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
     {
         if (_disposed) return;
         _disposed = true;
+
+        _evictionTimer.Dispose();
 
         foreach (var entry in _entries.Values)
         {
