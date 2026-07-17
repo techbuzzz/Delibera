@@ -73,7 +73,7 @@ public sealed class EmbeddingGeneratorProvider : IEmbeddingProvider, IDisposable
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
-      var result = await Generator.GenerateAsync([text], cancellationToken: ct);
+      var result = await Generator.GenerateAsync([text], cancellationToken: ct).ConfigureAwait(false);
       var embedding = result.FirstOrDefault() ?? throw new InvalidOperationException($"No embedding returned by model '{EmbeddingModelName}'.");
 
       var vector = embedding.Vector.ToArray();
@@ -87,7 +87,7 @@ public sealed class EmbeddingGeneratorProvider : IEmbeddingProvider, IDisposable
       ArgumentNullException.ThrowIfNull(texts);
       if (texts.Count == 0) return [];
 
-      var result = await Generator.GenerateAsync(texts, cancellationToken: ct);
+      var result = await Generator.GenerateAsync(texts, cancellationToken: ct).ConfigureAwait(false);
 
       var vectors = new List<float[]>(texts.Count);
       foreach (var embedding in result)

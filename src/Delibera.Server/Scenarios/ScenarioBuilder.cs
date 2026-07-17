@@ -20,7 +20,7 @@ public static class ScenarioBuilder
       var apiKey = configuration["Delibera:Providers:ApiKey"];
       var fastModel = configuration["Delibera:Models:Fast"] ?? "llama3.2:3b";
       var strongModel = configuration["Delibera:Models:Strong"] ?? "qwen2.5:7b";
-      var factory = new ProviderFactory();
+       using var factory = new ProviderFactory();
 
       ILLMProvider DefaultProvider() =>
           string.IsNullOrEmpty(apiKey)

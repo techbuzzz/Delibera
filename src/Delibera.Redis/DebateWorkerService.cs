@@ -51,7 +51,7 @@ public sealed class DebateWorkerService : BackgroundService
             "DebateWorkerService started. Consumer: {Consumer}@{Group}, Stream: {Stream}",
             _options.WorkerConsumerName, _options.WorkerConsumerGroup, _options.JobStreamKey);
 
-        await EnsureConsumerGroupAsync();
+        await EnsureConsumerGroupAsync().ConfigureAwait(false);
 
         while (!stoppingToken.IsCancellationRequested)
         {

@@ -52,7 +52,7 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
     public async Task<DebateResult> ExecuteAsync(ICouncilBuilder builder, CancellationToken ct = default)
     {
         var executor = builder.Build();
-        return await executor.ExecuteAsync(ct);
+        return await executor.ExecuteAsync(ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -77,7 +77,7 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
     }
 
     /// <inheritdoc />
-    public async Task<DebateHandle?> GetStatusAsync(string debateId, CancellationToken ct = default)
+    public async ValueTask<DebateHandle?> GetStatusAsync(string debateId, CancellationToken ct = default)
     {
         // Check local cache first
         if (_entries.TryGetValue(debateId, out var localEntry))
@@ -127,7 +127,7 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
         }
 
         // Stream live rounds from the in-process channel.
-        await foreach (var round in entry.Channel.Reader.ReadAllAsync(ct))
+        await foreach (var round in entry.Channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
             yield return new DebateRoundEvent.RoundCompleted(debateId, round);
 
         // After the channel completes, yield the terminal event.
@@ -172,7 +172,7 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
             };
 
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(outerCt, entry.Cts.Token);
-            entry.Result = await executor.ExecuteAsync(linkedCts.Token);
+            entry.Result = await executor.ExecuteAsync(linkedCts.Token).ConfigureAwait(false);
             entry.Status = DebateOrchestrationStatus.Completed;
             entry.CompletedAt = DateTimeOffset.UtcNow;
 

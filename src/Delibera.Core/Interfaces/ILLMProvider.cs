@@ -58,7 +58,7 @@ public interface ILLMProvider : IDisposable
       float temperature = 0.7f,
       [EnumeratorCancellation] CancellationToken ct = default)
    {
-      yield return await ChatAsync(model, systemPrompt, userPrompt, temperature, ct);
+       yield return await ChatAsync(model, systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
    }
 
    /// <summary>

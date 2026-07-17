@@ -43,7 +43,7 @@ public sealed class RiskCommitteeTemplate : IServerTemplate
         var apiKey          = providerSection["ApiKey"];
         var embeddingModel  = providerSection["EmbeddingModel"] ?? "nomic-embed-text";
 
-        var factory  = new ProviderFactory();
+        using var factory = new ProviderFactory();
         var llm      = string.IsNullOrEmpty(apiKey)
             ? factory.CreateOllama(endpoint)
             : factory.CreateCloudOllama(endpoint, apiKey);

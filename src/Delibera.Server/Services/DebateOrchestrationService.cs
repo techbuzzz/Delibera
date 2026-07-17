@@ -11,12 +11,11 @@ namespace Delibera.Server.Services;
 ///    <see cref="ScenarioRequest" /> to <see cref="ICouncilBuilder" /> and delegates
 ///    execution to <see cref="IDebateOrchestrator" />.
 ///    <para>
-///       When <see cref="IDebateOrchestrator" /> is a <see cref="LocalDebateOrchestrator" />,
-///       debates run in-process (the default). When it's a <c>RedisDebateOrchestrator</c>,
-///       round events are published to Redis Streams for cross-instance SSE streaming.
+///       Completed debate records are automatically evicted after
+///       <see cref="CompletedRecordLifetime" /> to prevent unbounded memory growth.
 ///    </para>
 /// </summary>
-public sealed class DebateOrchestrationService : IDebateOrchestrationService
+public sealed class DebateOrchestrationService : IDebateOrchestrationService, IDisposable
 {
     private readonly ILogger<DebateOrchestrationService> _logger;
     private readonly ITemplateRegistry _templates;
@@ -25,19 +24,29 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
     private readonly IDebateOrchestrator _orchestrator;
 
     private readonly ConcurrentDictionary<string, DebateRecord> _records = new();
+    private readonly TimeSpan _completedRecordLifetime;
+    private readonly Timer _evictionTimer;
+
+    /// <summary>
+    ///    Default lifetime for completed debate records before eviction.
+    /// </summary>
+    public static readonly TimeSpan CompletedRecordLifetime = TimeSpan.FromMinutes(30);
 
     public DebateOrchestrationService(
         ILogger<DebateOrchestrationService> logger,
         ITemplateRegistry templates,
         IServiceProvider services,
         IConfiguration configuration,
-        IDebateOrchestrator orchestrator)
+        IDebateOrchestrator orchestrator,
+        TimeSpan? completedRecordLifetime = null)
     {
         _logger = logger;
         _templates = templates;
         _services = services;
         _configuration = configuration;
         _orchestrator = orchestrator;
+        _completedRecordLifetime = completedRecordLifetime ?? CompletedRecordLifetime;
+        _evictionTimer = new(EvictCompletedRecords, null, _completedRecordLifetime, _completedRecordLifetime);
     }
 
     // ── Template path ─────────────────────────────────────────────────────────
@@ -48,7 +57,7 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
         CancellationToken ct = default)
     {
         var builder = ResolveTemplateBuilder(request);
-        var result = await _orchestrator.ExecuteAsync(builder, ct);
+        var result = await _orchestrator.ExecuteAsync(builder, ct).ConfigureAwait(false);
         var record = CreateRecord(request.TemplateId, tenantId, request.Question);
         record.Result = result;
         record.Status = DebateStatus.Completed;
@@ -75,7 +84,7 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
         CancellationToken ct = default)
     {
         var builder = ScenarioBuilder.Build(scenario, _configuration);
-        var result = await _orchestrator.ExecuteAsync(builder, ct);
+        var result = await _orchestrator.ExecuteAsync(builder, ct).ConfigureAwait(false);
         var record = CreateRecord("scenario", tenantId, scenario.Label ?? scenario.Question);
         record.Result = result;
         record.Status = DebateStatus.Completed;
@@ -129,8 +138,37 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
         record.Status = DebateStatus.Cancelled;
         _logger.LogInformation("Debate {DebateId} cancelled.", debateId);
 
-        _ = _orchestrator.CancelAsync(debateId);
+        _ = Task.Run(async () =>
+        {
+            try { await _orchestrator.CancelAsync(debateId).ConfigureAwait(false); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Failed to cancel debate {DebateId}.", debateId); }
+        });
         return true;
+    }
+
+    // ── Eviction ──────────────────────────────────────────────────────────────
+
+    private void EvictCompletedRecords(object? state)
+    {
+        var cutoff = DateTimeOffset.UtcNow - _completedRecordLifetime;
+        foreach (var kvp in _records)
+        {
+            if (kvp.Value.Status is not DebateStatus.Running
+                && kvp.Value.CompletedAt < cutoff)
+            {
+                _records.TryRemove(kvp.Key, out _);
+            }
+        }
+    }
+
+    // ── IDisposable ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    ///    Disposes the eviction timer.
+    /// </summary>
+    public void Dispose()
+    {
+        _evictionTimer.Dispose();
     }
 
     // ── Private ───────────────────────────────────────────────────────────────
@@ -164,9 +202,9 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService
 
         try
         {
-            await _orchestrator.EnqueueAsync(record.DebateId, builder);
+            await _orchestrator.EnqueueAsync(record.DebateId, builder).ConfigureAwait(false);
 
-            await foreach (var evt in _orchestrator.StreamAsync(record.DebateId))
+            await foreach (var evt in _orchestrator.StreamAsync(record.DebateId).ConfigureAwait(false))
             {
                 switch (evt)
                 {

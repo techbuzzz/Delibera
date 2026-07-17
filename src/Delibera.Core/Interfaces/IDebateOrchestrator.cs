@@ -38,7 +38,7 @@ public interface IDebateOrchestrator
    /// <param name="debateId">The debate identifier returned by <see cref="EnqueueAsync" />.</param>
    /// <param name="ct">Cancellation token.</param>
    /// <returns>The debate handle, or <c>null</c> if not found.</returns>
-   Task<DebateHandle?> GetStatusAsync(string debateId, CancellationToken ct = default);
+   ValueTask<DebateHandle?> GetStatusAsync(string debateId, CancellationToken ct = default);
 
    /// <summary>
    ///    Streams debate round events as they occur.

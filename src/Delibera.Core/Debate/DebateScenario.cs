@@ -59,7 +59,7 @@ public abstract class DebateScenario : IDebateStrategy
       {
          try
          {
-            var response = await member.AskAsync(systemPrompt, userPrompt, temperature, ct);
+            var response = await member.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
             return (member.Role, member.DisplayName, Response: response);
          }
          catch (Exception ex)
@@ -68,7 +68,7 @@ public abstract class DebateScenario : IDebateStrategy
          }
       });
 
-      var results = await Task.WhenAll(tasks);
+      var results = await Task.WhenAll(tasks).ConfigureAwait(false);
       //return results.ToDictionary(r => r.DisplayName, r => r.Response);
       // Disambiguate by appending a counter while preserving the original label for unique names.
       var seen = new HashSet<string>();
@@ -151,7 +151,7 @@ public abstract class DebateScenario : IDebateStrategy
 
       try
       {
-         var answer = await keeper.AnswerQuestionAsync(query, 5, temperature, ct);
+          var answer = await keeper.AnswerQuestionAsync(query, 5, temperature, ct).ConfigureAwait(false);
          var interaction = new KnowledgeInteraction(query, answer, 5);
          return (answer, interaction);
       }
@@ -189,8 +189,8 @@ public abstract class DebateScenario : IDebateStrategy
                   r.Responses.Select(kv => $"{kv.Key}: {kv.Value[..Math.Min(200, kv.Value.Length)]}"))))
             : null;
 
-         var roundCtx = await keeper.ProvideContextForRoundAsync(
-            topic, roundNumber, previousSummary, ct: ct);
+          var roundCtx = await keeper.ProvideContextForRoundAsync(
+             topic, roundNumber, previousSummary, ct: ct).ConfigureAwait(false);
 
          return (roundCtx.Answer, roundCtx.Interaction);
       }
@@ -236,7 +236,7 @@ public abstract class DebateScenario : IDebateStrategy
       IReadOnlyDictionary<string, string> responses,
       CancellationToken ct = default)
    {
-      return await ProcessOperatorRequestsAsync(@operator, responses, DebateExecutionOptions.Default, ct);
+       return await ProcessOperatorRequestsAsync(@operator, responses, DebateExecutionOptions.Default, ct).ConfigureAwait(false);
    }
 
    /// <summary>
@@ -275,13 +275,13 @@ public abstract class DebateScenario : IDebateStrategy
       // Parallel.ForEachAsync gives us a concurrent, optionally-bounded execution of the
       // delegated Operator tasks. Results are collected in a thread-safe list.
       await Parallel.ForEachAsync(
-         pending,
-         parallelOpts,
-         async (item, token) =>
-         {
-            try
-            {
-               var result = await @operator.ExecuteTaskAsync(item.Member, item.Task, token);
+          pending,
+          parallelOpts,
+          async (item, token) =>
+          {
+             try
+             {
+                var result = await @operator.ExecuteTaskAsync(item.Member, item.Task, token).ConfigureAwait(false);
                var interaction = result.ToInteraction();
                lock (interactions)
                {

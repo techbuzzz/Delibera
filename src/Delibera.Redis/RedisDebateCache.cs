@@ -41,7 +41,7 @@ public sealed class RedisDebateCache : IDebateCache
         _db = redis.GetDatabase();
     }
 
-    public async Task<DebateResult?> GetAsync(string cacheKey, CancellationToken ct = default)
+    public async ValueTask<DebateResult?> GetAsync(string cacheKey, CancellationToken ct = default)
     {
         try
         {
@@ -68,7 +68,7 @@ public sealed class RedisDebateCache : IDebateCache
         }
     }
 
-    public async Task SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
+    public async ValueTask SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
     {
         try
         {
@@ -86,7 +86,7 @@ public sealed class RedisDebateCache : IDebateCache
         }
     }
 
-    public async Task InvalidateAsync(string cacheKey, CancellationToken ct = default)
+    public async ValueTask InvalidateAsync(string cacheKey, CancellationToken ct = default)
     {
         try
         {
@@ -100,7 +100,7 @@ public sealed class RedisDebateCache : IDebateCache
         }
     }
 
-    public async Task<bool> ExistsAsync(string cacheKey, CancellationToken ct = default)
+    public async ValueTask<bool> ExistsAsync(string cacheKey, CancellationToken ct = default)
     {
         try
         {

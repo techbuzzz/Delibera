@@ -59,7 +59,7 @@ public sealed class VectorStoreFactory : CachingFactory<Func<IConfigurationSecti
    public async ValueTask DisposeAsync()
    {
       foreach (var p in EnumerateInstances())
-         await p.DisposeAsync();
+         await p.DisposeAsync().ConfigureAwait(false);
       ClearInstances();
    }
 

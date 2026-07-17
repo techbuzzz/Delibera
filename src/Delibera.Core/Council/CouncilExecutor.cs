@@ -268,8 +268,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
       try
       {
-         var retryResponse = await Chairman.AskAsync(
-            _context.SystemPrompt, correctionPrompt, _temperature, ct);
+          var retryResponse = await Chairman.AskAsync(
+             _context.SystemPrompt, correctionPrompt, _temperature, ct).ConfigureAwait(false);
          verdict = serializer.Deserialize<TVerdict>(retryResponse);
          if (verdict is not null)
          {
@@ -330,7 +330,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
        try
        {
-          var result = await ExecuteCoreAsync(effectiveToken);
+           var result = await ExecuteCoreAsync(effectiveToken).ConfigureAwait(false);
 
           // ── Cache write ──────────────────────────────────────────────────────
           if (_cache is not null && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.WriteThrough)
@@ -527,7 +527,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
       CompressedContext result;
       try
       {
-         result = await Compressor.CompressAsync(text, _compressionOptions, ct);
+          result = await Compressor.CompressAsync(text, _compressionOptions, ct).ConfigureAwait(false);
          DeliberaTelemetry.MarkSucceeded(compressionActivity);
       }
       catch (Exception ex)
@@ -683,7 +683,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
                Log(ExecutionLog.Info("Operator", $"Initialising Operator: {Operator.DisplayName}…"));
                try
                {
-                  await Operator.InitializeAsync(ct);
+                  await Operator.InitializeAsync(ct).ConfigureAwait(false);
                }
                catch (Exception ex)
                {
@@ -791,8 +791,8 @@ public sealed class CouncilExecutor : ICouncilExecutor
             Log(ExecutionLog.Info("AutoChunking", "AutoChunking enabled — analysing model context windows…"));
 
             var orchestrator = new AutoChunkingOrchestrator(_autoChunkingOptions, ExecutionOptions.Logger);
-            effectiveContext = await orchestrator.PrepareContextAsync(
-               effectiveContext, Members, Chairman, ct);
+             effectiveContext = await orchestrator.PrepareContextAsync(
+                effectiveContext, Members, Chairman, ct).ConfigureAwait(false);
 
             if (effectiveContext.AutoChunkingEnabled && effectiveContext.ChunkingPlan is { } plan)
                Log(ExecutionLog.Info("AutoChunking",
@@ -878,7 +878,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
                OnRoundCompleted?.Invoke(round);
             },
-            ct);
+            ct).ConfigureAwait(false);
 
          // F-09: If the selector requested a strategy switch, swap the public Strategy
          // property so consumers see the final strategy used. A full mid-flight swap
@@ -905,7 +905,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
             Log(ExecutionLog.Info("Voting", $"Running voting engine: {votingStrategy.MethodName}"));
             try
             {
-               var tally = await RunVotingAsync(votingStrategy, result, ct);
+                var tally = await RunVotingAsync(votingStrategy, result, ct).ConfigureAwait(false);
                if (tally is not null)
                {
                   result = result with { VotingTally = tally };
@@ -939,7 +939,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
          if (!string.IsNullOrWhiteSpace(_outputPath))
          {
-            await result.SaveToFileAsync(_outputPath, ct);
+             await result.SaveToFileAsync(_outputPath, ct).ConfigureAwait(false);
             Log(ExecutionLog.Info("Output", $"Result saved to: {_outputPath}"));
          }
 
@@ -1166,23 +1166,32 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
    private static int LevenshteinDistance(string a, string b)
    {
-      var m = a.Length;
-      var n = b.Length;
-      var dp = new int[m + 1, n + 1];
-      for (var i = 0; i <= m; i++) dp[i, 0] = i;
-      for (var j = 0; j <= n; j++) dp[0, j] = j;
-      for (var i = 1; i <= m; i++)
-      for (var j = 1; j <= n; j++)
-      {
-         var cost = a[i - 1] == b[j - 1]
-            ? 0
-            : 1;
-         dp[i, j] = Math.Min(
-            Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1),
-            dp[i - 1, j - 1] + cost);
-      }
+       if (a.Length < b.Length)
+           (a, b) = (b, a);
 
-      return dp[m, n];
+       var n = b.Length;
+       Span<int> prevRow = n <= 128 ? stackalloc int[n + 1] : new int[n + 1];
+       Span<int> currRow = n <= 128 ? stackalloc int[n + 1] : new int[n + 1];
+
+       for (var i = 0; i <= n; i++)
+           prevRow[i] = i;
+
+       for (var i = 1; i <= a.Length; i++)
+       {
+           currRow[0] = i;
+           for (var j = 1; j <= n; j++)
+           {
+               var cost = a[i - 1] == b[j - 1] ? 0 : 1;
+               currRow[j] = Math.Min(
+                   Math.Min(prevRow[j] + 1, currRow[j - 1] + 1),
+                   prevRow[j - 1] + cost);
+           }
+           var tmp = prevRow;
+           prevRow = currRow;
+           currRow = tmp;
+       }
+
+       return prevRow[n];
    }
 
    /// <summary>
@@ -1220,20 +1229,20 @@ public sealed class CouncilExecutor : ICouncilExecutor
       // Ask each member to rank (in parallel, bounded by ExecutionOptions).
       var parallelOpts = ExecutionOptions.ToParallelOptions(ct);
       var ballots = new ConcurrentBag<ParticipantBallot>();
-      await Parallel.ForEachAsync(Members, parallelOpts, async (member, token) =>
-      {
-         try
-         {
-            var response = await member.AskAsync(_context.SystemPrompt, rankPrompt, _temperature, token);
+       await Parallel.ForEachAsync(Members, parallelOpts, async (member, token) =>
+       {
+          try
+          {
+             var response = await member.AskAsync(_context.SystemPrompt, rankPrompt, _temperature, token).ConfigureAwait(false);
             var rankings = ParseRankings(response, options);
             if (rankings.Count > 0)
                ballots.Add(new ParticipantBallot(member.DisplayName, 1.0, rankings));
          }
          catch (Exception ex)
          {
-            Log(ExecutionLog.Warn("Voting", $"{member.DisplayName} failed to rank: {ex.Message}"));
-         }
-      });
+             Log(ExecutionLog.Warn("Voting", $"{member.DisplayName} failed to rank: {ex.Message}"));
+          }
+       }).ConfigureAwait(false);
 
       if (ballots.IsEmpty)
       {
@@ -1241,7 +1250,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
          return null;
       }
 
-      return await votingStrategy.TallyAsync(ballots.ToList(), ct);
+       return await votingStrategy.TallyAsync(ballots.ToList(), ct).ConfigureAwait(false);
    }
 
    /// <summary>

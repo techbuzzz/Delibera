@@ -39,7 +39,7 @@ public sealed class LegalContractReviewTemplate : IServerTemplate
     {
         var endpoint    = configuration["Delibera:Providers:DefaultEndpoint"] ?? "http://localhost:11434";
         var apiKey      = configuration["Delibera:Providers:ApiKey"];
-        var factory     = new ProviderFactory();
+        using var factory = new ProviderFactory();
         var llm         = string.IsNullOrEmpty(apiKey)
             ? factory.CreateOllama(endpoint)
             : factory.CreateCloudOllama(endpoint, apiKey);

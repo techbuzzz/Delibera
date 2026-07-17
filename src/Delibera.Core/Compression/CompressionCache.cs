@@ -24,7 +24,7 @@ namespace Delibera.Core.Compression;
 ///       reduce contention compared to the previous <c>OrderBy</c> implementation.
 ///    </para>
 /// </remarks>
-public sealed class CompressionCache(int maxEntries = 256)
+public sealed class CompressionCache(int maxEntries = 256) : IDisposable
 {
    private readonly ConcurrentDictionary<string, LruNode> _cache = new();
    private readonly int _evictionTarget = Math.Max(1, (int)Math.Ceiling(Math.Max(1, maxEntries) * 0.0625)); // ~6.25% each time
@@ -148,13 +148,19 @@ public sealed class CompressionCache(int maxEntries = 256)
       Interlocked.Exchange(ref _missCount, 0);
    }
 
-   /// <summary>
-   ///    Returns a formatted summary of cache performance.
-   /// </summary>
-   public string GetSummary()
-   {
-      return $"Cache: {Count} entries, {HitCount} hits / {MissCount} misses ({HitRate:P1} hit rate)";
-   }
+    /// <summary>
+    ///    Returns a formatted summary of cache performance.
+    /// </summary>
+    public string GetSummary()
+    {
+       return $"Cache: {Count} entries, {HitCount} hits / {MissCount} misses ({HitRate:P1} hit rate)";
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+       _lruLock.Dispose();
+    }
 
    // ──────────────────────────────────────────────
 

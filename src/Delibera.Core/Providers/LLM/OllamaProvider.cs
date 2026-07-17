@@ -182,7 +182,7 @@ public sealed class OllamaProvider : ILLMProvider
    {
       try
       {
-         await Client.ListLocalModelsAsync(ct);
+         await Client.ListLocalModelsAsync(ct).ConfigureAwait(false);
          return true;
       }
       catch
@@ -196,7 +196,7 @@ public sealed class OllamaProvider : ILLMProvider
    {
       try
       {
-         var models = await Client.ListLocalModelsAsync(ct);
+         var models = await Client.ListLocalModelsAsync(ct).ConfigureAwait(false);
          return models.Select(m => m.Name).ToList().AsReadOnly();
       }
       catch (Exception ex)
@@ -213,7 +213,7 @@ public sealed class OllamaProvider : ILLMProvider
       try
       {
          // Use Ollama's /api/show endpoint to get model metadata including Modelfile parameters.
-         var response = await Client.ShowModelAsync(model, ct);
+         var response = await Client.ShowModelAsync(model, ct).ConfigureAwait(false);
 
          // 1. Try to extract num_ctx from the Modelfile parameters string.
          var contextWindow = ExtractContextWindowFromParameters(response.Parameters);
@@ -291,7 +291,7 @@ public sealed class OllamaProvider : ILLMProvider
       Func<CancellationToken, ValueTask> operation = async token =>
       {
          var sb = new StringBuilder();
-         await foreach (var chunk in Client.ChatAsync(request, token))
+         await foreach (var chunk in Client.ChatAsync(request, token).ConfigureAwait(false))
          {
             if (chunk is not { Message.Content: { } content })
                continue;

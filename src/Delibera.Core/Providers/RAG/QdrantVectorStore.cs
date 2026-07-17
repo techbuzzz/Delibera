@@ -29,13 +29,13 @@ public sealed class QdrantVectorStore : IVectorStore
    /// <inheritdoc />
    public async Task EnsureCollectionAsync(string collectionName, int vectorSize, CancellationToken ct = default)
    {
-      if (await _client.CollectionExistsAsync(collectionName, ct))
+      if (await _client.CollectionExistsAsync(collectionName, ct).ConfigureAwait(false))
          return;
 
       await _client.CreateCollectionAsync(
          collectionName,
          new VectorParams { Size = (ulong)vectorSize, Distance = Distance.Cosine },
-         cancellationToken: ct);
+         cancellationToken: ct).ConfigureAwait(false);
    }
 
    /// <inheritdoc />
@@ -68,7 +68,7 @@ public sealed class QdrantVectorStore : IVectorStore
          });
       }
 
-      await _client.UpsertAsync(collectionName, grpcPoints, cancellationToken: ct);
+      await _client.UpsertAsync(collectionName, grpcPoints, cancellationToken: ct).ConfigureAwait(false);
    }
 
    /// <inheritdoc />
@@ -86,7 +86,7 @@ public sealed class QdrantVectorStore : IVectorStore
          scoreThreshold: scoreThreshold > 0
             ? scoreThreshold
             : null,
-         cancellationToken: ct);
+         cancellationToken: ct).ConfigureAwait(false);
 
       var results = new List<VectorSearchResult>(scored.Count);
 
@@ -122,7 +122,7 @@ public sealed class QdrantVectorStore : IVectorStore
    /// <inheritdoc />
    public async Task<long> CountAsync(string collectionName, CancellationToken ct = default)
    {
-      var info = await _client.GetCollectionInfoAsync(collectionName, ct);
+      var info = await _client.GetCollectionInfoAsync(collectionName, ct).ConfigureAwait(false);
       return (long)info.PointsCount;
    }
 

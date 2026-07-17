@@ -5,7 +5,7 @@ namespace Delibera.Core.Voting;
 /// </summary>
 /// <param name="Name">Option name (e.g. a proposed answer, a candidate solution).</param>
 /// <param name="Rank">Rank position — 1 is the top preference. Lower rank = preferred.</param>
-public sealed record RankedOption(string Name, int Rank);
+public readonly record struct RankedOption(string Name, int Rank);
 
 /// <summary>
 ///    A single participant's ballot in a council vote.

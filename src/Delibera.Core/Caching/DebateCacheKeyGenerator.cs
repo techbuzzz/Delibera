@@ -38,7 +38,7 @@ public static class DebateCacheKeyGenerator
         float temperature,
         string? systemPrompt = null)
     {
-        var content = JsonSerializer.Serialize(new
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new
         {
             Question = context.UserPrompt,
             Members = members.Order(StringComparer.Ordinal),
@@ -51,7 +51,7 @@ public static class DebateCacheKeyGenerator
                 : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(context.KnowledgeContent))),
         }, _json);
 
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(content));
+        var hash = SHA256.HashData(bytes);
         return Convert.ToHexString(hash)[..16];
     }
 }

@@ -42,10 +42,10 @@ public abstract class BaseRagProvider : IRagProvider
       if (chunks.Count == 0) return 0;
 
       // Compute embeddings in batch
-      var vectors = await EmbeddingProvider.EmbedBatchAsync(chunks, ct);
+      var vectors = await EmbeddingProvider.EmbedBatchAsync(chunks, ct).ConfigureAwait(false);
 
       // Ensure collection/table exists
-      await VectorStore.EnsureCollectionAsync(collectionName, vectors[0].Length, ct);
+      await VectorStore.EnsureCollectionAsync(collectionName, vectors[0].Length, ct).ConfigureAwait(false);
 
       // Build points
       var points = new List<VectorPoint>(chunks.Count);
@@ -63,7 +63,7 @@ public abstract class BaseRagProvider : IRagProvider
             pointMeta));
       }
 
-      await VectorStore.UpsertAsync(collectionName, points, ct);
+      await VectorStore.UpsertAsync(collectionName, points, ct).ConfigureAwait(false);
       return chunks.Count;
    }
 
@@ -79,14 +79,14 @@ public abstract class BaseRagProvider : IRagProvider
       if (!File.Exists(fullPath))
          throw new FileNotFoundException($"File not found: {fullPath}");
 
-      var text = await File.ReadAllTextAsync(fullPath, ct);
+      var text = await File.ReadAllTextAsync(fullPath, ct).ConfigureAwait(false);
       var meta = new Dictionary<string, string>
       {
          ["source"] = Path.GetFileName(fullPath),
          ["source_path"] = fullPath
       };
 
-      return await IndexDocumentAsync(collectionName, text, meta, chunkSize, chunkOverlap, ct);
+      return await IndexDocumentAsync(collectionName, text, meta, chunkSize, chunkOverlap, ct).ConfigureAwait(false);
    }
 
    /// <inheritdoc />
@@ -97,8 +97,8 @@ public abstract class BaseRagProvider : IRagProvider
       float scoreThreshold = 0.0f,
       CancellationToken ct = default)
    {
-      var queryVector = await EmbeddingProvider.EmbedAsync(query, ct);
-      return await VectorStore.SearchAsync(collectionName, queryVector, limit, scoreThreshold, ct);
+      var queryVector = await EmbeddingProvider.EmbedAsync(query, ct).ConfigureAwait(false);
+      return await VectorStore.SearchAsync(collectionName, queryVector, limit, scoreThreshold, ct).ConfigureAwait(false);
    }
 
    /// <inheritdoc />

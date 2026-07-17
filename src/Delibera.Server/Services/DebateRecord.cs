@@ -10,11 +10,20 @@ namespace Delibera.Server.Services;
 /// </summary>
 public sealed class DebateRecord
 {
+    private readonly object _lock = new();
+    private volatile int _status;
+
     public required string      DebateId   { get; init; }
     public required string      TemplateId { get; init; }
     public required string      TenantId   { get; init; }
-    public          DebateStatus Status    { get; set; } = DebateStatus.Pending;
-    public          DebateResult? Result  { get; set; }
+
+    public DebateStatus Status
+    {
+        get => (DebateStatus)_status;
+        set => _status = (int)value;
+    }
+
+    public          DebateResult? Result       { get; set; }
     public          List<DebateRound> Rounds { get; } = [];
     public          string?     ErrorMessage { get; set; }
     public          DateTimeOffset CreatedAt   { get; } = DateTimeOffset.UtcNow;

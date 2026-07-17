@@ -40,13 +40,13 @@ public sealed class FileDebateCache : IDebateCache
     }
 
     /// <inheritdoc />
-    public Task<DebateResult?> GetAsync(string cacheKey, CancellationToken ct = default)
+    public ValueTask<DebateResult?> GetAsync(string cacheKey, CancellationToken ct = default)
     {
         var filePath = GetFilePath(cacheKey);
         if (!File.Exists(filePath))
         {
             _logger.LogDebug("Cache MISS (file not found) for key {CacheKey}.", cacheKey);
-            return Task.FromResult<DebateResult?>(null);
+            return new ValueTask<DebateResult?>((DebateResult?)null);
         }
 
         var fileInfo = new FileInfo(filePath);
@@ -54,7 +54,7 @@ public sealed class FileDebateCache : IDebateCache
         {
             _logger.LogDebug("Cache MISS (expired) for key {CacheKey}.", cacheKey);
             try { File.Delete(filePath); } catch { /* best effort */ }
-            return Task.FromResult<DebateResult?>(null);
+            return new ValueTask<DebateResult?>((DebateResult?)null);
         }
 
         try
@@ -62,17 +62,17 @@ public sealed class FileDebateCache : IDebateCache
             var json = File.ReadAllText(filePath);
             var result = JsonSerializer.Deserialize<DebateResult>(json, _json);
             _logger.LogDebug("Cache HIT for key {CacheKey}.", cacheKey);
-            return Task.FromResult(result);
+            return new ValueTask<DebateResult?>(result);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to deserialize cache file for key {CacheKey}.", cacheKey);
-            return Task.FromResult<DebateResult?>(null);
+            return new ValueTask<DebateResult?>((DebateResult?)null);
         }
     }
 
     /// <inheritdoc />
-    public Task SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
+    public ValueTask SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
     {
         var filePath = GetFilePath(cacheKey);
         try
@@ -85,11 +85,11 @@ public sealed class FileDebateCache : IDebateCache
         {
             _logger.LogWarning(ex, "Failed to write cache file for key {CacheKey}.", cacheKey);
         }
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc />
-    public Task InvalidateAsync(string cacheKey, CancellationToken ct = default)
+    public ValueTask InvalidateAsync(string cacheKey, CancellationToken ct = default)
     {
         var filePath = GetFilePath(cacheKey);
         if (File.Exists(filePath))
@@ -97,24 +97,24 @@ public sealed class FileDebateCache : IDebateCache
             try { File.Delete(filePath); } catch { /* best effort */ }
             _logger.LogDebug("Cache INVALIDATE for key {CacheKey}.", cacheKey);
         }
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc />
-    public Task<bool> ExistsAsync(string cacheKey, CancellationToken ct = default)
+    public ValueTask<bool> ExistsAsync(string cacheKey, CancellationToken ct = default)
     {
         var filePath = GetFilePath(cacheKey);
         if (!File.Exists(filePath))
-            return Task.FromResult(false);
+            return new ValueTask<bool>(false);
 
         var fileInfo = new FileInfo(filePath);
         if (fileInfo.LastWriteTimeUtc + _defaultTtl < DateTime.UtcNow)
         {
             try { File.Delete(filePath); } catch { /* best effort */ }
-            return Task.FromResult(false);
+            return new ValueTask<bool>(false);
         }
 
-        return Task.FromResult(true);
+        return new ValueTask<bool>(true);
     }
 
     private string GetFilePath(string cacheKey) => Path.Combine(_cacheDirectory, $"{cacheKey}.cache.json");

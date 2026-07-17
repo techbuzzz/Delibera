@@ -30,7 +30,7 @@ public sealed class InMemoryDebateCache : IDebateCache
     }
 
     /// <inheritdoc />
-    public Task<DebateResult?> GetAsync(string cacheKey, CancellationToken ct = default)
+    public ValueTask<DebateResult?> GetAsync(string cacheKey, CancellationToken ct = default)
     {
         _cache.TryGetValue<DebateResult>(cacheKey, out var result);
         if (result is not null)
@@ -38,11 +38,11 @@ public sealed class InMemoryDebateCache : IDebateCache
         else
             _logger.LogDebug("Cache MISS for key {CacheKey}.", cacheKey);
 
-        return Task.FromResult(result);
+        return new ValueTask<DebateResult?>(result);
     }
 
     /// <inheritdoc />
-    public Task SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
+    public ValueTask SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
     {
         var effectiveTtl = ttl ?? _defaultTtl;
         var options = new MemoryCacheEntryOptions
@@ -53,20 +53,20 @@ public sealed class InMemoryDebateCache : IDebateCache
 
         _cache.Set(cacheKey, result, options);
         _logger.LogDebug("Cache SET for key {CacheKey} with TTL {TTL}.", cacheKey, effectiveTtl);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc />
-    public Task InvalidateAsync(string cacheKey, CancellationToken ct = default)
+    public ValueTask InvalidateAsync(string cacheKey, CancellationToken ct = default)
     {
         _cache.Remove(cacheKey);
         _logger.LogDebug("Cache INVALIDATE for key {CacheKey}.", cacheKey);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc />
-    public Task<bool> ExistsAsync(string cacheKey, CancellationToken ct = default)
+    public ValueTask<bool> ExistsAsync(string cacheKey, CancellationToken ct = default)
     {
-        return Task.FromResult(_cache.TryGetValue(cacheKey, out _));
+        return new ValueTask<bool>(_cache.TryGetValue(cacheKey, out _));
     }
 }

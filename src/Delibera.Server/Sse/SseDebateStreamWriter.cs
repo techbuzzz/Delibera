@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
@@ -95,11 +96,20 @@ public static class SseDebateStreamWriter
         T payload,
         CancellationToken ct)
     {
-        var data = JsonSerializer.Serialize(payload, _json);
-        await ctx.Response.WriteAsync($"event: {eventType}\n", ct);
-        await ctx.Response.WriteAsync($"data: {data}\n\n", ct);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, _json);
+        await ctx.Response.Body.WriteAsync(EventPrefix, ct);
+        await ctx.Response.Body.WriteAsync(Encoding.UTF8.GetBytes(eventType), ct);
+        await ctx.Response.Body.WriteAsync(NewlineBytes, ct);
+        await ctx.Response.Body.WriteAsync(DataPrefix, ct);
+        await ctx.Response.Body.WriteAsync(bytes, ct);
+        await ctx.Response.Body.WriteAsync(DoubleNewlineBytes, ct);
         await ctx.Response.Body.FlushAsync(ct);
     }
+
+    private static readonly byte[] EventPrefix = "event: "u8.ToArray();
+    private static readonly byte[] DataPrefix = "data: "u8.ToArray();
+    private static readonly byte[] NewlineBytes = "\n"u8.ToArray();
+    private static readonly byte[] DoubleNewlineBytes = "\n\n"u8.ToArray();
 
     private static object BuildCompletedPayload(DebateRecord record) => new
     {

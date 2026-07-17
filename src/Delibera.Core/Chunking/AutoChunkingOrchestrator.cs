@@ -76,7 +76,7 @@ public sealed class AutoChunkingOrchestrator
          allModels.Add((chairman.ModelName, chairman.Provider, chairman.DisplayName));
 
       // Determine the minimum context window across all models.
-      var (minWindow, minModel) = await DetermineMinContextWindowAsync(allModels, ct);
+      var (minWindow, minModel) = await DetermineMinContextWindowAsync(allModels, ct).ConfigureAwait(false);
 
       if (minWindow is null)
       {
@@ -242,7 +242,7 @@ public sealed class AutoChunkingOrchestrator
           // 1. Try the provider's dynamic capabilities.
           try
           {
-             var caps = await m.Provider.GetModelCapabilitiesAsync(m.ModelName, ct);
+              var caps = await m.Provider.GetModelCapabilitiesAsync(m.ModelName, ct).ConfigureAwait(false);
              if (!caps.IsUnknown && caps.ContextWindowTokens is { } w and > 0)
                 window = w;
           }
@@ -257,7 +257,7 @@ public sealed class AutoChunkingOrchestrator
          return (Window: window, m.DisplayName);
       });
 
-      var results = await Task.WhenAll(tasks);
+       var results = await Task.WhenAll(tasks).ConfigureAwait(false);
 
       int? minWindow = null;
       string? minModel = null;

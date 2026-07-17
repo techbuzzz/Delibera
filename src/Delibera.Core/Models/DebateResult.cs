@@ -124,7 +124,7 @@ public sealed record DebateResult
    /// </summary>
    public string ToMarkdown()
    {
-      var sb = new StringBuilder();
+      var sb = new StringBuilder(4096);
 
       sb.AppendLine($"# Delibera Debate — {StartedAt:yyyy-MM-dd HH:mm:ss UTC}");
       sb.AppendLine();
@@ -252,7 +252,7 @@ public sealed record DebateResult
    /// </summary>
    public string ToStatisticsMarkdown()
    {
-      var sb = new StringBuilder();
+      var sb = new StringBuilder(2048);
 
       sb.AppendLine($"# 📊 Debate Statistics — {DebateId}");
       sb.AppendLine();
@@ -286,7 +286,7 @@ public sealed record DebateResult
    /// </summary>
    public string ToLogsMarkdown()
    {
-      var sb = new StringBuilder();
+      var sb = new StringBuilder(2048);
 
       sb.AppendLine($"# 📋 Execution Logs — {DebateId}");
       sb.AppendLine();

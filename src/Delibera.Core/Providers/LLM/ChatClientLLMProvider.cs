@@ -114,7 +114,7 @@ public sealed class ChatClientLLMProvider : ILLMProvider
 
       try
       {
-         var response = await ChatClient.GetResponseAsync(messages, options, ct);
+         var response = await ChatClient.GetResponseAsync(messages, options, ct).ConfigureAwait(false);
          var text = response.Text.Trim();
          return string.IsNullOrWhiteSpace(text)
             ? throw new InvalidOperationException($"Empty response from model '{model}' ({ProviderName}).")
@@ -144,7 +144,7 @@ public sealed class ChatClientLLMProvider : ILLMProvider
       var messages = BuildMessages(systemPrompt, userPrompt);
       var options = BuildOptions(model, temperature);
 
-      await foreach (var update in ChatClient.GetStreamingResponseAsync(messages, options, ct))
+         await foreach (var update in ChatClient.GetStreamingResponseAsync(messages, options, ct).ConfigureAwait(false))
       {
          var text = update.Text;
          if (!string.IsNullOrEmpty(text))
