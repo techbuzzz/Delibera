@@ -39,7 +39,7 @@ public static class SseDebateStreamWriter
       // If already terminal, write the result and close immediately.
       if (record.Status is DebateStatus.Completed)
       {
-         await WriteSseEventAsync(ctx, "debate-round", record.Rounds.Select(r => r.ToDto()), ct);
+         await WriteSseEventAsync(ctx, "debate-round", record.RoundsSnapshot().Select(r => r.ToDto()), ct);
          await WriteSseEventAsync(ctx, "debate-completed", BuildCompletedPayload(record), ct);
          return;
       }
@@ -56,17 +56,16 @@ public static class SseDebateStreamWriter
          return;
       }
 
-      // Drain rounds that completed before the client connected.
-      foreach (var round in record.Rounds)
-         await WriteSseEventAsync(ctx, "debate-round", round.ToDto(), ct);
-
-      // Stream live rounds from the orchestrator.
+      // Single source of truth for rounds: the orchestrator stream. It already replays the
+      // rounds that completed before the client connected and then yields the live ones, so
+      // draining record.Rounds here as well delivered every earlier round twice. Recording
+      // into record.Rounds from this loop was a second writer to a collection the debate
+      // background task also appends to; DebateOrchestrationService already records them.
       await foreach (var evt in orchestrator.StreamAsync(record.DebateId, ct))
       {
          switch (evt)
          {
             case DebateRoundEvent.RoundCompleted rc:
-               record.Rounds.Add(rc.Round);
                await WriteSseEventAsync(ctx, "debate-round", rc.Round.ToDto(), ct);
                break;
             case DebateRoundEvent.DebateCompleted dc:

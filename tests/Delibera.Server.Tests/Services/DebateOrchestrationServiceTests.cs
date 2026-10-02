@@ -29,15 +29,15 @@ public sealed class DebateOrchestrationServiceTests
 
     [Fact]
     public void Find_UnknownId_ReturnsNull()
-        => BuildService().Find("does-not-exist").Should().BeNull();
+        => BuildService().Find("does-not-exist", "t1").Should().BeNull();
 
     [Fact]
     public void List_OnEmptyStore_ReturnsEmptyCollection()
-        => BuildService().List(null, null, 1, 20).Should().BeEmpty();
+        => BuildService().List("t1", null, null, 1, 20).Should().BeEmpty();
 
     [Fact]
     public void Cancel_UnknownId_ReturnsFalse()
-        => BuildService().Cancel("ghost").Should().BeFalse();
+        => BuildService().Cancel("ghost", "t1").Should().BeFalse();
 
     // ── Template path: unknown template ───────────────────────────────────────
 
@@ -91,7 +91,7 @@ public sealed class DebateOrchestrationServiceTests
             }, "t2");
 
         record.DebateId.Should().NotBeNullOrWhiteSpace();
-        svc.Find(record.DebateId).Should().NotBeNull();
+        svc.Find(record.DebateId, "t2").Should().NotBeNull();
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public sealed class DebateOrchestrationServiceTests
                 Members  = [new ScenarioMember { Role = "Y" }],
             }, "t5");
 
-        svc.List("scenario", null, 1, 20)
+        svc.List("t5", "scenario", null, 1, 20)
            .Should().ContainSingle(r => r.DebateId == record.DebateId);
     }
 
@@ -149,7 +149,7 @@ public sealed class DebateOrchestrationServiceTests
                 Members  = [new ScenarioMember { Role = "Z" }],
             }, "t6");
 
-        svc.Cancel(record.DebateId).Should().BeTrue();
+        svc.Cancel(record.DebateId, "t6").Should().BeTrue();
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public sealed class DebateOrchestrationServiceTests
                 Members  = [new ScenarioMember { Role = "W" }],
             }, "t7");
 
-        svc.Cancel(record.DebateId);
-        svc.Cancel(record.DebateId).Should().BeFalse();
+        svc.Cancel(record.DebateId, "t7");
+        svc.Cancel(record.DebateId, "t7").Should().BeFalse();
     }
 }

@@ -57,6 +57,11 @@ public sealed class DebateWorkerService : BackgroundService
       {
          try
          {
+            // Wait on the client, not in a tight loop. StackExchange.Redis 3.x exposes no
+            // server-side BLOCK for XREADGROUP — the seventh argument of the widest
+            // overload is claimMinIdleTime, not block — so the pause belongs here.
+            // Re-reading immediately (the previous behaviour) pinned a core whenever the
+            // stream was idle.
             var messages = await _db.StreamReadGroupAsync(
                _options.JobStreamKey,
                _options.WorkerConsumerGroup,
@@ -64,8 +69,11 @@ public sealed class DebateWorkerService : BackgroundService
                StreamPosition.NewMessages,
                _options.BatchSize).ConfigureAwait(false);
 
-            if (messages.Length == 0)
+            if (messages is null || messages.Length == 0)
+            {
+               await Task.Delay(_options.BlockMs, stoppingToken).ConfigureAwait(false);
                continue;
+            }
 
             foreach (var message in messages)
             {

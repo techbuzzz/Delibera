@@ -10,12 +10,20 @@ namespace Delibera.Core.Memory;
 /// <param name="CreatedAt">UTC timestamp when the memory was stored.</param>
 /// <param name="Metadata">
 ///    Optional metadata keyed by tag name (e.g. <c>{"source": "debate-id-123"}</c>).
-///    Used for filtering during recall and for downstream analytics.
+///    Used for filtering during recall and for downstream analytics. Never null: callers
+///    normalise <c>null</c> to <see cref="Empty" />, because the RAG layer hands out
+///    <c>VectorSearchResult.Metadata</c> as nullable and every consumer would otherwise
+///    have to re-guard the same value.
 /// </param>
 public sealed record MemoryEntry(
    string Content,
    DateTimeOffset CreatedAt,
-   IReadOnlyDictionary<string, string> Metadata);
+   IReadOnlyDictionary<string, string> Metadata)
+{
+   /// <summary>Shared empty metadata dictionary for entries recalled without any.</summary>
+   public static IReadOnlyDictionary<string, string> Empty { get; } =
+      new Dictionary<string, string>(0);
+}
 
 /// <summary>
 ///    Persistent memory for individual council members across separate debate
@@ -212,7 +220,7 @@ public sealed class QdrantAgentMemory : IAgentMemory
       var collection = _collectionPrefix + SanitizeName(agentName);
       var results = await _ragProvider.SearchAsync(collection, query, limit, 0.0f, ct).ConfigureAwait(false);
       return results
-         .Select(r => new MemoryEntry(r.Text, DateTimeOffset.UtcNow, r.Metadata))
+         .Select(r => new MemoryEntry(r.Text, DateTimeOffset.UtcNow, r.Metadata ?? MemoryEntry.Empty))
          .ToList();
    }
 
@@ -289,9 +297,13 @@ public sealed class PgVectorAgentMemory : IAgentMemory
       // a metadata-filtered query; if not, the caller can post-filter the results.
       var results = await _ragProvider.SearchAsync(_tableName, query, limit * 2, 0.0f, ct).ConfigureAwait(false);
       return results
-         .Where(r => r.Metadata.TryGetValue("agent_name", out var name) && name == agentName)
+         // Metadata is nullable on a search result: a vector store entry stored without
+         // tags would have dereferenced null here and taken recall down with it.
+         .Where(r => r.Metadata is not null
+            && r.Metadata.TryGetValue("agent_name", out var name)
+            && name == agentName)
          .Take(Math.Max(1, limit))
-         .Select(r => new MemoryEntry(r.Text, DateTimeOffset.UtcNow, r.Metadata))
+         .Select(r => new MemoryEntry(r.Text, DateTimeOffset.UtcNow, r.Metadata ?? MemoryEntry.Empty))
          .ToList();
    }
 

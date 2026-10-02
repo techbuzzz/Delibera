@@ -114,8 +114,9 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
       if (!_entries.TryGetValue(debateId, out var entry))
          yield break;
 
-      // Yield rounds that completed before the client connected.
-      foreach (var round in entry.CompletedRounds)
+      // Yield rounds that completed before the client connected. Snapshot first: the debate
+      // loop keeps appending to the same collection while this runs.
+      foreach (var round in entry.CompletedRounds.ToArray())
          yield return new DebateRoundEvent.RoundCompleted(debateId, round);
 
       // If terminal, yield the terminal event and exit.
@@ -175,7 +176,7 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
          var executor = entry.Builder.Build();
          executor.OnRoundCompleted += round =>
          {
-            entry.CompletedRounds.Add(round);
+            entry.CompletedRounds.Enqueue(round);
             entry.Channel.Writer.TryWrite(round);
 
             // Publish to Redis stream for cross-instance SSE subscribers
@@ -398,7 +399,10 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
       public string? ErrorMessage { get; set; }
       public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
       public DateTimeOffset? CompletedAt { get; set; }
-      public List<DebateRound> CompletedRounds { get; } = [];
+      // ConcurrentQueue, not List<T>: the round-completed handler appends from the debate
+      // loop's thread while StreamAsync enumerates from a request thread. Enumerating a
+      // List<T> under concurrent writes throws "Collection was modified".
+      public ConcurrentQueue<DebateRound> CompletedRounds { get; } = new();
       public Channel<DebateRound> Channel { get; } = System.Threading.Channels.Channel.CreateUnbounded<DebateRound>();
       public CancellationTokenSource Cts { get; } = new();
 

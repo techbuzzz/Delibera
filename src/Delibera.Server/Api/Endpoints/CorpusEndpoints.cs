@@ -7,9 +7,10 @@ public static class CorpusEndpoints
 {
    public static IEndpointRouteBuilder MapCorpusEndpoints(this IEndpointRouteBuilder routes)
    {
+      // No WithOpenApi(): deprecated in .NET 10 (ASPDEPR002); the built-in OpenAPI
+      // pipeline covers this group already.
       var group = routes.MapGroup("/corpora")
-         .WithTags("Corpora")
-         .WithOpenApi();
+         .WithTags("Corpora");
 
       group.MapGet("/", ListCorpora)
          .WithName("ListCorpora")

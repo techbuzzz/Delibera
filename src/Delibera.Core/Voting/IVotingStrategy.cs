@@ -140,7 +140,13 @@ public sealed class BordaCountVotingStrategy : IVotingStrategy
 ///    <see cref="MemberWeights" /> to give specific members more influence
 ///    (e.g. a SecurityExpert's vote counts double).
 /// </summary>
-public sealed class WeightedVotingStrategy(double defaultWeight = 1.0) : IVotingStrategy
+/// <remarks>
+///    The constructor used to take a <c>defaultWeight</c> argument that was never read —
+///    the fallback is the ballot's own weight, which is what the release notes for v10.3.0
+///    settled on. It was removed rather than left in place: a parameter that compiles,
+///    reads like "double the vote" and does nothing is worse than no parameter.
+/// </remarks>
+public sealed class WeightedVotingStrategy : IVotingStrategy
 {
    /// <summary>
    ///    Per-member weight overrides. Keyed by <see cref="ParticipantBallot.MemberName" />

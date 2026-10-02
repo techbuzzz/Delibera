@@ -11,9 +11,11 @@ public static class DebateEndpoints
 {
    public static IEndpointRouteBuilder MapDebateEndpoints(this IEndpointRouteBuilder routes)
    {
+      // No WithOpenApi(): it is deprecated in .NET 10 (ASPDEPR002) and its behaviour is
+      // now part of the built-in OpenAPI pipeline. The group metadata below (tags, names,
+      // summaries, Produces*) is picked up by AddOpenApi()/MapOpenApi() on its own.
       var group = routes.MapGroup("/debates")
-         .WithTags("Debates")
-         .WithOpenApi();
+         .WithTags("Debates");
 
       // POST /api/v1/debates  — sync execution (waits for completion)
       group.MapPost("/", CreateDebateAsync)
@@ -114,7 +116,7 @@ public static class DebateEndpoints
          IDebateOrchestrationService orchestration,
          HttpContext ctx)
    {
-      var record = orchestration.Find(id);
+      var record = orchestration.Find(id, TenantResolutionMiddleware.Resolve(ctx));
       return record is null
          ? TypedResults.NotFound()
          : TypedResults.Ok(record.ToResponse(ctx));
@@ -126,7 +128,7 @@ public static class DebateEndpoints
          IDebateOrchestrationService orchestration,
          HttpContext ctx)
    {
-      var record = orchestration.Find(id);
+      var record = orchestration.Find(id, TenantResolutionMiddleware.Resolve(ctx));
       if (record is null) return TypedResults.NotFound();
       if (record.Status != DebateStatus.Completed)
          return TypedResults.Conflict($"Debate is {record.Status}, not yet completed.");
@@ -145,7 +147,7 @@ public static class DebateEndpoints
       HttpContext ctx,
       CancellationToken ct)
    {
-      var record = orchestration.Find(id);
+      var record = orchestration.Find(id, TenantResolutionMiddleware.Resolve(ctx));
       if (record is null)
       {
          ctx.Response.StatusCode = StatusCodes.Status404NotFound;
@@ -159,13 +161,16 @@ public static class DebateEndpoints
       GetDebateRoundsAsync(
          string id,
          IDebateOrchestrationService orchestration,
+         HttpContext ctx,
          [FromQuery] int page = 1,
          [FromQuery] int pageSize = 20)
    {
-      var record = orchestration.Find(id);
+      var record = orchestration.Find(id, TenantResolutionMiddleware.Resolve(ctx));
       if (record is null) return TypedResults.NotFound();
 
-      var rounds = record.Rounds
+      // Snapshot first: the debate may still be running, so paginating over the live
+      // collection could mix a page taken before and after a round was appended.
+      var rounds = record.RoundsSnapshot()
          .Skip((page - 1) * pageSize)
          .Take(pageSize)
          .Select(r => r.ToDto())
@@ -182,16 +187,18 @@ public static class DebateEndpoints
       [FromQuery] int page = 1,
       [FromQuery] int pageSize = 20)
    {
-      var debates = orchestration.List(templateId, status, page, pageSize);
+      var debates = orchestration.List(
+         TenantResolutionMiddleware.Resolve(ctx), templateId, status, page, pageSize);
       return TypedResults.Ok(debates.Select(r => r.ToResponse(ctx)).ToArray());
    }
 
    private static Results<NoContent, NotFound>
       CancelDebateAsync(
          string id,
-         IDebateOrchestrationService orchestration)
+         IDebateOrchestrationService orchestration,
+         HttpContext ctx)
    {
-      return orchestration.Cancel(id)
+      return orchestration.Cancel(id, TenantResolutionMiddleware.Resolve(ctx))
          ? TypedResults.NoContent()
          : TypedResults.NotFound();
    }
@@ -200,9 +207,10 @@ public static class DebateEndpoints
       ExportMarkdownAsync(
          string id,
          IDebateOrchestrationService orchestration,
+         HttpContext ctx,
          CancellationToken ct)
    {
-      var record = orchestration.Find(id);
+      var record = orchestration.Find(id, TenantResolutionMiddleware.Resolve(ctx));
       if (record?.Result is null) return TypedResults.NotFound();
 
       var md = record.Result.ToMarkdown();

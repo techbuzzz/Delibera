@@ -65,7 +65,22 @@ Performance &amp; Integrity: 30-min Timer-based eviction on LocalDebateOrchestra
       <PackageReference Include="OllamaSharp" Version="5.4.27" />
       <PackageReference Include="Pgvector" Version="0.3.2" />
       <PackageReference Include="Qdrant.Client" Version="1.18.1" />
-      <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.301" PrivateAssets="all" />
-   </ItemGroup>
+      <!-- 10.0.303 is the first release of the 10.0.3xx band that is not flagged by
+           GHSA-23fw-v26w-5fgq / CVE-2026-62900 (Microsoft.Build.Tasks.Git information
+           disclosure). 10.0.301 pulled the vulnerable component transitively. -->
+      <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.303" PrivateAssets="all" />
+    <!-- Delibera.Core exposes Microsoft.Extensions.Caching.Memory.IMemoryCache in its
+         public surface (InMemoryDebateCache ctor, UseInMemoryCache) and now registers the
+         implementation itself. Previously the interface arrived transitively while the
+         concrete MemoryCache/AddMemoryCache did not, so UseInMemoryCache threw at resolve. -->
+   <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Lets the test project assert on internal invariants that are part of the public
+         contract (e.g. TokenCounter honouring MaxMemoizedEntries) without widening the
+         public API just for testability. -->
+    <InternalsVisibleTo Include="Delibera.Core.Tests" />
+  </ItemGroup>
 
 </Project>

@@ -206,6 +206,24 @@ public sealed class CouncilExecutor : ICouncilExecutor
    /// <summary>Debate strategy.</summary>
    public IDebateStrategy Strategy { get; }
 
+   /// <summary>
+   ///    Identity a member contributes to the cache key. The display name already carries
+   ///    model and provider; role and persona are added because they change the prompt the
+   ///    member receives and therefore the output.
+   /// </summary>
+   private static string MemberCacheIdentity(CouncilMember member) =>
+      $"{member.DisplayName}|{member.Role}|{member.PersonaPrompt}";
+
+   /// <summary>
+   ///    Identity the chairman contributes to the cache key, or <c>null</c> when the
+   ///    debate has no chairman. Without it, two debates with identical members but
+   ///    different chairmen shared a cache entry and one received the other's verdict.
+   /// </summary>
+   private string? ChairmanCacheIdentity() =>
+      Chairman is null
+         ? null
+         : $"{Chairman.DisplayName}|{Chairman.Role}|{Chairman.PersonaPrompt}";
+
    /// <summary>Context compressor (may be <c>null</c> if compression is disabled).</summary>
    public IContextCompressor? Compressor { get; }
 
@@ -297,19 +315,29 @@ public sealed class CouncilExecutor : ICouncilExecutor
    {
       _executionLogs.Clear();
 
-      // ── Cache check ─────────────────────────────────────────────────────────
-      if (_cache is not null && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.ReadOnly)
-      {
-         var cacheKey = DebateCacheKeyGenerator.Generate(
-            _context, Members.Select(m => m.DisplayName).ToList(),
+      // The cache key hashes the whole knowledge base, so it is not cheap. It is derived
+      // purely from inputs that are fixed for the duration of this debate, so it is
+      // computed once here and reused by both the read and the write path — previously the
+      // key was generated twice per debate, hashing the knowledge twice.
+      var cache = _cache;
+      var cacheKey = cache is null
+         ? null
+         : DebateCacheKeyGenerator.Generate(
+            _context,
+            Members.Select(MemberCacheIdentity).ToList(),
             Strategy.StrategyName, _maxRounds, _temperature,
-            _context.SystemPrompt);
+            _context.SystemPrompt,
+            ChairmanCacheIdentity());
 
-         var cached = await _cache.GetAsync(cacheKey, ct).ConfigureAwait(false);
+      // ── Cache check ─────────────────────────────────────────────────────────
+      if (cache is not null && cacheKey is not null
+         && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.ReadOnly)
+      {
+         var cached = await cache.GetAsync(cacheKey, ct).ConfigureAwait(false);
          if (cached is not null)
          {
             Log(ExecutionLog.Info("Cache", $"Cache HIT for key {cacheKey}."));
-            DeliberaMeter.CacheHits.Add(1, new KeyValuePair<string, object?>("cache_backend", _cache.GetType().Name));
+            DeliberaMeter.CacheHits.Add(1, new KeyValuePair<string, object?>("cache_backend", cache.GetType().Name));
             return cached with { CacheHit = true, CacheKey = cacheKey, CachedAt = cached.StartedAt };
          }
       }
@@ -333,14 +361,10 @@ public sealed class CouncilExecutor : ICouncilExecutor
          var result = await ExecuteCoreAsync(effectiveToken).ConfigureAwait(false);
 
          // ── Cache write ──────────────────────────────────────────────────────
-         if (_cache is not null && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.WriteThrough)
+         if (cache is not null && cacheKey is not null
+            && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.WriteThrough)
          {
-            var cacheKey = DebateCacheKeyGenerator.Generate(
-               _context, Members.Select(m => m.DisplayName).ToList(),
-               Strategy.StrategyName, _maxRounds, _temperature,
-               _context.SystemPrompt);
-
-            await _cache.SetAsync(cacheKey, result, ct: ct).ConfigureAwait(false);
+            await cache.SetAsync(cacheKey, result, ct: ct).ConfigureAwait(false);
             Log(ExecutionLog.Info("Cache", $"Cache SET for key {cacheKey}."));
             result = result with { CacheKey = cacheKey };
          }
@@ -418,9 +442,17 @@ public sealed class CouncilExecutor : ICouncilExecutor
          ? _maxRounds + 1
          : _maxRounds;
 
-      // Capture the user's OnRoundCompleted handler (if any) so we can fan out to it
-      // alongside the channel writer.
-      var userOnRoundCompleted = OnRoundCompleted;
+      // Round interceptor for this stream: stamps the total-rounds hint so consumers
+      // can render progress and pushes the round into the channel. The executor
+      // raises the public OnRoundCompleted event itself, so user handlers still fire
+      // exactly once per round — and with the stamped round, as before.
+      Func<DebateRound, DebateRound> interceptRound = round =>
+      {
+         var stamped = round with { Total = totalRounds };
+         // Unbounded → never blocks, never drops.
+         channel.Writer.TryWrite(stamped);
+         return stamped;
+      };
 
       // Background task: runs the debate and writes each completed round to the channel.
       var debateTask = Task.Run(async () =>
@@ -429,15 +461,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
          try
          {
             result = await ExecuteCoreWithCallbackAsync(
-               round =>
-               {
-                  // Stamp the total-rounds hint so consumers can render progress.
-                  var stamped = round with { Total = totalRounds };
-                  // Fan out to the user's OnRoundCompleted handler (back-compat).
-                  userOnRoundCompleted?.Invoke(stamped);
-                  // Push to the channel. Unbounded → never blocks, never drops.
-                  channel.Writer.TryWrite(stamped);
-               },
+               interceptRound,
                effectiveToken).ConfigureAwait(false);
          }
          catch (OperationCanceledException) when (effectiveToken.IsCancellationRequested)
@@ -646,7 +670,9 @@ public sealed class CouncilExecutor : ICouncilExecutor
       return sb.ToString();
    }
 
-   private async Task<DebateResult> ExecuteCoreAsync(CancellationToken ct)
+   private async Task<DebateResult> ExecuteCoreAsync(
+      CancellationToken ct,
+      Func<DebateRound, DebateRound>? roundInterceptor = null)
    {
       var debateStartedAt = DateTime.UtcNow;
       Activity? debateActivity = null;
@@ -816,6 +842,10 @@ public sealed class CouncilExecutor : ICouncilExecutor
          var completedRounds = new List<DebateRound>();
          IDebateStrategy? pendingSwitch = null;
 
+         // The checkpoint this debate writes to is decided by its first save and stays
+         // valid afterwards, so the id is resolved once instead of on every round.
+         var checkpointTarget = new CheckpointTarget();
+
          var result = await Strategy.ExecuteAsync(
             Members,
             effectiveContext,
@@ -866,6 +896,11 @@ public sealed class CouncilExecutor : ICouncilExecutor
                            $"🔄 Adaptive strategy switch triggered after round {round.RoundNumber}: " +
                            $"{Strategy.StrategyName} → {pendingSwitch.StrategyName}"));
                   }
+                  catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                  {
+                     // A cancelled debate must stop, not be recorded as a selector failure.
+                     throw;
+                  }
                   catch (Exception ex)
                   {
                      ReportError(ex, "StrategySelector");
@@ -873,12 +908,19 @@ public sealed class CouncilExecutor : ICouncilExecutor
                }
 
                // F-03: Save a checkpoint after each round so the debate can be resumed.
-               if (DebateStore is { } store) SaveCheckpointAsync(store, round, completedRounds, ct).GetAwaiter().GetResult();
+               if (DebateStore is { } store)
+                  SaveCheckpointAsync(store, round, completedRounds, checkpointTarget, ct).GetAwaiter().GetResult();
 
                // Track the round AFTER the callbacks so it's included in the next checkpoint.
                completedRounds.Add(round);
 
-               OnRoundCompleted?.Invoke(round);
+               // The stream interceptor (if any) gets first refusal on the round and
+               // returns the value subscribers should observe — the streaming path
+               // stamps the total-rounds hint onto it. Passing it down as a parameter
+               // (rather than swapping the event field) keeps the callback alive across
+               // the debate's real suspension points.
+               var observedRound = roundInterceptor?.Invoke(round) ?? round;
+               OnRoundCompleted?.Invoke(observedRound);
             },
             ct).ConfigureAwait(false);
 
@@ -1018,34 +1060,15 @@ public sealed class CouncilExecutor : ICouncilExecutor
 
    /// <summary>
    ///    Internal helper that runs <see cref="ExecuteCoreAsync" /> with a custom
-   ///    <c>onRoundCompleted</c> callback. Used by <see cref="StreamDebateAsync" /> so
-   ///    the streaming layer can intercept each round before it reaches the user's
-   ///    handler. Refactored extraction of the strategy-invocation block so the
-   ///    timeout-wrapping <see cref="ExecuteAsync" /> and the streaming path share the
-   ///    same core logic.
+   ///    round interceptor. Used by <see cref="StreamDebateAsync" /> so the streaming
+   ///    layer can observe each round before it reaches the user's
+   ///    <see cref="OnRoundCompleted" /> handlers. The interceptor travels down as a
+   ///    parameter, so it stays in effect for the whole asynchronous run.
    /// </summary>
    private Task<DebateResult> ExecuteCoreWithCallbackAsync(
-      Action<DebateRound> onRoundCompleted,
+      Func<DebateRound, DebateRound> roundInterceptor,
       CancellationToken ct)
-   {
-      // We need to invoke ExecuteCoreAsync but with a different round callback than
-      // the one baked into its strategy call. The cleanest way: temporarily swap the
-      // OnRoundCompleted event for the duration of this call. Since the executor is
-      // not documented as thread-safe, this is safe — only one debate runs at a time.
-      var original = OnRoundCompleted;
-      try
-      {
-         // Replace the event with our interceptor that adds telemetry + the user's
-         // handler + the channel-writer. We use a single delegate so unsubscribing
-         // is reliable.
-         OnRoundCompleted = onRoundCompleted;
-         return ExecuteCoreAsync(ct);
-      }
-      finally
-      {
-         OnRoundCompleted = original;
-      }
-   }
+      => ExecuteCoreAsync(ct, roundInterceptor);
 
    private void Log(ExecutionLog entry)
    {
@@ -1070,9 +1093,11 @@ public sealed class CouncilExecutor : ICouncilExecutor
    /// <summary>
    ///    Computes a simple response-diversity score for a round in [0, 1].
    ///    0.0 = all responses identical, 1.0 = maximally diverse.
-   ///    Uses a normalised Levenshtein distance as a fallback when no embedding
-   ///    provider is configured (the embedding-based computation is a future enhancement).
    /// </summary>
+   /// <remarks>
+   ///    The per-pair cost is bounded by <see cref="Debate.TextSimilarity" />, which
+   ///    truncates its input; the pairwise loop itself is O(n²) over a handful of members.
+   /// </remarks>
    private static double ComputeResponseDiversity(DebateRound round)
    {
       if (round.Responses.Count < 2) return 1.0;
@@ -1083,7 +1108,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
       for (var i = 0; i < responses.Count; i++)
       for (var j = i + 1; j < responses.Count; j++)
       {
-         totalSim += TextSimilarity(responses[i], responses[j]);
+         totalSim += Debate.TextSimilarity.Similarity(responses[i], responses[j]);
          pairs++;
       }
 
@@ -1093,25 +1118,31 @@ public sealed class CouncilExecutor : ICouncilExecutor
       return 1.0 - avgSim;
    }
 
-   private static double TextSimilarity(string a, string b)
+   /// <summary>
+   ///    Carries the checkpoint this debate writes to from the first save to the rest of
+   ///    its rounds. A per-execution local rather than a field, so two debates on the same
+   ///    executor cannot share it.
+   /// </summary>
+   private sealed class CheckpointTarget
    {
-      if (a == b) return 1.0;
-      if (a.Length == 0 || b.Length == 0) return 0.0;
-      var maxLen = Math.Max(a.Length, b.Length);
-      var dist = LevenshteinDistance(a, b);
-      return 1.0 - (double)dist / maxLen;
+      /// <summary>The checkpoint id, or <c>null</c> until the store assigns one.</summary>
+      internal string? Id;
+
+      /// <summary>Whether the lookup has already run for this debate.</summary>
+      internal bool Resolved;
    }
 
    /// <summary>
-   ///    F-03: Saves a checkpoint after a round completes. Tries to reuse the existing
-   ///    debate identifier (from <see cref="_resumeFromDebateId" /> or a same-question
-   ///    match in the store) so successive saves overwrite the same file. Errors
-   ///    are reported but do not abort the debate.
+   ///    F-03: Saves a checkpoint after a round completes. Reuses the debate identifier
+   ///    resolved on the first round (from <see cref="_resumeFromDebateId" /> or a
+   ///    same-question match in the store) so successive saves overwrite the same file.
+   ///    Errors are reported but do not abort the debate.
    /// </summary>
    private async Task SaveCheckpointAsync(
       IDebateStore store,
       DebateRound round,
       List<DebateRound> completedRounds,
+      CheckpointTarget target,
       CancellationToken ct)
    {
       try
@@ -1119,29 +1150,52 @@ public sealed class CouncilExecutor : ICouncilExecutor
          // Reuse the resume id if provided; otherwise try to find an existing
          // checkpoint with the same question (a simple "continue the latest debate"
          // heuristic for the most common use case).
-         var existingId = _resumeFromDebateId;
-         if (existingId is not null)
+         //
+         // Resolved on the FIRST round only. Previously every round either loaded the
+         // resume checkpoint or listed the whole store and scanned it, so a 10-round
+         // debate performed 10 full store reads to discover an id that cannot change:
+         // the first save writes a checkpoint whose OriginalQuestion is this debate's
+         // prompt, which is exactly what the per-round scan rediscovered afterwards.
+         if (!target.Resolved)
          {
-            var existing = await store.LoadCheckpointAsync(existingId, ct).ConfigureAwait(false);
-            if (existing is not null) existingId = existing.DebateId;
-         }
-         else
-         {
-            var list = await store.ListAsync(ct).ConfigureAwait(false);
-            var sameQuestion = list.FirstOrDefault(m => m.OriginalQuestion == _context.UserPrompt);
-            existingId = sameQuestion?.DebateId;
+            var resolved = _resumeFromDebateId;
+            if (resolved is not null)
+            {
+               var existing = await store.LoadCheckpointAsync(resolved, ct).ConfigureAwait(false);
+               if (existing is not null) resolved = existing.DebateId;
+            }
+            else
+            {
+               var list = await store.ListAsync(ct).ConfigureAwait(false);
+               resolved = list.FirstOrDefault(m => m.OriginalQuestion == _context.UserPrompt)?.DebateId;
+            }
+
+            target.Id = resolved;
+            target.Resolved = true;
          }
 
+         var existingId = target.Id ?? string.Empty; // empty → store generates a new id
          var options = CouncilOptionsSnapshot();
          var checkpoint = new DebateCheckpoint(
-            existingId ?? string.Empty, // empty → store generates a new id
+            existingId,
             DateTimeOffset.UtcNow,
             round.RoundNumber,
             completedRounds,
             options,
             _context.UserPrompt);
          var id = await store.SaveCheckpointAsync(checkpoint, ct).ConfigureAwait(false);
+
+         // The first save may be the one that assigns the id; from then on every round
+         // overwrites that same checkpoint.
+         target.Id ??= id;
+
          Log(ExecutionLog.Trace("Persistence", $"Checkpoint saved: {id} (round {round.RoundNumber}/{_maxRounds})"));
+      }
+      catch (OperationCanceledException) when (ct.IsCancellationRequested)
+      {
+         // Checkpointing was interrupted because the debate is being torn down; that is
+         // not a persistence failure and must not be swallowed as one.
+         throw;
       }
       catch (Exception ex)
       {
@@ -1164,43 +1218,6 @@ public sealed class CouncilExecutor : ICouncilExecutor
          ResponseLanguage = ExecutionOptions.ResponseLanguage,
          MaxDegreeOfParallelism = ExecutionOptions.MaxDegreeOfParallelism
       };
-   }
-
-   private static int LevenshteinDistance(string a, string b)
-   {
-      if (a.Length < b.Length)
-         (a, b) = (b, a);
-
-      var n = b.Length;
-      Span<int> prevRow = n <= 128
-         ? stackalloc int[n + 1]
-         : new int[n + 1];
-      Span<int> currRow = n <= 128
-         ? stackalloc int[n + 1]
-         : new int[n + 1];
-
-      for (var i = 0; i <= n; i++)
-         prevRow[i] = i;
-
-      for (var i = 1; i <= a.Length; i++)
-      {
-         currRow[0] = i;
-         for (var j = 1; j <= n; j++)
-         {
-            var cost = a[i - 1] == b[j - 1]
-               ? 0
-               : 1;
-            currRow[j] = Math.Min(
-               Math.Min(prevRow[j] + 1, currRow[j - 1] + 1),
-               prevRow[j - 1] + cost);
-         }
-
-         var tmp = prevRow;
-         prevRow = currRow;
-         currRow = tmp;
-      }
-
-      return prevRow[n];
    }
 
    /// <summary>

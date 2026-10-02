@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Delibera.Core.Models;
 using Delibera.Server.Api.Contracts;
 
@@ -10,7 +11,6 @@ namespace Delibera.Server.Services;
 /// </summary>
 public sealed class DebateRecord
 {
-   private readonly object _lock = new();
    private volatile int _status;
 
    public required string DebateId { get; init; }
@@ -24,9 +24,35 @@ public sealed class DebateRecord
    }
 
    public DebateResult? Result { get; set; }
-   public List<DebateRound> Rounds { get; } = [];
+
+   /// <summary>
+   ///    Rounds completed so far, in order.
+   /// </summary>
+   /// <remarks>
+   ///    A <see cref="ConcurrentQueue{T}" /> rather than a <c>List&lt;T&gt;</c>: the debate
+   ///    background task appends here while request threads read it for
+   ///    <c>GET /debates/{id}/rounds</c>, the SSE writer and the MCP tools. Enumerating a
+   ///    list under concurrent writes throws "Collection was modified" — non-deterministically,
+   ///    and only under load.
+   /// </remarks>
+   public ConcurrentQueue<DebateRound> Rounds { get; } = new();
+
    public string? ErrorMessage { get; set; }
    public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
    public DateTimeOffset? CompletedAt { get; set; }
    public string Label { get; set; } = string.Empty;
+
+   /// <summary>
+   ///    A stable copy of <see cref="Rounds" /> for reading, paginating and serialising.
+   ///    Readers should use this rather than enumerating <see cref="Rounds" /> directly so
+   ///    that a page is not taken from a collection that is still growing.
+   /// </summary>
+   public DebateRound[] RoundsSnapshot() => Rounds.ToArray();
+
+   /// <summary>Records every round of a completed result, preserving order.</summary>
+   public void AddRounds(IEnumerable<DebateRound> rounds)
+   {
+      foreach (var round in rounds)
+         Rounds.Enqueue(round);
+   }
 }

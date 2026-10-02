@@ -1,3 +1,5 @@
+using Delibera.Core.Providers.RAG;
+
 namespace Delibera.Core.Council;
 
 /// <summary>
@@ -182,7 +184,10 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
                           Be concise, factual, and cite source numbers.
                           """;
 
-      var contextText = await _ragProvider.GetContextAsync(CollectionName, query, limit, ct).ConfigureAwait(false);
+      // Render the hits already retrieved above. Calling GetContextAsync here would search
+      // the same collection with the same query and the same limit a second time, so every
+      // round paid for a duplicate embedding call and a duplicate vector-store walk.
+      var contextText = RagContextFormatter.Format(searchResults);
       string answer;
 
       if (string.IsNullOrWhiteSpace(contextText))

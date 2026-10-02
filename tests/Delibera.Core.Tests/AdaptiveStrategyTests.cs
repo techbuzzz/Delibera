@@ -250,7 +250,7 @@ public class AdaptiveStrategyTests
     {
         // Use a custom selector that always switches after round 1.
         var provider = new FakeLLMProvider(reply: "ok");
-        var selector = new AlwaysSwitchSelector(new StandardDebate(), new CritiqueDebate());
+        var selector = new AlwaysSwitchSelector(new CritiqueDebate());
         var executor = new CouncilBuilder()
             .AddMember("fake", provider, "A")
             .WithUserPrompt("q")
@@ -308,7 +308,8 @@ public class AdaptiveStrategyTests
         return new DebateProgress(round, maxRounds, rounds, diversity, false);
     }
 
-    private sealed class AlwaysSwitchSelector(IDebateStrategy initial, IDebateStrategy next) : IStrategySelector
+    /// <summary>Switches to <paramref name="next" /> on the first call, whatever the progress.</summary>
+    private sealed class AlwaysSwitchSelector(IDebateStrategy next) : IStrategySelector
     {
         public int CallCount;
         public ValueTask<IDebateStrategy?> SelectNextAsync(DebateProgress progress, CancellationToken ct = default)
