@@ -428,3 +428,26 @@ FodyWeavers.xsd
 *.msm
 *.msp
 /src/debate_results/separate_files_demo
+
+## AI tooling / agent runtime
+.opencode/                  # OpenCode AI editor
+.minimax/                   # MiniMax Code runtime
+.vscode/.github-copilot/    # GitHub Copilot VS Code extension
+
+# AI IDE / tooling directories (generic patterns)
+.codex/
+.cursor/
+.windsurf/
+.cline/
+.continue/
+.aider/
+.tabnine/
+.devin/
+.openinterpreter/
+.gitpod/
+.temporal/
+
+# AI session / memory / plans
+**/.*-session*
+**/.*-memory*
+**/.*-plans*
