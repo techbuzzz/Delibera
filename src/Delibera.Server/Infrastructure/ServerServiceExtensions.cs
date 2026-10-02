@@ -67,6 +67,12 @@ public static class ServerServiceExtensions
 
             if (!string.IsNullOrEmpty(otelOptions?.OtlpEndpoint))
                m.AddOtlpExporter(o => o.Endpoint = new Uri(otelOptions.OtlpEndpoint));
+            else
+               // Mirror the tracing fallback. Without it every custom Delibera metric —
+               // round duration, token usage, cache hits, compression ratio — was recorded
+               // and then dropped, with no error, because an empty OTLP endpoint is a
+               // perfectly valid configuration.
+               m.AddConsoleExporter();
          });
 
       return services;

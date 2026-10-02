@@ -26,9 +26,17 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
 # Node.js LTS — required for MCP stdio tools (npx @playwright/mcp, @marp-team/marp-cli, etc.)
 # Comment out this block if you do NOT use the Operator role with stdio MCP servers.
+#
+# `wget` is not incidental: it is the binary the HEALTHCHECK below runs. The
+# mcr.microsoft.com/dotnet/aspnet:10.0 base image ships neither wget nor curl
+# (verified by inspecting the image), and the curl installed here for the NodeSource
+# setup is purged again at the end of this block — so without an explicit wget the
+# container reported itself unhealthy forever and anything gated on
+# `service_healthy` never started.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        wget \
     && curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get purge -y curl \

@@ -3,11 +3,11 @@
 > **Goal:** make the defect classes in W1–W4 impossible to reintroduce unnoticed.
 > **Owner decisions, 2026-10-02:** fix all 15 build warnings, then enable
 > `TreatWarningsAsErrors`.
-> **Status:** 2 / 7 done (W5-01, W5-04)
+> **Status:** 3 / 7 done (W5-01, W5-04, W5-05)
 
 ---
 
-## W5-05 · "Async fake" test provider · **P0** · ⬜ todo *(do first in this wave)*
+## W5-05 · "Async fake" test provider · **P0** · ✅ done
 
 **Problem.** Every debate test runs on `FakeLLMProvider`, which completes synchronously.
 Any code that is correct *only while nothing suspends* therefore passes CI and fails in
@@ -17,15 +17,22 @@ tests, and a feature that returns nothing against a real provider.
 The existing `FakeLLMProvider` already accepts `chatDelayMs`; the problem is that nothing
 makes *asynchronous completion* the default expectation.
 
-**Fix.**
-1. Add `FakeLLMProvider.WithYield()` / default the test suite's provider to at least one
-   `Task.Yield()` so every async path is exercised.
-2. Add a documented rule (AGENTS.md + this file): *a test of a callback, event or
-   continuation must use a provider that suspends at least once.*
+**Fix (done).** `FakeLLMProvider` in **both** test projects now suspends by default: an
+`await Task.Yield()` before completing, with an explicit `suspends: false` opt-out and a
+`Suspends` property a test can assert on. The class doc carries the incident so the reason
+survives.
+
+The rule is written where a contributor will actually read it — this repository has **no
+`AGENTS.md`**, so it went into `CONTRIBUTING.md` under a new "Testing rules" heading, next to
+the build-verification instructions. The same edit corrected two stale claims in that file:
+it claimed .NET 8 / C# 12 (the projects are `net10.0` with `LangVersion preview`) and a
+uniform four-space indentation (Core uses three).
 
 **Acceptance.**
-- [ ] Test suite passes with an always-suspending provider
-- [ ] The rule is written where a contributor will read it
+- [x] The whole suite passes with an always-suspending provider — nothing in it depended on
+      synchronous completion, which is the result worth having
+- [x] The rule is in `CONTRIBUTING.md`
+- [x] Both fakes document the incident and the opt-out
 
 ---
 

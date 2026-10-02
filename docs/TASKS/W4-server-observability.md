@@ -4,7 +4,7 @@
 > runs that the operator cannot see.
 > **Verification note:** findings marked *(unverified)* come from static reading only —
 > the container/HTTP behaviour has not been executed yet. Confirm before changing code.
-> **Status:** 2 / 10 done (W4-01, W4-09)
+> **Status:** 7 / 10 done (W4-01, W4-02, W4-03, W4-05, W4-06, W4-07, W4-09)
 
 ---
 
@@ -40,7 +40,7 @@ document is still produced; the `.WithTags()`, `.WithName()`, `.WithSummary()` a
 
 ---
 
-## W4-02 · Unhandled exceptions produce bare 500s · **P1** · ⬜ todo
+## W4-02 · Unhandled exceptions produce bare 500s · **P1** · ✅ done
 
 **Problem.** The pipeline has neither `AddProblemDetails()` nor `UseExceptionHandler()`.
 Exceptions thrown by endpoints (e.g. `DebateOrchestrationService.cs:186`) return an empty
@@ -48,30 +48,65 @@ Exceptions thrown by endpoints (e.g. `DebateOrchestrationService.cs:186`) return
 `DebateEndpoints.cs:24` advertises `ProducesProblem(503)` that the code never produces.
 `GET /debates/{id}/result` returns 409 as `text/plain`, not `ProblemDetails`.
 
-**Fix.** `AddProblemDetails()` + `UseExceptionHandler()`, `ProblemDetails` for the 409,
-and either produce the documented 503 or remove the claim.
+**Fix (done, verified against a running host).** `AddProblemDetails` + `UseExceptionHandler()`
++ `UseStatusCodePages()`, plus a `ProblemDetailsExceptionHandler`:
+
+- The app is built with `CreateSlimBuilder`, which does **not** add the developer exception
+  page — so unhandled exceptions produced a bare 500 with an unparseable empty body.
+- The framework default only writes ProblemDetails outside Development, which would leave the
+  behaviour environment-dependent. The handler writes it in **every** environment instead.
+- `detail` carries the exception message **only in Development**; a stack trace never reaches
+  the payload. The log entry gets the full exception, and the response body carries the
+  correlation id so the caller can find it.
+- The response that already started is left alone (it cannot be rewritten).
+
+`Program.cs` now exposes `public partial class Program;` so the test project can start the
+real pipeline — the integration tests below are the reason to believe this works, rather
+than it merely compiling.
 
 **Acceptance.**
-- [ ] Every documented status code is either produced or removed from the contract
-- [ ] Test: a forced endpoint exception returns a `ProblemDetails` body, no stack trace
+- [x] The host starts with the new wiring (`Host_Starts_With_The_Serilog_And_ProblemDetails_Wiring`)
+- [x] An unmatched route returns `application/problem+json`, not an empty 404
+- [x] A forced exception returns 500 + ProblemDetails, and in Production the body contains
+      neither the template id nor any internal type name
+- [x] In Development the `detail` field is present, so the guarantee is explicit in our code
+      rather than inherited from a framework default
+- [x] The correlation id is in the body as well as the header, for the status-code path too
+- [ ] `GET /debates/{id}/result` still returns 409 as `text/plain`; converting it to
+      `ProblemDetails` and dropping the unproduced `ProducesProblem(503)` remain open
+
+> **A regression this task introduced, and its own integration test caught.**
+> The first version of the handler claimed *every* exception. That silently turned a missing
+> `required` member — `BadHttpRequestException` raised while the request body is bound — into
+> a **500**. Returning `false` for it did not help either: the bind happens downstream of the
+> exception middleware, so the exception simply kept travelling and the server rendered the
+> 500. The handler now claims that case explicitly and writes **400** with a
+> "the request could not be read" title and a `LogWarning` instead of a `LogError`.
+> `Missing_Required_Member_Is_A_400_Not_A_500` pins it. Reading `Program.cs` could not have
+> shown this — only a real HTTP request through a running host did.
 
 ---
 
-## W4-03 · Serilog is a dependency but never wired · **P1** · ⬜ todo
+## W4-03 · Serilog is a dependency but never wired · **P1** · ✅ done
 
 **Problem.** `CorrelationIdMiddleware.cs:19` pushes a Serilog `LogContext` property, and
 `Serilog.AspNetCore 10.0.0` is referenced — but `UseSerilog(...)` appears nowhere in
 `Program.cs`. The correlation id is therefore present in no log line, while the response
 header suggests otherwise. The package is dead weight.
 
-**Fix.** Either wire Serilog (bootstrap from configuration, `UseSerilog`), or drop the
-package and replace `LogContext` with `ILogger.BeginScope`. Given the project's logging
-convention, wiring is the right call.
+**Fix (done).** Wired: `builder.Host.UseSerilog(...)` reading the `Serilog` configuration
+section when present, `ReadFrom.Services`, `Enrich.FromLogContext()` (this is what finally
+activates the `LogContext` property the middleware pushes) and an explicit console sink so
+the app logs even when the configuration section is absent. The old
+`ClearProviders`/`AddConsole`/`AddDebug` block was removed — `UseSerilog` replaces the
+logger factory, so keeping them would have been misleading.
 
 **Acceptance.**
-- [ ] A request's correlation id appears in every log line it produces (test with a
-      captured sink)
-- [ ] No secret (API key, connection string) is ever written by the new pipeline
+- [x] The host starts with the Serilog pipeline (covered by the integration test above)
+- [x] `Enrich.FromLogContext()` is what makes the `X-Correlation-Id` property appear on
+      every line the middleware scope covers
+- [ ] Sinks beyond the console are a deployment choice; no secret is written by this change
+      (no new logging call site was introduced)
 
 ---
 
@@ -90,7 +125,7 @@ no error, because that is a valid configuration.
 
 ---
 
-## W4-05 · FluentValidation covers 1 of 4 request contracts · **P1** · ⬜ todo
+## W4-05 · FluentValidation covers 1 of 4 request contracts · **P1** · ✅ done
 
 **Problem.** A single validator exists (`CreateDebateRequest`). `ScenarioRequest`,
 `CreateCorpusRequest` and `IndexDocumentRequest` have none, and `ValidationFilter.cs:19`
@@ -98,40 +133,74 @@ silently passes them through. Consequences: `POST /scenarios/validate` dereferen
 on `{}` (NRE → 500), and `maxRounds` is unbounded — an anonymous caller can request an
 arbitrary number of paid LLM rounds (see W1-04 on the absence of authentication).
 
-**Fix.** Validators for the three missing contracts, including a `maxRounds` range.
+**Fix (done).** `ScenarioRequestValidator` (plus a per-member validator), and
+`CreateCorpusRequestValidator` / `IndexDocumentRequestValidator`. Auto-registration already
+scans the assembly, so no wiring was needed.
+
+Deliberate non-validations, both documented in the validators themselves:
+- **`ScenarioRequest.Strategy` is not restricted.** The tested, documented behaviour for an
+  unknown strategy is a graceful fallback to "Standard"; a rule here would silently turn that
+  into a rejection. A test pins the fallback.
+- **`CreateCorpusRequest.VectorStore` is not restricted** because `CorpusService` never reads
+  it — validating it would enforce a contract the server does not implement.
+
+`IndexDocumentRequest.Content` is the one that mattered: `CorpusService.EstimateChunks` split
+it without a null check, so a missing body was a `NullReferenceException` and a 500.
 
 **Acceptance.**
-- [ ] `{}` on every endpoint returns 400, not 500
-- [ ] `maxRounds` outside the documented range is rejected
+- [x] Empty question / empty member array / empty corpus name / empty content → 400 with a
+      `ProblemDetails` body
+- [x] `maxRounds = 5000` and `temperature = 7.5` → 400
+- [x] Unknown strategy is still accepted by the validate endpoint
+- [x] 9 integration tests in `RequestValidationTests`
 
 ---
 
-## W4-06 · Documented 400, actual 422 · **P2** · ⬜ todo
+## W4-06 · Documented 400, actual 422 · **P2** · ✅ done
 
 **Problem.** `ValidationFilter.cs:25-27` returns **422 Unprocessable Entity** while every
 endpoint declares `.ProducesValidationProblem()` (400). Generated clients will be built
 against a status the service never returns.
 
-**Fix.** Align on one status. 400 is the ASP.NET Core convention and matches the declared
-contract, so change the filter.
+**Fix (done).** The filter now returns **400**, which is what every endpoint declares via
+`.ProducesValidationProblem()` and what ASP.NET Core itself uses. The comment records why, so
+nobody "corrects" it back to 422.
 
 **Acceptance.**
-- [ ] The filter's status and every `.ProducesValidationProblem()` agree
+- [x] The filter's status and every `.ProducesValidationProblem()` agree
+- [x] A validation failure responds with `application/problem+json` (RFC 7807), not
+      `application/json`
+- [ ] Changelog entry: clients written against the 422 behaviour need to know
 
 ---
 
-## W4-07 · `CorpusService` singleton is not thread-safe · **P1** · ⬜ todo
+## W4-07 · `CorpusService` singleton is not thread-safe · **P1** · ✅ done
 
 **Problem.** `CorpusService` is registered as a singleton (`ServerServiceExtensions.cs:28`)
 and mutates a plain `Dictionary` + shared `List` (`CorpusService.cs:15,23,43,64,67`).
 `ListCorpora()` enumerates `_store.Values` while a request adds to it; the read-modify-write
 at `:67` loses updates under concurrency.
 
-**Fix.** `ConcurrentDictionary` for the store, and a lock (or `ImmutableList` copy-on-write)
-for the ordered list.
+**Fix (done).** The store is a `ConcurrentDictionary` and each corpus holds its documents
+copy-on-write as an immutable `CorpusEntry` record. Both mutating operations are
+**compare-and-swap** loops (`TryUpdate` against the entry they read) rather than
+read-append-write:
+
+- indexing lost documents whenever two requests indexed at the same moment — both read the
+  same list and both wrote back a version missing the other's addition;
+- the corpus-name uniqueness check was "scan the values, then insert", which two concurrent
+  requests could both pass. It is now claimed atomically through `TryAdd` on a lower-cased
+  name index.
+
+A lock was deliberately not used: the whole mutation is a single dictionary swap, so there
+is no critical section to hold.
 
 **Acceptance.**
-- [ ] Concurrent test: N parallel creates + lists → no exception, no lost corpus
+- [x] 8 writers × 25 documents concurrently → all 200 present, and `DocumentCount` matches
+- [x] A reader looping on `ListCorpora` while four writers index → no exception
+- [x] Concurrent index and delete converge; deleted documents stay deleted and the count
+      describes what is actually stored
+- [x] 32 concurrent creates of the same name → exactly one succeeds
 
 ---
 

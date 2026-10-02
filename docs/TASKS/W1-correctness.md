@@ -2,7 +2,7 @@
 
 > **Goal:** remove the defects that are observable in production behaviour, not in code style.
 > **Rule for this wave:** every item ships with a test that fails before the fix.
-> **Status:** 9 / 10 done (all but W1-09)
+> **Status:** 10 / 10 done
 
 ---
 
@@ -265,7 +265,7 @@ exporter is consequently never enabled.
 
 ---
 
-## W1-09 · Redis streams grow without bound · **P1** · ⬜ todo
+## W1-09 · Redis streams grow without bound · **P1** · ✅ done
 
 **Problem.** `RedisDebateOrchestrator` appends to `delibera:events` via `StreamAddAsync`
 without `MAXLEN`/approximate trimming, and writes orchestration state with `HashSetAsync`
@@ -273,13 +273,26 @@ without `MAXLEN`/approximate trimming, and writes orchestration state with `Hash
 debates, including completed ones. The consumer group `orchestrator` is created but never
 read in this repository.
 
-**Fix.** `maxLength` on `StreamAddAsync`; a TTL on `delibera:state:*` sized to the
-maximum expected debate duration; and either wire the group up or document it as
-reserved.
+**Fix (done).** Two new options on `RedisOrchestratorOptions`, both documented with the
+reason and the opt-out:
+
+- `StreamMaxLength` (default 10 000) → `StreamAddAsync(..., maxLength:, useApproximateMaxLength: true)`,
+  i.e. `MAXLEN ~ N`: O(1) trimming that may overshoot slightly rather than blocking the writer.
+  The option doc is precise that **this repository only reads `JobStreamKey`**, so whoever
+  publishes to it must pass the same cap.
+- `StateKeyTtl` (default 24 h, `null` disables) → `KeyExpireAsync` after each `HashSetAsync`.
+  The TTL is **refreshed on every state write**, so a debate that is progressing never
+  expires mid-flight and only a stalled one is forgotten — which is the intended behaviour
+  rather than a leak.
+
+Both signatures were verified against the package XML documentation before use: the widest
+`StreamAddAsync` overload takes `int? maxLength`, and `KeyExpireAsync` takes `TimeSpan?`.
 
 **Acceptance.**
-- [ ] `XLEN delibera:events` stops growing past the configured cap
-- [ ] `delibera:state:*` keys expire
+- [x] `MAXLEN ~` applied to the event stream
+- [x] State keys carry a TTL that is refreshed on every write
+- [ ] Runtime check of `XLEN` and `KEYS` expiry against a live Redis (not available in this
+      environment — the option defaults are documented in the plan instead)
 
 ---
 

@@ -4,7 +4,7 @@
 > **Date:** October 2026
 > **Branch:** `feature/v10.3.1`
 > **Baseline (v10.3.1 as found):** `dotnet build -c Release` → **11 errors** (NU1605) / 15 warnings; tests could not run at all
-> **Current:** **0 errors / 0 warnings** (also clean under `-warnaserror`); `dotnet test` → **462 passed** (381 Core + 81 Server)
+> **Current:** **0 errors / 0 warnings** (also clean under `-warnaserror`); `dotnet test` → **483 passed** (381 Core + 102 Server)
 > **Status:** In progress
 
 ---
@@ -82,7 +82,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · �
 | W1-06 | Cancelled debates reported as persistence errors (`OCE` → `AggregateException`) | P1 | ✅ |
 | W1-07 | SSE emits every round twice (snapshot replay + live stream) | P1 | ✅ |
 | W1-08 | `DeliberaServerOptions.SectionName` never matches config → all options dead | P1 | ✅ |
-| W1-09 | Redis streams grow without bound; state keys have no TTL | P1 | ⬜ |
+| W1-09 | Redis streams grow without bound; state keys have no TTL | P1 | ✅ |
 | W1-10 | `RedisDebateCache` ignores `CancellationToken` on every call | P2 | ✅ |
 
 ### W2 — Core performance
@@ -114,12 +114,12 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · �
 | ID | Task | Pri | Status |
 |----|------|-----|--------|
 | W4-01 | `WithOpenApi` deprecated in .NET 10 (ASPDEPR002 × 4) | P1 | ✅ |
-| W4-02 | `AddProblemDetails` + `UseExceptionHandler` missing | P1 | ⬜ |
-| W4-03 | Serilog never wired — `Serilog.AspNetCore` is a dead dependency | P1 | ⬜ |
+| W4-02 | `AddProblemDetails` + `UseExceptionHandler` missing | P1 | ✅ |
+| W4-03 | Serilog never wired — `Serilog.AspNetCore` is a dead dependency | P1 | ✅ |
 | W4-04 | Custom metrics have no fallback exporter → silently lost | P1 | ⬜ |
-| W4-05 | FluentValidation covers 1 of 4 request contracts | P1 | ⬜ |
-| W4-06 | `ValidationFilter` returns 422 while OpenAPI documents 400 | P2 | ⬜ |
-| W4-07 | `CorpusService` singleton mutates a plain `Dictionary`/`List` | P1 | ⬜ |
+| W4-05 | FluentValidation covers 1 of 4 request contracts | P1 | ✅ |
+| W4-06 | `ValidationFilter` returns 422 while OpenAPI documents 400 | P2 | ✅ |
+| W4-07 | `CorpusService` singleton mutates a plain `Dictionary`/`List` | P1 | ✅ |
 | W4-08 | Dockerfile HEALTHCHECK calls `wget` that the image does not contain | P1 | ⬜ |
 | W4-09 | MCP tool JSON built by string concatenation (unescaped) | P1 | ✅ |
 | W4-10 | SSE: no heartbeat, no terminal event, unbounded channel | P2 | ⬜ |
@@ -131,7 +131,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · �
 | W5-02 | Tests for uncovered code (`AutoChunker`, `CompressionCache`, `ServiceCollectionExtensions`) | P1 | ⬜ |
 | W5-03 | Concurrency tests for orchestrator eviction / `Dispose` / `volatile` status | P1 | ⬜ |
 | W5-04 | CI runs build + test on every PR | P1 | ✅ |
-| W5-05 | "Async fake" test provider to close the fake-vs-real gap | **P0** | ⬜ |
+| W5-05 | "Async fake" test provider to close the fake-vs-real gap | **P0** | ✅ |
 | W5-06 | CHANGELOG entry with the breaking changes of this cycle | P1 | ⬜ |
 | W5-07 | `docs/` sync: README, QuickStart, `caching.md`, `Server.md` | P2 | ⬜ |
 
