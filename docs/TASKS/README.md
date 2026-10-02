@@ -4,7 +4,7 @@
 > **Date:** October 2026
 > **Branch:** `feature/v10.3.1`
 > **Baseline (v10.3.1 as found):** `dotnet build -c Release` → **11 errors** (NU1605) / 15 warnings; tests could not run at all
-> **Current:** **0 errors / 0 warnings** (also clean under `-warnaserror`); `dotnet test` → **438 passed** (357 Core + 81 Server)
+> **Current:** **0 errors / 0 warnings** (also clean under `-warnaserror`); `dotnet test` → **462 passed** (381 Core + 81 Server)
 > **Status:** In progress
 
 ---
@@ -83,7 +83,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · �
 | W1-07 | SSE emits every round twice (snapshot replay + live stream) | P1 | ✅ |
 | W1-08 | `DeliberaServerOptions.SectionName` never matches config → all options dead | P1 | ✅ |
 | W1-09 | Redis streams grow without bound; state keys have no TTL | P1 | ⬜ |
-| W1-10 | `RedisDebateCache` ignores `CancellationToken` on every call | P2 | ⬜ |
+| W1-10 | `RedisDebateCache` ignores `CancellationToken` on every call | P2 | ✅ |
 
 ### W2 — Core performance
 | ID | Task | Pri | Status |
@@ -91,12 +91,12 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · �
 | W2-01 | `TokenCounter` takes a **write lock on every cache hit** (shared static) | **P0** | ✅ |
 | W2-02 | Knowledge Keeper performs the **same RAG search twice per round** | **P0** | ✅ |
 | W2-03 | `store.ListAsync()` + linear scan on **every round** (checkpointing) | P1 | ✅ |
-| W2-04 | Response diversity = O(n²) Levenshtein over full texts | P1 | ⬜ |
+| W2-04 | Response diversity = O(n²) Levenshtein over full texts | P1 | ✅ |
 | W2-05 | Log strings interpolated before the level check | P1 | ⬜ |
-| W2-06 | `DebateCacheKeyGenerator` hashes the whole knowledge base twice | P1 | ⬜ |
+| W2-06 | Cache key computed twice per debate + chairman/persona missing from it | P1 | ✅ |
 | W2-07 | `YandexGptProvider`: throwaway `HttpRequestMessage` + double payload copy | P2 | ⬜ |
-| W2-08 | `DebateScenario` operator regex runs on every response even with no operator | P2 | ⬜ |
-| W2-09 | Fan-out without `MaxDegreeOfParallelism` cap (`:58-71`) | P2 | ⬜ |
+| W2-08 | `DebateScenario` operator regex runs on every response even with no operator | P2 | ✅ |
+| W2-09 | Fan-out without `MaxDegreeOfParallelism` cap (`:58-71`) | P2 | ✅ |
 
 ### W3 — API & architecture
 | ID | Task | Pri | Status |

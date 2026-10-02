@@ -2,7 +2,7 @@
 
 > **Goal:** remove the defects that are observable in production behaviour, not in code style.
 > **Rule for this wave:** every item ships with a test that fails before the fix.
-> **Status:** 8 / 10 done (W1-01…W1-08 except W1-09, W1-10)
+> **Status:** 9 / 10 done (all but W1-09)
 
 ---
 
@@ -283,13 +283,25 @@ reserved.
 
 ---
 
-## W1-10 · `RedisDebateCache` ignores cancellation · **P2** · ⬜ todo
+## W1-10 · `RedisDebateCache` ignores cancellation · **P2** · ✅ done
 
 **Problem.** `RedisDebateCache` (`GetAsync`/`SetAsync`/`InvalidateAsync`/`ExistsAsync`)
 accepts a `CancellationToken` and never forwards it to the StackExchange.Redis call. A
 client that disconnects mid-request keeps the I/O running.
 
-**Fix.** Forward the token to every `*Async` call.
+**Fix (done, differently from the original draft).** StackExchange.Redis exposes **no
+`CancellationToken` overloads on `IDatabase`** — verified against the XML documentation in
+`lib/net10.0/StackExchange.Redis.xml`, where the only CT-bearing members are pub/sub queues
+and SSH tunneling. The token therefore cannot be forwarded into the command itself.
+
+What it can be is honoured on both edges of the I/O: `ct.ThrowIfCancellationRequested()`
+before the call (do not start work for a caller that has already left) and after it (stop
+waiting for a result nobody wants). Each `catch (Exception)` also re-raises
+`OperationCanceledException` first — otherwise a cancelled caller would be recorded as a
+cache failure in the warning log and silently get a `null` result.
 
 **Acceptance.**
-- [ ] No unused `ct` parameters remain in the file
+- [x] No method ignores its token
+- [x] A cancelled caller is not logged as a cache error
+- [ ] Test with a cancelled token (the Redis client cannot be faked without a live server —
+      the `ThrowIfCancellationRequested` path is covered by inspection only)

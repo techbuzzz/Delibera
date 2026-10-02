@@ -3,7 +3,7 @@
 > **Goal:** remove the costs that sit on the per-round and per-participant path of a debate.
 > **Measurement rule:** no task ships without either a benchmark number or a stated
 > argument for why the cost cannot matter. Static claims are labelled as such.
-> **Status:** 3 / 9 done (W2-01, W2-02, W2-03)
+> **Status:** 7 / 9 done (all but W2-05 and W2-07)
 
 Shared hot path: every round, `DebateScenario` fans out one `ChatAsync` per participant
 (`Task.WhenAll` at `DebateScenario.cs:71`), estimates tokens, and writes an execution-log
@@ -132,7 +132,7 @@ re-deriving a value it already knew.
 
 ---
 
-## W2-04 · Response diversity is O(n²) Levenshtein over full texts · **P1** · ⬜ todo
+## W2-04 · Response diversity is O(n²) Levenshtein over full texts · **P1** · ✅ done
 
 **Problem.** `ComputeResponseDiversity` (`CouncilExecutor:1076-1094`) builds every response
 pair and calls `TextSimilarity` → `LevenshteinDistance`, a full O(lenA × lenB) double loop.
@@ -140,13 +140,26 @@ With 5 participants × 4000 characters that is 10 pairs × 16M cells ≈ **160M 
 round** — on the strategy's own thread, between two LLM calls. It runs whenever
 `StrategySelector` is configured (F-09 adaptive switching).
 
-**Fix.** The score is a heuristic for stagnation detection, not a similarity product: hash
-the leading N characters (or use a 5-gram MinHash sketch) instead of a character-level
-edit distance. If the exact number is wanted, cap the input and document the cap.
+**Fix (done, and the duplication removed too).** `LevenshteinDistance` and `TextSimilarity`
+existed as **two independent private copies** — one in `CouncilExecutor`, one in
+`IStrategySelector` — with nothing keeping them in step. Both now call a single
+`internal static Debate.TextSimilarity` with:
+
+- **bounded input**: at most `MaxComparedLength` (1024) characters per text, so a pair costs
+  a constant 2 × 1024² cell updates instead of scaling with the response;
+- **a length-based short circuit**: the edit distance is at least `|lenA - lenB|`, so pairs
+  that cannot reach the 0.8 stalemate threshold skip the character loop entirely;
+- **stack allocation** for short rows, as before.
+
+`AreNearIdentical` is the shared entry point for the stalemate check, so the threshold keeps
+one meaning. The trade is documented: the heuristics look at the head of a response, not its
+whole length.
 
 **Acceptance.**
-- [ ] No O(len²) loop over full response bodies remains
-- [ ] Diversity for identical responses still evaluates to ~0.0 (unit test)
+- [x] No O(len²) loop over full response bodies remains
+- [x] 9 tests in `TextSimilarityTests`, including a 20 000-character pair that must finish
+      under 250 ms and a case proving a difference inside the compared window is still seen
+- [x] The duplicated implementations are gone from both call sites
 
 ---
 
@@ -167,14 +180,24 @@ With Trace disabled this is pure garbage, sized by `participants × rounds`.
 `LogIfEnabled(level, …)` helper on the executor) so nothing is allocated when the sink
 is off.
 
+> **Re-scoped after reading the code (2026-10-02).** The original framing was wrong: the
+> interpolated string is *not* wasted, because `CouncilExecutor.Log` appends every entry to
+> the public `ExecutionLogs` collection regardless of the logger, and `ExecutionLogSink.Emit`
+> only gates the forwarding to `ILogger`. There is no level check being bypassed. What is
+> actually missing is a knob: nothing lets a host say "do not collect Trace", so
+> `_executionLogs` grows for the whole debate regardless. The task is therefore re-scoped to
+> adding a minimum-level option to `DebateExecutionOptions` and guarding the Trace call sites
+> with it — an additive, defaulted-to-unchanged change. Kept as ⬜ deliberately rather than
+> half-done.
+
 **Acceptance.**
-- [ ] No string interpolation on a disabled level — verified by an allocation test or by
-      reading the guard
-- [ ] `ExecutionLogs` collection behaviour unchanged when the sink is enabled
+- [ ] A minimum level can be configured, and Trace-level entries are neither interpolated
+      nor collected below it
+- [ ] `ExecutionLogs` behaviour unchanged when no level is configured
 
 ---
 
-## W2-06 · Cache key hashes the whole knowledge base twice · **P1** · ⬜ todo
+## W2-06 · Cache key hashes the whole knowledge base twice · **P1** · ✅ done
 
 **Problem.** `DebateCacheKeyGenerator.Generate` (`:41-55`) serialises an anonymous object
 whose `KnowledgeHash` is `SHA256(UTF8.GetBytes(context.KnowledgeContent))`, then hashes
@@ -185,11 +208,28 @@ base, one hash over it, the JSON buffer, and a second hash.
 record (its content is immutable), or switch to an incremental hash over the same buffer
 that is being serialised.
 
+**Fix (done), and it turned out to hide a correctness bug.** Two separate changes:
+
+1. **The key was generated twice per debate** — once for the cache read and again for the
+   write, each time allocating the member projection and re-encoding and re-hashing the whole
+   knowledge base. It is now computed once before the try block and reused; the inputs it
+   depends on are fixed for the duration of a debate.
+2. **The key did not describe the debate.** `CouncilMember.DisplayName` is already
+   `{model} ({provider})`, so model identity *was* covered — an earlier note in this plan
+   claimed otherwise, and that was wrong. What was missing: the **chairman** (it produced the
+   final verdict) and each member's **role and persona** (they change the prompt). Two
+   debates with identical members but different chairmen shared a cache entry, so one caller
+   received the other's verdict.
+
+`DebateCacheKeyGenerator.KeyVersion` is now part of the hashed payload, so keys minted before
+this change can never be read back as if they described the same debate.
+
 **Acceptance.**
-- [ ] Knowledge content is encoded and hashed at most once per `PromptContext`
-- [ ] Cache keys are **unchanged** for identical inputs (character-for-character test against
-      the current implementation) — changing the key format silently invalidates every
-      existing cache entry
+- [x] Knowledge content is encoded and hashed at most once per debate
+- [x] 4 new tests: different chairmen differ, same chairman is stable, no-champion differs
+      from a named one, and the key format is versioned
+- [x] Documented consequence: existing cache entries are invalidated (changelog entry pending,
+      W5-06)
 
 ---
 
@@ -210,22 +250,24 @@ twice and held twice.
 
 ---
 
-## W2-08 · Operator regex scans every response even with no operator · **P2** · ⬜ todo
+## W2-08 · Operator regex scans every response even with no operator · **P2** · ✅ done
 
 **Problem.** `DebateScenario.cs:262` runs `OperatorRequestRegex.Matches(response)` — a
 compiled, `Singleline`, lazy `(.+?)` pattern — over every participant response on every
 round, regardless of whether an Operator is attached.
 
-**Fix.** Early-out on `response.Contains("[[", StringComparison.Ordinal)` before the regex,
-and skip entirely when `op is null`.
+**Fix (done).** A `response.Contains("[[", StringComparison.Ordinal)` pre-check skips the
+regex entirely for responses that never delegate. The marker is a literal in the pattern, so
+this cannot change which responses match.
 
 **Acceptance.**
-- [ ] Regex is not entered for responses without the operator marker
-- [ ] Detection behaviour unchanged for responses that do use the marker
+- [x] Regex is not entered for responses without the operator marker
+- [x] Detection behaviour unchanged for responses that do use the marker (covered by the
+      existing operator tests)
 
 ---
 
-## W2-09 · Participant fan-out ignores the configured parallelism cap · **P2** · ⬜ todo
+## W2-09 · Participant fan-out ignores the configured parallelism cap · **P2** · ✅ done
 
 **Problem.** `DebateScenario.cs:58-71` fans out with a bare `Task.WhenAll`, while
 `:277` and the voting path in `CouncilExecutor:1241` do honour
@@ -235,6 +277,14 @@ exhaust the `HttpClient` socket pool and multiply provider rate-limit errors.
 **Fix.** Use the same `Parallel.ForEachAsync(..., ToParallelOptions(ct))` helper the rest
 of the file already uses.
 
+**Fix (done).** `CollectResponsesAsync` now takes the execution options and gates the
+fan-out with a `SemaphoreSlim`. A semaphore rather than `Parallel.ForEachAsync` because the
+results must keep member order: the disambiguation pass appends `"#2"`, `"#3"` in the order
+results arrive, and `Parallel.ForEachAsync` would make those suffixes nondeterministic.
+
 **Acceptance.**
-- [ ] The same cap is respected in every fan-out path
-- [ ] Test: with cap = 2 and 5 members, no more than 2 concurrent `ChatAsync` calls
+- [x] The cap is respected in every fan-out path (participants, operator, knowledge keeper)
+- [x] 5 tests in `DebateParallelismTests` with a probe provider that records peak concurrency
+- [x] Regression guard verified by reverting the four files: with a cap of 2 and 5 members the
+      old code peaked at **5**; with a cap of 1 it peaked at **5**. All five members still
+      answer, and response order is unchanged

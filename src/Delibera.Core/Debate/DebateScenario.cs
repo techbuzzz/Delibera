@@ -47,16 +47,32 @@ public abstract class DebateScenario : IDebateStrategy
    // Shared helpers
    // ──────────────────────────────────────────────
 
-   /// <summary>Collects responses from all members in parallel.</summary>
+   /// <summary>
+   ///    Collects responses from all members in parallel.
+   ///    <para>
+   ///    When <paramref name="executionOptions" /> carries a positive
+   ///    <c>MaxDegreeOfParallelism</c> it also bounds the fan-out; the operator and
+   ///    knowledge-keeper paths already honoured it, this one did not.
+   ///    </para>
+   /// </summary>
    protected static async Task<Dictionary<string, string>> CollectResponsesAsync(
       IReadOnlyList<CouncilMember> members,
       string systemPrompt,
       string userPrompt,
       float temperature,
-      CancellationToken ct)
+      CancellationToken ct,
+      DebateExecutionOptions? executionOptions = null)
    {
+      // Bounding the fan-out keeps a large council from exhausting the HttpClient socket
+      // pool or tripping provider rate limits. A semaphore is used rather than
+      // Parallel.ForEachAsync because the results must keep member order: the disambiguation
+      // below appends "#2", "#3" in the order results arrive.
+      var maxParallelism = executionOptions?.MaxDegreeOfParallelism ?? 0;
+      var gates = maxParallelism > 0 ? new SemaphoreSlim(maxParallelism, maxParallelism) : null;
+
       var tasks = members.Select(async member =>
       {
+         if (gates is not null) await gates.WaitAsync(ct).ConfigureAwait(false);
          try
          {
             var response = await member.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
@@ -66,9 +82,14 @@ public abstract class DebateScenario : IDebateStrategy
          {
             return (member.Role, member.DisplayName, Response: $"[ERROR: {ex.Message}]");
          }
+         finally
+         {
+            gates?.Release();
+         }
       });
 
       var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+      gates?.Dispose();
       //return results.ToDictionary(r => r.DisplayName, r => r.Response);
       // Disambiguate by appending a counter while preserving the original label for unique names.
       var seen = new HashSet<string>();
@@ -258,6 +279,11 @@ public abstract class DebateScenario : IDebateStrategy
       foreach (var (member, response) in responses)
       {
          if (string.IsNullOrWhiteSpace(response)) continue;
+
+         // The marker is a literal "[["; without it the regex engine has nothing to
+         // anchor on, and a lazy `(.+?)` with Singleline walks the whole response. The
+         // cheapest possible pre-check skips that for every response that never delegates.
+         if (!response.Contains("[[", StringComparison.Ordinal)) continue;
 
          foreach (Match match in OperatorRequestRegex.Matches(response))
          {

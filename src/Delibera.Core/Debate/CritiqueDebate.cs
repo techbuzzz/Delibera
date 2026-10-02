@@ -62,7 +62,7 @@ public sealed class CritiqueDebate : DebateScenario
 
       // Round 1: Initial Positions
       var round1StartedAt = DateTime.UtcNow;
-      var r1 = await CollectResponsesAsync(members, baseSystemPrompt, enrichedPrompt, temperature, ct).ConfigureAwait(false);
+      var r1 = await CollectResponsesAsync(members, baseSystemPrompt, enrichedPrompt, temperature, ct, executionOptions).ConfigureAwait(false);
       var r1Op = await ProcessOperatorRequestsAsync(@operator, r1, executionOptions, ct).ConfigureAwait(false);
       var round1 = CreateRound(1, "Initial Positions", "Each model states their initial position.", r1, knowledgeInteractions: r1Ki, operatorInteractions: r1Op, startedAt: round1StartedAt);
       builder.AddRound(round1);
@@ -94,7 +94,7 @@ public sealed class CritiqueDebate : DebateScenario
                       For each response: 1) Weakest argument 2) Logical fallacies 3) Counter-example 4) Quality (1-10)
                       """;
       var round2StartedAt = DateTime.UtcNow;
-      var r2 = await CollectResponsesAsync(members, r2Sys, r2Prompt, temperature, ct).ConfigureAwait(false);
+      var r2 = await CollectResponsesAsync(members, r2Sys, r2Prompt, temperature, ct, executionOptions).ConfigureAwait(false);
       var r2Op = await ProcessOperatorRequestsAsync(@operator, r2, executionOptions, ct).ConfigureAwait(false);
       var round2 = CreateRound(2, "Directed Critique", "Models attack weaknesses in each other's positions.", r2, knowledgeInteractions: r2Ki, operatorInteractions: r2Op, startedAt: round2StartedAt);
       builder.AddRound(round2);
@@ -126,7 +126,7 @@ public sealed class CritiqueDebate : DebateScenario
                       Defend your position: 1) Address each criticism 2) Strengthen weak points 3) Concede where right 4) Final answer
                       """;
       var round3StartedAt = DateTime.UtcNow;
-      var r3 = await CollectResponsesAsync(members, r3Sys, r3Prompt, temperature, ct).ConfigureAwait(false);
+      var r3 = await CollectResponsesAsync(members, r3Sys, r3Prompt, temperature, ct, executionOptions).ConfigureAwait(false);
       var r3Op = await ProcessOperatorRequestsAsync(@operator, r3, executionOptions, ct).ConfigureAwait(false);
       var round3 = CreateRound(3, "Defence & Counter-Arguments", "Models defend their positions.", r3, knowledgeInteractions: r3Ki, operatorInteractions: r3Op, startedAt: round3StartedAt);
       builder.AddRound(round3);
