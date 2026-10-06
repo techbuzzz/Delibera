@@ -72,7 +72,9 @@ public sealed class FileDebateStore : IDebateStore, IDisposable
       await _writeLock.WaitAsync(ct).ConfigureAwait(false);
       try
       {
-         await using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+         // useAsync: a synchronous handle makes SerializeAsync fall back to blocking the
+         // calling thread on every write instead of using async file I/O.
+         await using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true))
          {
             await JsonSerializer.SerializeAsync(stream, stamped, JsonOptions, ct).ConfigureAwait(false);
          }
@@ -109,7 +111,7 @@ public sealed class FileDebateStore : IDebateStore, IDisposable
       ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
       var path = GetFilePath(debateId);
       if (!File.Exists(path)) return null;
-      await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+      await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true);
       return await JsonSerializer.DeserializeAsync<DebateCheckpoint>(stream, JsonOptions, ct).ConfigureAwait(false);
    }
 

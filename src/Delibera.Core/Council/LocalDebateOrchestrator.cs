@@ -38,7 +38,7 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
    {
       _completedEntryLifetime = completedEntryLifetime ?? CompletedEntryLifetime;
       if (_completedEntryLifetime > TimeSpan.Zero)
-         _evictionTimer = new(EvictCompletedEntries, null, _completedEntryLifetime, _completedEntryLifetime);
+         _evictionTimer = new(EvictCompletedEntries, new WeakReference<LocalDebateOrchestrator>(this), _completedEntryLifetime, _completedEntryLifetime);
    }
 
    /// <inheritdoc />
@@ -147,7 +147,19 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
 
    // ── Eviction ──────────────────────────────────────────────────────────────────
 
-   private void EvictCompletedEntries(object? state)
+   /// <summary>
+   ///    Timer callback. Static with a <see cref="WeakReference{T}" /> state on purpose:
+   ///    an instance-method group makes the <see cref="Timer" /> hold a strong reference to
+   ///    this orchestrator for the timer's whole lifetime. Passing <c>null</c> state does not
+   ///    help — the delegate's own target is the strong reference.
+   /// </summary>
+   private static void EvictCompletedEntries(object? state)
+   {
+      if (state is WeakReference<LocalDebateOrchestrator> weak && weak.TryGetTarget(out var self))
+         self.EvictCompletedEntriesCore();
+   }
+
+   private void EvictCompletedEntriesCore()
    {
       var cutoff = DateTimeOffset.UtcNow - _completedEntryLifetime;
       foreach (var kvp in _entries)

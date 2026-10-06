@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -22,7 +23,7 @@ namespace Delibera.Core.Council;
 ///    Executes a configured council debate session.
 ///    Created via <see cref="CouncilBuilder.Build" />.
 /// </summary>
-public sealed class CouncilExecutor : ICouncilExecutor
+public sealed partial class CouncilExecutor : ICouncilExecutor
 {
    private readonly AutoChunkingOptions? _autoChunkingOptions;
    private readonly CompressionOptions? _compressionOptions;
@@ -992,11 +993,16 @@ public sealed class CouncilExecutor : ICouncilExecutor
          if (AgentMemory is { } mem)
          {
             string? debateId = null;
+            // The checkpoint path resolves this exact same question match on its first save,
+            // so reuse it instead of deserializing every checkpoint file a second time per
+            // debate. FileDebateStore.ListAsync reads and deserializes the whole directory.
             if (DebateStore is not null)
                try
                {
-                  var list = await DebateStore.ListAsync(ct).ConfigureAwait(false);
-                  debateId = list.FirstOrDefault(m => m.OriginalQuestion == _context.UserPrompt)?.DebateId;
+                  debateId = checkpointTarget.Resolved
+                     ? checkpointTarget.Id
+                     : (await DebateStore.ListAsync(ct).ConfigureAwait(false))
+                        .FirstOrDefault(m => m.OriginalQuestion == _context.UserPrompt)?.DebateId;
                }
                catch (Exception ex)
                {
@@ -1099,22 +1105,37 @@ public sealed class CouncilExecutor : ICouncilExecutor
    /// </remarks>
    private static double ComputeResponseDiversity(DebateRound round)
    {
-      if (round.Responses.Count < 2) return 1.0;
+      var count = round.Responses.Count;
+      if (count < 2) return 1.0;
 
-      var responses = round.Responses.Values.ToList();
-      var totalSim = 0.0;
-      var pairs = 0;
-      for (var i = 0; i < responses.Count; i++)
-      for (var j = i + 1; j < responses.Count; j++)
+      // The pairwise scan needs index access, which IReadOnlyDictionary does not expose, so
+      // the values are materialised once — into a pooled buffer rather than a per-round list.
+      var rented = ArrayPool<string>.Shared.Rent(count);
+      try
       {
-         totalSim += Debate.TextSimilarity.Similarity(responses[i], responses[j]);
-         pairs++;
-      }
+         var responses = rented.AsSpan(0, count);
+         var index = 0;
+         foreach (var response in round.Responses.Values)
+            responses[index++] = response;
 
-      var avgSim = pairs > 0
-         ? totalSim / pairs
-         : 0.0;
-      return 1.0 - avgSim;
+         var totalSim = 0.0;
+         var pairs = 0;
+         for (var i = 0; i < count; i++)
+         for (var j = i + 1; j < count; j++)
+         {
+            totalSim += Debate.TextSimilarity.Similarity(responses[i], responses[j]);
+            pairs++;
+         }
+
+         var avgSim = pairs > 0
+            ? totalSim / pairs
+            : 0.0;
+         return 1.0 - avgSim;
+      }
+      finally
+      {
+         ArrayPool<string>.Shared.Return(rented);
+      }
    }
 
    /// <summary>
@@ -1328,11 +1349,19 @@ public sealed class CouncilExecutor : ICouncilExecutor
    /// <summary>
    ///    Parses a member's ranking response (e.g. "3,1,2") into <see cref="RankedOption" />s.
    /// </summary>
+   /// <summary>
+   ///    First run of digits, commas and whitespace in a ranking response. Compile-time
+   ///    literal, so the source generator emits the matcher at build time instead of
+   ///    building and caching a <see cref="Regex" /> on first use.
+   /// </summary>
+   [GeneratedRegex(@"([\d,\s]+)")]
+   private static partial Regex RankingDigitsRegex();
+
    private static List<RankedOption> ParseRankings(string response, List<string> options)
    {
       var rankings = new List<RankedOption>();
       // Extract the first sequence of comma-separated numbers from the response.
-      var match = Regex.Match(response, @"([\d,\s]+)");
+      var match = RankingDigitsRegex().Match(response);
       if (!match.Success) return rankings;
       var numbers = match.Groups[1].Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
       var rank = 1;

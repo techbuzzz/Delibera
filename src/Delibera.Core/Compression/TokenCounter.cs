@@ -188,7 +188,9 @@ public sealed class TokenCounter
       var cutoff = text.LastIndexOf(". ", approxChars, StringComparison.Ordinal);
       if (cutoff < approxChars / 2) cutoff = approxChars; // no good boundary
 
-      return text[..cutoff].TrimEnd() + "…";
+      // Concat over the trimmed span instead of slicing then concatenating: the slice and
+      // the TrimEnd each allocated a throwaway string before this.
+      return string.Concat(text.AsSpan(0, cutoff).TrimEnd(), "…");
    }
 
    /// <summary>

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using Delibera.Core.Council;
 
@@ -8,21 +9,23 @@ namespace Delibera.Core.Debate;
 ///    Provides shared utilities for collecting responses, formatting rounds,
 ///    querying the Knowledge Keeper, and compressing context.
 /// </summary>
-public abstract class DebateScenario : IDebateStrategy
+public abstract partial class DebateScenario : IDebateStrategy
 {
    // ──────────────────────────────────────────────
    // Operator helpers
    // ──────────────────────────────────────────────
 
    /// <summary>
-   ///    Marker participants use to delegate a task to the Operator, e.g.:
-   ///    <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
+   ///    Matches the marker participants use to delegate a task to the Operator,
+   ///    e.g.: <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
+   ///    <para>
+   ///    Source-generated rather than <c>RegexOptions.Compiled</c>: the pattern is a
+   ///    compile-time literal, so the generator emits it at build time — no runtime JIT,
+   ///    no static-initialisation cost, and it keeps the pattern AOT/trim-safe.
+   ///    </para>
    /// </summary>
-   private static readonly Regex OperatorRequestRegex =
-      new(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]",
-         RegexOptions.Singleline |
-         RegexOptions.IgnoreCase |
-         RegexOptions.Compiled);
+   [GeneratedRegex(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+   private static partial Regex OperatorRequestRegex();
 
    /// <inheritdoc />
    public abstract string StrategyName { get; }
@@ -203,12 +206,33 @@ public abstract class DebateScenario : IDebateStrategy
 
       try
       {
-         var previousSummary = previousRounds is { Count: > 0 }
-            ? string.Join("\n", previousRounds.Select(r =>
-               $"Round {r.RoundNumber}: " +
-               string.Join("; ",
-                  r.Responses.Select(kv => $"{kv.Key}: {kv.Value[..Math.Min(200, kv.Value.Length)]}"))))
-            : null;
+         // One buffer for the whole summary. The nested Join/Select/interpolation form allocated
+         // an interpolated string plus a joined string per response, then joined those again —
+         // six or more allocations per response, on a per-round path.
+         string? previousSummary = null;
+         if (previousRounds is { Count: > 0 })
+         {
+            var summary = new StringBuilder();
+            foreach (var r in previousRounds)
+            {
+               if (summary.Length > 0)
+                  summary.Append('\n');
+
+               summary.Append("Round ").Append(r.RoundNumber).Append(": ");
+               var firstResponse = true;
+               foreach (var kv in r.Responses)
+               {
+                  if (!firstResponse)
+                     summary.Append("; ");
+
+                  firstResponse = false;
+                  summary.Append(kv.Key).Append(": ");
+                  summary.Append(kv.Value.AsSpan(0, Math.Min(200, kv.Value.Length)));
+               }
+            }
+
+            previousSummary = summary.ToString();
+         }
 
          var roundCtx = await keeper.ProvideContextForRoundAsync(
             topic, roundNumber, previousSummary, ct: ct).ConfigureAwait(false);
@@ -285,7 +309,7 @@ public abstract class DebateScenario : IDebateStrategy
          // cheapest possible pre-check skips that for every response that never delegates.
          if (!response.Contains("[[", StringComparison.Ordinal)) continue;
 
-         foreach (Match match in OperatorRequestRegex.Matches(response))
+         foreach (Match match in OperatorRequestRegex().Matches(response))
          {
             var task = match.Groups["task"].Value.Trim();
             if (string.IsNullOrWhiteSpace(task)) continue;

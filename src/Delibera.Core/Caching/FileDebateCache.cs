@@ -41,13 +41,13 @@ public sealed class FileDebateCache : IDebateCache
    }
 
    /// <inheritdoc />
-   public ValueTask<DebateResult?> GetAsync(string cacheKey, CancellationToken ct = default)
+   public async ValueTask<DebateResult?> GetAsync(string cacheKey, CancellationToken ct = default)
    {
       var filePath = GetFilePath(cacheKey);
       if (!File.Exists(filePath))
       {
          _logger.LogDebug("Cache MISS (file not found) for key {CacheKey}.", cacheKey);
-         return new ValueTask<DebateResult?>((DebateResult?)null);
+         return null;
       }
 
       var fileInfo = new FileInfo(filePath);
@@ -63,39 +63,37 @@ public sealed class FileDebateCache : IDebateCache
             /* best effort */
          }
 
-         return new ValueTask<DebateResult?>((DebateResult?)null);
+         return null;
       }
 
       try
       {
-         var json = File.ReadAllText(filePath);
+         var json = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
          var result = JsonSerializer.Deserialize<DebateResult>(json, _json);
          _logger.LogDebug("Cache HIT for key {CacheKey}.", cacheKey);
-         return new ValueTask<DebateResult?>(result);
+         return result;
       }
       catch (Exception ex)
       {
          _logger.LogWarning(ex, "Failed to deserialize cache file for key {CacheKey}.", cacheKey);
-         return new ValueTask<DebateResult?>((DebateResult?)null);
+         return null;
       }
    }
 
    /// <inheritdoc />
-   public ValueTask SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
+   public async ValueTask SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
    {
       var filePath = GetFilePath(cacheKey);
       try
       {
          var json = JsonSerializer.Serialize(result, _json);
-         File.WriteAllText(filePath, json);
+         await File.WriteAllTextAsync(filePath, json, ct).ConfigureAwait(false);
          _logger.LogDebug("Cache SET for key {CacheKey} at {Path}.", cacheKey, filePath);
       }
       catch (Exception ex)
       {
          _logger.LogWarning(ex, "Failed to write cache file for key {CacheKey}.", cacheKey);
       }
-
-      return ValueTask.CompletedTask;
    }
 
    /// <inheritdoc />

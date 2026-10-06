@@ -163,13 +163,19 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
          ? topic
          : $"{topic}\n\nContext from previous rounds:\n{previousRoundSummary ?? "(none)"}";
 
-      // Search for relevant chunks
+      // Search for relevant chunks. One shared empty dictionary per call rather than one per
+      // result — and a plain loop instead of Select/ToList, which allocated an iterator and
+      // an intermediate list on every round.
       var searchResults = await _ragProvider.SearchAsync(CollectionName, query, limit, ct: ct).ConfigureAwait(false);
-      var sources = searchResults.Select(r => new KnowledgeSource(
-         r.Text,
-         r.Score,
-         r.Metadata ?? new Dictionary<string, string>()
-      )).ToList();
+      Dictionary<string, string>? emptyMetadata = null;
+      var sources = new List<KnowledgeSource>(searchResults.Count);
+      foreach (var r in searchResults)
+      {
+         if (r.Metadata is null && emptyMetadata is null)
+            emptyMetadata = new Dictionary<string, string>();
+
+         sources.Add(new KnowledgeSource(r.Text, r.Score, r.Metadata ?? emptyMetadata!));
+      }
 
       // Generate the answer
       var systemPrompt = $"""

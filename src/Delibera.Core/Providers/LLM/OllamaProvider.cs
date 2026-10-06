@@ -47,7 +47,7 @@ public enum OllamaConnectionMode
 ///       backward-compatible.
 ///    </para>
 /// </remarks>
-public sealed class OllamaProvider : ILLMProvider
+public sealed partial class OllamaProvider : ILLMProvider
 {
    private static readonly TimeSpan DefaultCloudTimeout = TimeSpan.FromMinutes(5);
    private static readonly TimeSpan DefaultLocalTimeout = TimeSpan.FromMinutes(10);
@@ -363,13 +363,21 @@ public sealed class OllamaProvider : ILLMProvider
    ///    The parameters string looks like:
    ///    <c>num_keep 24\nstop "&lt;|start_header_id|&gt;"\nnum_ctx 131072\n...</c>
    /// </summary>
+   /// <summary>
+   ///    Matches the <c>num_ctx &lt;number&gt;</c> capability Ollama reports in a model's
+   ///    parameter blob. Compile-time literal, so it is source-generated rather than built
+   ///    and cached on first use.
+   /// </summary>
+   [GeneratedRegex(@"num_ctx\s+(\d+)", RegexOptions.IgnoreCase)]
+   private static partial Regex NumCtxRegex();
+
    private static int? ExtractContextWindowFromParameters(string? parameters)
    {
       if (string.IsNullOrWhiteSpace(parameters))
          return null;
 
       // Match "num_ctx <number>" in the parameters string.
-      var match = Regex.Match(parameters, @"num_ctx\s+(\d+)", RegexOptions.IgnoreCase);
+      var match = NumCtxRegex().Match(parameters);
       if (match.Success && int.TryParse(match.Groups[1].Value, out var ctx))
          return ctx;
 
