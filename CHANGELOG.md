@@ -60,6 +60,34 @@ blocking.
 
 ### Fixed
 
+- **SSE debate streaming dropped every round.** `SseDebateStreamWriter`'s heartbeat pump
+  compared `Task.WhenAny(...)`'s winner against a *second* `next.AsTask()` call.
+  `ValueTask.AsTask()` on a compiler-generated async iterator returns a different `Task`
+  instance on the second call, so the comparison was false even when an event had already
+  arrived — every genuine event was misclassified as a heartbeat and skipped, and a debate
+  streamed **zero** rounds.
+- **SSE debates that completed mid-stream raised `NotSupportedException` after the terminal
+  event.** After a heartbeat pulse the loop `continue`d and called `MoveNextAsync` again
+  while the previous move was still in flight, then left that move pending when the method
+  `return`ed on a terminal event. An async iterator forbids a second concurrent
+  `MoveNextAsync` and forbids `DisposeAsync` while one is in flight, so a client could
+  receive a successful `debate-completed` event and an error on the same connection. One
+  `MoveNextAsync` is now created per iteration and reused across pulses, the winner is
+  compared against that single task by reference, and any pending move is settled before
+  disposal. Terminal events are still delivered exactly once, keep-alive comments are still
+  emitted, and the reconnect hint is still the first thing on the wire.
+- **`Microsoft.OpenApi` 3.10.2 could not build.** `Microsoft.AspNetCore.OpenApi` 10.0.12
+  still emits `Example = ...` assignments against `IOpenApiMediaType.Example`, which is
+  read-only in Microsoft.OpenApi 3.x, producing `CS0200` inside generated
+  `OpenApiXmlCommentSupport` code. Pinned to **2.12.2** in `Delibera.Server`: the last
+  published 2.x, and the floor `Microsoft.AspNetCore.OpenApi` 10.0.12 requires
+  (`[2.12.0, 3.0.0)`). A literal `2.7.5` pin does not restore — it is `NU1605` (detected
+  package downgrade 2.12.0 → 2.7.5).
+- **`Qdrant.Client` 1.19.0 marked `QdrantClient.SearchAsync` obsolete**, which is a build
+  error under `-warnaserror`. `QdrantVectorStore` now calls `QueryAsync` with the same
+  collection, query vector, limit, score threshold and cancellation token.
+  `float[] → VectorInput → Query` is written as two statements because C# will not chain
+  two user-defined implicit conversions.
 - **`ModelContextWindowRegistry` lookups** resolved whichever pattern the frozen dictionary
   happened to enumerate first. A tagged name such as `llama3.2:7b` matches both `llama3.2`
   (131072) and `llama3` (8192); the correct answer depended on authoring order rather than on a
@@ -84,6 +112,13 @@ blocking.
   O(n²) loop.
 - **`ModelContextWindowRegistry`** lookups no longer enumerate the entire frozen collection for
   every probe; the pattern-ordered index stops at the first (most specific) match.
+
+### Verification
+
+514 unit tests discovered, **514 passing** (406 Core + 108 Server), 0 failed, 0 skipped. The
+five SSE failures carried since 10.3.x are fixed. `dotnet build Delibera.slnx -c Release
+-warnaserror` is clean (0 warnings, 0 errors) and a forced restore reports no NU1605 /
+NU1608 / NU1701.
 
 ---
 

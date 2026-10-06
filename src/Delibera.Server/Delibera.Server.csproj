@@ -21,24 +21,36 @@
     <!-- Microsoft.OpenApi 3.x makes IOpenApiMediaType.Example read-only, which breaks
          the AspNetCore.OpenApi source generator (it emits Example = ... in the
          generated OpenApiXmlCommentSupport code). Pin to 2.7.x until the source
-         generator is updated for v3. -->
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
-    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+         generator is updated for v3.
+         Evidence: with Microsoft.OpenApi 3.10.2 and Microsoft.AspNetCore.OpenApi
+         10.0.12 the generator still emits `Example = ...` assignments against the
+         read-only IOpenApiMediaType.Example, and the build fails with CS0200
+         (CS0200: property or indexer 'Example' cannot be assigned to, it is read only)
+         inside generated OpenApiXmlCommentSupport code. Re-tested and reverted
+         3.10.2 -> 2.7.5 for the 10.4.0 release gate; do not retry 3.x until the
+         generator ships v3-aware emission.
+         The floor matters: Microsoft.AspNetCore.OpenApi 10.0.12 declares
+         Microsoft.OpenApi [2.12.0, 3.0.0), so an explicit 2.7.5 pin does not restore —
+         it is NU1605 (detected package downgrade 2.12.0 -> 2.7.5), which is an error here.
+         2.12.2 is the last published 2.x, so it is both the floor-satisfying pin and the
+         highest version that still has the settable IOpenApiMediaType.Example. -->
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.12.2" />
 
     <!-- MCP Server (HTTP transport) -->
-    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
 
     <!-- Validation -->
     <PackageReference Include="FluentValidation" Version="12.1.1" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
 
     <!-- Observability -->
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.17.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.19.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.19.1" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.19.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <!-- NU1510: Microsoft.AspNetCore.Http.Extensions and                                        -->
     <!--         Microsoft.Extensions.Diagnostics.HealthChecks are implicit in                  -->

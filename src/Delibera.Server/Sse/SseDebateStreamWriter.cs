@@ -68,6 +68,8 @@ public static class SseDebateStreamWriter
       // into record.Rounds from this loop was a second writer to a collection the debate
       // background task also appends to; DebateOrchestrationService already records them.
       var terminalWritten = false;
+      IAsyncEnumerator<DebateRoundEvent>? enumerator = null;
+      Task<bool>? pendingMove = null;
       try
       {
          // A comment line every heartbeat interval. An idle debate produces no events for
@@ -75,28 +77,52 @@ public static class SseDebateStreamWriter
          // that has been silent — which looked to the client exactly like a dead debate.
          await WriteSseCommentAsync(ctx, "retry: 3000", ct);
 
-         await using var enumerator = orchestrator
+         enumerator = orchestrator
             .StreamAsync(record.DebateId, ct)
             .GetAsyncEnumerator(ct);
 
+         // Exactly one MoveNextAsync per iteration, started once and then reused by every
+         // heartbeat pulse. Two separate defects lived in this loop, and both of them were
+         // invisible until the SSE tests could actually run:
+         //
+         //  1. ValueTask.AsTask() on a compiler-generated async iterator returns a
+         //     different Task instance on the second call, so `winner != next.AsTask()`
+         //     was true even when the move had won the race. Every genuine event was
+         //     misread as a heartbeat and silently skipped — a debate streamed zero rounds.
+         //     The winner is now compared against the single hoisted Task by reference.
+         //
+         //  2. After a heartbeat pulse the loop used to `continue`, which called
+         //     MoveNextAsync again while the previous move was still pending, and it left
+         //     that move in flight when the method returned on a terminal event. An async
+         //     iterator forbids a second concurrent MoveNextAsync and forbids DisposeAsync
+         //     while one is in flight, so a debate that completed mid-stream raised
+         //     NotSupportedException *after* its terminal event had already been written.
+         //     See ReleaseStreamAsync for the disposal half of the fix.
+         pendingMove = enumerator.MoveNextAsync().AsTask();
+
          while (!ct.IsCancellationRequested)
          {
-            var next = enumerator.MoveNextAsync();
-            using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var pulse = Task.Delay(heartbeat, heartbeatCts.Token);
-
-            var winner = await Task.WhenAny(next.AsTask(), pulse).ConfigureAwait(false);
-            if (winner != next.AsTask())
+            bool hasNext;
+            using (var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
             {
-               // Nothing arrived in time. Keep the connection warm and wait for the same
-               // pending MoveNextAsync — it is not cancelled or abandoned.
+               var pulse = Task.Delay(heartbeat, heartbeatCts.Token);
+
+               var winner = await Task.WhenAny(pendingMove, pulse).ConfigureAwait(false);
+               if (!ReferenceEquals(winner, pendingMove))
+               {
+                  // Nothing arrived in time. Keep the connection warm and wait for the same
+                  // pending MoveNextAsync — it is not cancelled or abandoned, and it must
+                  // not be re-issued: the iterator rejects a concurrent move.
+                  heartbeatCts.Cancel();
+                  await WriteSseCommentAsync(ctx, "keep-alive", ct);
+                  continue;
+               }
+
                heartbeatCts.Cancel();
-               await WriteSseCommentAsync(ctx, "keep-alive", ct);
-               continue;
+               hasNext = await pendingMove.ConfigureAwait(false);
             }
 
-            heartbeatCts.Cancel();
-            if (!next.Result)
+            if (!hasNext)
                break; // the stream completed without a terminal event
 
             switch (enumerator.Current)
@@ -125,6 +151,10 @@ public static class SseDebateStreamWriter
                   terminalWritten = true;
                   return;
             }
+
+            // Only once the current event has been written, and never while a move is in
+            // flight — pendingMove has just been awaited to completion above.
+            pendingMove = enumerator.MoveNextAsync().AsTask();
          }
       }
       catch (OperationCanceledException)
@@ -133,6 +163,11 @@ public static class SseDebateStreamWriter
       }
       finally
       {
+         // Before anything else: the move has to land and the iterator has to be disposed.
+         // Skipping this is what surfaced NotSupportedException to the caller.
+         if (enumerator is not null)
+            await ReleaseStreamAsync(enumerator, pendingMove).ConfigureAwait(false);
+
          // A client can otherwise just see the stream stop. Say how it ended, unless the
          // response has already been torn down.
          if (!terminalWritten && !ctx.Response.HasStarted)
@@ -152,7 +187,43 @@ public static class SseDebateStreamWriter
       }
    }
 
-   // ── Private ────────────────────────────────────────────────────────────────
+   // ── Private ─────────────────────────────────────────────────────────────────
+
+   /// <summary>
+   ///    Releases the orchestrator stream.
+   ///    <para>
+   ///       A compiler-generated async iterator refuses <c>DisposeAsync</c> while a
+   ///       <c>MoveNextAsync</c> is still in flight — it throws
+   ///       <see cref="NotSupportedException" /> and the response dies with it. The pending
+   ///       move is therefore awaited to completion first. Every orchestrator in the box
+   ///       takes an <c>[EnumeratorCancellation]</c> token and passes it down to its channel
+   ///       or Redis read, so a client disconnect settles the move and this returns promptly.
+   ///    </para>
+   ///    <para>
+   ///       Anything the abandoned move raised is observed and dropped here: the caller
+   ///       already has its own exception to deal with, and surfacing a second one from a
+   ///       cleanup path would only hide it.
+   ///    </para>
+   /// </summary>
+   private static async Task ReleaseStreamAsync(
+      IAsyncEnumerator<DebateRoundEvent> enumerator,
+      Task<bool>? pendingMove)
+   {
+      if (pendingMove is not null)
+      {
+         try
+         {
+            await pendingMove.ConfigureAwait(false);
+         }
+         catch
+         {
+            // The move is being abandoned, not consumed. Whoever wanted its outcome has
+            // already been told; rethrowing from cleanup would mask the real failure.
+         }
+      }
+
+      await enumerator.DisposeAsync().ConfigureAwait(false);
+   }
 
    /// <summary>
    ///    How long the stream may stay silent before a keep-alive comment is sent. A

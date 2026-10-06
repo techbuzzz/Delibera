@@ -58,9 +58,13 @@ public sealed class SseHeartbeatTests
    [Fact]
    public async Task Stream_Starts_With_A_Reconnect_Hint()
    {
-      var body = await WriteAsync(Record(), ChannelOrchestrator.Open(), CancellationToken.None, FastHeartbeat);
+      // The stream has to be given a bounded lifetime: this orchestrator never completes
+      // its channel, so a correct writer keeps the connection open until the client goes
+      // away. It only used to return because the writer faulted mid-pump.
+      using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+      var body = await WriteAsync(Record(), ChannelOrchestrator.Open(), cts.Token, FastHeartbeat);
 
-      body.Should().Contain(": retry:");
+      body.Should().StartWith(": retry:", "the reconnect hint is the first thing on the wire");
    }
 
    [Fact]

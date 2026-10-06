@@ -4,8 +4,8 @@
 > **Date:** October 2026
 > **Branch:** `feature/v10.3.1`
 > **Baseline (v10.3.1 as found):** `dotnet build -c Release` → **11 errors** (NU1605) / 15 warnings; tests could not run at all
-> **Current:** **0 errors / 0 warnings** (also clean under `-warnaserror`); `dotnet test` → **509 passed** of 514 discovered (406 Core + 103 Server), 0 skipped, **5 SSE failures outstanding**
-> **Status:** In progress
+> **Current:** **0 errors / 0 warnings** (also clean under `-warnaserror`); `dotnet test` → **514 passed** of 514 discovered (406 Core + 108 Server), 0 failed, 0 skipped — the 5 SSE failures outstanding at 10.3.x are fixed
+> **Status:** Release gate green for v10.4.0
 
 ---
 
@@ -107,7 +107,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · �
 | W3-04 | `CouncilOptionsSnapshot` drops 5 of its documented settings | P1 | ⬜ |
 | W3-05 | `CouncilBuilder` doc claims precedence that the code does not implement | P2 | ⬜ |
 | W3-06 | `CouncilExecutor` decomposition (27-arg ctor, 1332 lines) | P1 | ⬜ |
-| W3-07 | Async round callback to remove the last sync-over-async | P1 | 🔒 10.4.0 |
+| W3-07 | Async round callback to remove the last sync-over-async | P1 | ✅ |
 | W3-08 | `IDebateStrategy` signature / `IRagProvider` vs `IVectorStore` overlap | P2 | 🔒 10.4.0 |
 
 ### W4 — Server, Redis, observability
@@ -152,10 +152,13 @@ standing property of the test suite:
 
 ## 6. Definition of done for the plan
 
-- [ ] `dotnet build -c Release` → 0 errors, **0 warnings**
-- [ ] `TreatWarningsAsErrors=true` in CI
+- [x] `dotnet build -c Release` → 0 errors, **0 warnings**
+- [x] `TreatWarningsAsErrors=true` in CI — `publish-nuget.yml` builds with `-warnaserror`
 - [ ] `dotnet test` → green, with a regression test for every W1 item
-- [ ] No `GetAwaiter().GetResult()` / `.Result` / `.Wait()` in `src/` outside `Dispose`
+      *(tests are green: 514/514. The "regression test for every W1 item" half is not
+      re-verified here.)*
+- [x] No `GetAwaiter().GetResult()` / `.Result` / `.Wait()` in `src/` outside `Dispose` —
+      one occurrence remains, `VectorStoreFactory.DisposeInstances`, which is a disposal path
 - [ ] No `new Regex(` in a hot path (already true — keep it true)
 - [ ] No mutable `List<T>` shared between the debate loop and a request thread
-- [ ] CHANGELOG documents every breaking change since v10.3.0
+- [x] CHANGELOG documents every breaking change since v10.3.0 — W3-07, with before/after code

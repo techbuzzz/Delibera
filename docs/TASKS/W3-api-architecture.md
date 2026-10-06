@@ -3,7 +3,7 @@
 > **Goal:** make the public API tell the truth, and stop `CouncilExecutor` from growing.
 > **Policy (owner, 2026-10-02):** safe changes ship in 10.3.1; anything that alters a
 > public signature is written up here and lands in 10.4.0 with a migration note.
-> **Status:** 3 / 8 done (W3-01, W3-02, W3-03)
+> **Status:** 4 / 8 done (W3-01, W3-02, W3-03, W3-07)
 
 ---
 
@@ -146,7 +146,7 @@ added to this one class, which is the mechanical reason the pieces "don't fit to
 
 ---
 
-## W3-07 · Async round callback · **P1** · 🔒 10.4.0
+## W3-07 · Async round callback · **P1** · ✅ done (shipped in 10.4.0)
 
 **Problem.** `IDebateStrategy.ExecuteAsync` accepts `Action<DebateRound>? onRoundCompleted`.
 A synchronous callback forces the executor to block on asynchronous work
@@ -161,9 +161,18 @@ separate defects.
 strategy API becomes awaitable.
 
 **Acceptance.**
-- [ ] No `GetAwaiter().GetResult()` in `CouncilExecutor`
-- [ ] Cancellation propagates as `OperationCanceledException`
-- [ ] Migration note in CHANGELOG with before/after code
+- [x] No `GetAwaiter().GetResult()` in `CouncilExecutor` — verified: no match for
+      `GetAwaiter().GetResult()`, `.Wait()`, `Task.WaitAll/WaitAny` or `GetResult()` in
+      `Council/CouncilExecutor.cs`
+- [x] Cancellation propagates as `OperationCanceledException` — pinned by
+      `CouncilExecutorCancellationTests` (2 tests), which assert that a pre-cancelled token
+      observed at the per-round `SaveResultTo` await surfaces as `OperationCanceledException`
+      rather than as an `AggregateException`
+- [x] Migration note in CHANGELOG with before/after code — `CHANGELOG.md` `[10.4.0]`,
+      breaking-change table plus fenced before/after `ExecuteAsync` implementations
+
+**Status.** Shipped in 10.4.0. All three acceptance criteria verified; the three fixes above
+landed in the same release.
 
 ---
 
