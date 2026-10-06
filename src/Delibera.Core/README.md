@@ -32,7 +32,7 @@ outcomes** rather than single-model guesses.
 - 📚 **Knowledge Keeper (RAG)** — per-round semantic retrieval with Qdrant or pgvector
 - 🐘 **Qdrant + pgvector** — pluggable vector stores (dedicated DB or your existing PostgreSQL)
 - 🛠️ **Operator (MCP Tools)** — a micro-agent that delegates tasks to MCP servers (web search, file system, Notion, PostgreSQL…) on demand during the debate
-- 🗜️ **Context Compression** — 4 strategies (Semantic, Deduplication, Summarization, Hybrid) save 30–70% of tokens
+- 🗜️ **Context Compression** — 4 strategies (Semantic, Deduplication, Summarization, Hybrid) applied to every round prompt; measured 11.7–12.1% token savings
 - ✂️ **AutoChunking** — progressive disclosure of large documents across rounds, respecting model context windows
 - 💉 **Dependency Injection** — `AddDelibera()` extension for `IServiceCollection` with full options binding
 - 📋 **Execution Logging** — `ExecutionLog` model with `ExecutionLogLevel` for Chairman, KK, Compression & participants
@@ -187,7 +187,7 @@ backward compatible with the existing `OllamaProvider` / `OllamaEmbeddingProvide
 
 ## 🗜️ Context Compression
 
-Automatically compress context between deliberation rounds — save **30–70% of tokens** without losing meaning.
+Automatically compress context between deliberation rounds — a measured **11.7–12.1% of prompt tokens** without losing meaning.
 
 | Strategy          | How It Works                                               | Best For                         |
 | ----------------- | ---------------------------------------------------------- | -------------------------------- |

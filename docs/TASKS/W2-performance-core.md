@@ -3,7 +3,27 @@
 > **Goal:** remove the costs that sit on the per-round and per-participant path of a debate.
 > **Measurement rule:** no task ships without either a benchmark number or a stated
 > argument for why the cost cannot matter. Static claims are labelled as such.
-> **Status:** 7 / 9 done (all but W2-05 and W2-07)
+> **Status:** 10 / 16 done — 7 of the original 9 (all but W2-05 and W2-07) plus 3 of the 7 added by
+> the measurement round. The remaining four split: W2-13 and W2-14 are closed by decision (an API
+> change and a semantic choice, both documented in the v10.5.0 release notes), while **W2-15 and
+> W2-16 are open findings awaiting a fix.**
+> **Measured:** [docs/performance-measurements.md](../performance-measurements.md) — real runs
+> against Ollama Cloud, 2026-10-06. The framework's own overhead on the fan-out path measures
+> **0.0 s** per debate; wall time is dominated by how much text the models choose to write.
+
+## Added by the 2026-10-06 measurement round
+
+| id | item | status |
+|---|---|---|
+| W2-10 | Context compression was configured but never invoked from the debate pipeline; `TokenStats` / `CompressionLogs` were never assigned. Wired in v10.5.0 and measured at 11.7–12.1% prompt-token saving. | ✅ done |
+| W2-11 | `DebateScenario` substituted `"[ERROR: ...]"` as a failed member's response, putting error text into the transcript where the Chairman read it as an opinion. Replaced with `MemberFailure` on `DebateResult` + `IsDegraded`. | ✅ done |
+| W2-12 | `DebateResult.TotalDuration` was negative on every debate (`StartedAt` initialised in `Build()` after `MarkCompleted()` stamped `CompletedAt`). | ✅ done |
+| W2-13 | `WithCache(CacheBehavior, IDebateCache)` is missing from `ICouncilBuilder`, so an interface-typed consumer cannot inject a cache backend. **API decision** — documented rather than changed. | 📋 decided |
+| W2-14 | `DebateResult.TotalDuration` on a cache hit reports the cached debate's duration, not the caller's wait time (measured: 0.0 s actual vs 189.0 s reported). **Product decision** — provenance vs wait time is a choice to make, not a patch. | 📋 decided |
+| W2-15 | Vector-store indexing is not idempotent — `IndexFileAsync` appends unconditionally, so repeated runs duplicate the corpus (measured 72 points for 24 unique chunks). **Open finding** — needs a fix (content hash, or delete-then-replace per document). | 📋 open |
+| W2-16 | One reasoning model produced 68.8% of member output (29.6k chars avg vs 9.5k for the next). **Open finding** — not a framework defect, but a roster-selection hazard; documented in the README, no code change proposed. | 📋 open |
+
+---
 
 Shared hot path: every round, `DebateScenario` fans out one `ChatAsync` per participant
 (`Task.WhenAll` at `DebateScenario.cs:71`), estimates tokens, and writes an execution-log

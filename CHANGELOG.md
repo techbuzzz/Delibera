@@ -5,6 +5,81 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.5.0] - 2026-10-06
+
+Multi-model deliberations measured end-to-end against Ollama Cloud for the first time. That
+surfaced five defects, two of which made headline features non-functional. Every number below is
+from a real run; see [docs/performance-measurements.md](docs/performance-measurements.md) for the
+full evidence and for the claims these results contradict.
+
+### Fixed
+
+- **Context compression never ran.** `CouncilExecutor.CompressTextAsync` was public API that nothing
+  in the pipeline called, `TokenStats` and `CompressionLogs` were never assigned, and ten measured
+  runs with compression enabled reported 0.00% saved at 0 ms overhead while context grew past
+  10,000 tokens per round. The compressor is now attached through `DebateExecutionOptions` and
+  applied to each round prompt above a `CompressionThresholdTokens` (default 1,200) floor, with
+  every attempt logged. Measured saving is now **11.7–12.1%**.
+
+  > This is far below the **30–70%** claimed in the README and compression docs. The wiring is what
+  > made the feature work at all; the strategy's yield is about a sixth of what was advertised.
+
+- **`OllamaProvider` could not talk to Ollama Cloud in its default configuration.** The provider
+  defaulted to `maxOutputTokens = -1` and sent that as `num_predict`, which the endpoint rejects:
+  `OllamaException: max_tokens must be positive, got: -1`. Every request failed before generating a
+  token. A non-positive cap is now sent as a `null` `NumPredict`, which OllamaSharp omits from the
+  request so the server applies its own default. Positive caps pass through unchanged.
+
+- **`DebateResult.TotalDuration` was negative on every debate.** `StartedAt` relied on a property
+  initialiser that runs inside `DebateResultBuilder.Build()` — after `MarkCompleted()` had already
+  stamped `CompletedAt` — so `CompletedAt - StartedAt` came out below zero. Start time is now
+  captured when the builder is created.
+
+- **A failed participant's error text was fed to the Chairman as an opinion.** `DebateScenario`
+  substituted `$"[ERROR: {ex.Message}]"` as the member's response, so an error entered the
+  transcript, was read as a viewpoint, and produced a verdict that looked complete while being
+  synthesised from a partial council. Failed members are now omitted from the round and recorded on
+  the result.
+
+- **An empty response gave no diagnostic.** `InvalidOperationException("Empty response from model
+  '...'")` did not distinguish the two causes, which behave completely differently.
+
+### Added
+
+- **`DebateResult.FailedMembers`** (`IReadOnlyList<MemberFailure>`) and **`DebateResult.IsDegraded`**.
+  A non-empty list means the verdict came from a partial council; nothing downstream has to infer it
+  from text.
+- **`MemberFailure`** record — round number and name, role, display name, model, and the error, with
+  a `ToString()` suited to execution logs and report rows.
+- **`OllamaEmptyResponseException`** carrying `DoneReason` and `ReasoningChars`, with
+  **`BudgetConsumedByReasoning`** separating "the generation budget went into reasoning" from "the
+  model returned nothing at all". Its message states which case occurred and what to do about it.
+- **`OllamaProvider(enableThinking:)`** (default `false`) — sends `Think` explicitly instead of
+  leaving it unset, so a reasoning model does not silently consume the answer budget.
+- **`OllamaProvider(retryOnBudgetExhaustion:)`** (default `true`) — retries once with a larger
+  budget when a call ends `done_reason: length` with no content and reasoning present. This is a
+  budget repair, not a transport retry, so it sits inside the Polly-wrapped operation.
+- **`DebateExecutionOptions.ContextCompressor` / `ContextCompressionOptions` /
+  `ContextCompressionCache` / `CompressionLogs` / `CompressionThresholdTokens`** — how the
+  executor reaches the compressor without widening `IDebateStrategy`.
+- **Four regression tests** (`ContextCompressionWiringTests`) pinning that a configured compressor is
+  invoked, that savings reach the result, that an unconfigured run invents nothing, and that a
+  compressor returning *more* text is not trusted.
+
+### Known issues (reported, not fixed)
+
+- **`DebateResult.TotalDuration` on a cache hit** reports the cached debate's duration, not the time
+  the caller waited. Measured: a cached lookup served in 0.0 s reported 189.0 s. `CacheHit` and
+  `CachedAt` are the only signals distinguishing the two. Whether the property should carry
+  provenance or wait time is a product decision, so the behaviour is documented rather than changed.
+- **`WithCache(CacheBehavior, IDebateCache)` exists only on the concrete `CouncilBuilder`**, not on
+  `ICouncilBuilder`. The interface exposes only `WithCacheBehavior`, documented as picking the cache
+  up from DI, so an interface-typed consumer cannot supply a backend.
+- **Vector-store indexing is not idempotent.** `IndexFileAsync` appends unconditionally: three runs
+  over the same 24 chunks left 72 points, diluting retrieval with exact duplicates. A deployment
+  that indexes on startup degrades its own search quality over time.
+- **Documented compression savings (30–70%) are inaccurate.** Measured 11.7–12.1%.
+
 ## [10.4.0] - 2026
 
 ### ⚠️ Breaking Changes (W3-07 — async round callback)
