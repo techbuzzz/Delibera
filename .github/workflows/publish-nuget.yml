@@ -47,13 +47,15 @@ jobs:
 
       - name: Verify package layout (hash, no signature)
         run: |
-          # Sanity-check the package: list contents and validate hash integrity.
+          # Sanity-check the package. `dotnet package list` is project-scoped —
+          # it does NOT accept a .nupkg path — so it reports the dependency graph
+          # we are about to publish. `unzip -l` stays as the archive listing.
           # We do NOT run `dotnet nuget verify` because it requires a code
           # signing certificate (NU3004) — overkill for an OSS package.
           ls -la ./artifacts
           for pkg in ./artifacts/Delibera.Core.*.nupkg; do
             echo "── $pkg ──"
-            dotnet package list "$pkg" || true
+            dotnet package list --project src/Delibera.Core/Delibera.Core.csproj --include-transitive
             unzip -l "$pkg"
           done
 

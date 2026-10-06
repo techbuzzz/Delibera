@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace Delibera.Core.Debate;
 
 /// <summary>
@@ -71,8 +73,12 @@ internal static class TextSimilarity
    }
 
    /// <summary>
-   ///    Two-row edit distance. Both rows are stack-allocated for short inputs and fall
-   ///    back to pooled arrays beyond that, so a long response does not allocate per call.
+   ///    Two-row edit distance. Rows are stack-allocated for short inputs and
+   ///    <see cref="ArrayPool{T}" />-rented beyond that, so a long response does not allocate
+   ///    two fresh <c>int[n + 1]</c> buffers per call. With <see cref="MaxComparedLength" />
+   ///    capping n at 1024, the pooled path is the common one for real participant responses —
+   ///    at ~4 KiB per row it would otherwise be ~8 KiB of Gen0 garbage per comparison, on a
+   ///    per-round O(n²) loop.
    /// </summary>
    private static int LevenshteinDistance(ReadOnlySpan<char> a, ReadOnlySpan<char> b)
    {
@@ -86,13 +92,42 @@ internal static class TextSimilarity
       }
 
       var n = b.Length;
-      Span<int> prevRow = n <= 128
-         ? stackalloc int[n + 1]
-         : new int[n + 1];
-      Span<int> currRow = n <= 128
-         ? stackalloc int[n + 1]
-         : new int[n + 1];
 
+      if (n <= StackallocRowThreshold)
+         return LevenshteinOnStack(a, b, n);
+
+      // Rented rather than allocated: this runs inside the per-round response-similarity loop.
+      var prev = ArrayPool<int>.Shared.Rent(n + 1);
+      var curr = ArrayPool<int>.Shared.Rent(n + 1);
+      try
+      {
+         return LevenshteinRows(a, b, n, prev.AsSpan(0, n + 1), curr.AsSpan(0, n + 1));
+      }
+      finally
+      {
+         // int holds no references, so the buffers are returned without clearing.
+         ArrayPool<int>.Shared.Return(prev);
+         ArrayPool<int>.Shared.Return(curr);
+      }
+   }
+
+   /// <summary>
+   ///    Row length at or below which both rows are stack-allocated instead of rented.
+   /// </summary>
+   private const int StackallocRowThreshold = 128;
+
+   private static int LevenshteinOnStack(ReadOnlySpan<char> a, ReadOnlySpan<char> b, int n)
+   {
+      // The stackalloc stays inside this method on purpose: a Span created in a block that
+      // outlives it cannot be assigned to a variable in the caller (CS8353).
+      Span<int> prevRow = stackalloc int[n + 1];
+      Span<int> currRow = stackalloc int[n + 1];
+      return LevenshteinRows(a, b, n, prevRow, currRow);
+   }
+
+   private static int LevenshteinRows(
+      ReadOnlySpan<char> a, ReadOnlySpan<char> b, int n, Span<int> prevRow, Span<int> currRow)
+   {
       for (var i = 0; i <= n; i++)
          prevRow[i] = i;
 

@@ -5,6 +5,88 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.4.0] - 2026
+
+### ⚠️ Breaking Changes (W3-07 — async round callback)
+
+`IDebateStrategy.ExecuteAsync` accepts an awaitable round callback. Implementations and callers
+must update; everything else in this release is backwards compatible.
+
+| Before | After |
+|--------|-------|
+| `Action<DebateRound>? onRoundCompleted` | `Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted` |
+| `onRoundCompleted?.Invoke(round);` | `if (onRoundCompleted is not null) await onRoundCompleted(round, ct).ConfigureAwait(false);` |
+
+The public `CouncilExecutor.OnRoundCompleted` **event** is unchanged and remains a
+fire-and-forget `Action<DebateRound>` — existing `+=` subscribers are unaffected.
+
+```csharp
+// Before — synchronous callback
+public Task<DebateResult> ExecuteAsync(
+    IReadOnlyList<CouncilMember> members, PromptContext context, CouncilMember? chairman,
+    KnowledgeKeeper? knowledgeKeeper, Operator? @operator, DebateExecutionOptions executionOptions,
+    int maxRounds = 4, float temperature = 0.7f,
+    Action<DebateRound>? onRoundCompleted = null, CancellationToken ct = default)
+{
+    // ...
+    onRoundCompleted?.Invoke(round1);
+    return Task.FromResult(result);
+}
+
+// After — awaitable callback
+public async Task<DebateResult> ExecuteAsync(
+    IReadOnlyList<CouncilMember> members, PromptContext context, CouncilMember? chairman,
+    KnowledgeKeeper? knowledgeKeeper, Operator? @operator, DebateExecutionOptions executionOptions,
+    int maxRounds = 4, float temperature = 0.7f,
+    Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted = null, CancellationToken ct = default)
+{
+    // ...
+    if (onRoundCompleted is not null)
+        await onRoundCompleted(round1, ct).ConfigureAwait(false);
+    return result;
+}
+```
+
+**Why.** A synchronous callback forced the executor to block on asynchronous work
+(`CouncilExecutor`, per-round selector consult and checkpoint write). One thread-pool thread was
+pinned for the duration of a file/network checkpoint write on **every round** of **every**
+in-flight debate, and `OperationCanceledException` was repackaged as `AggregateException`.
+Awaiting the callback removes the blocked thread and propagates cancellation unchanged.
+
+Custom strategies that invoke the callback from a synchronous helper must become async and
+await the helper. Because the callback is now awaited before the next round is produced, the
+existing backpressure guarantee is unchanged — it is now enforced by `await` rather than by
+blocking.
+
+### Fixed
+
+- **`ModelContextWindowRegistry` lookups** resolved whichever pattern the frozen dictionary
+  happened to enumerate first. A tagged name such as `llama3.2:7b` matches both `llama3.2`
+  (131072) and `llama3` (8192); the correct answer depended on authoring order rather than on a
+  rule. Lookup is now exact-pattern-first via the frozen dictionary, then longest-matching-
+  substring via a pattern-ordered index. `Freeze()` is now an eager warm-up that does not change
+  results. 25 new tests pin the contract.
+- **`ModelContextWindowRegistry`** built its `FrozenDictionary` via the parameterless
+  `ToFrozenDictionary()`, which falls back to `EqualityComparer<string>.Default` — ordinal, not
+  the case-insensitive comparer the source dictionaries use. The comparer is now passed
+  explicitly.
+- **`TextSimilarity`** doc comment claimed pooled fallback buffers that the code did not
+  implement; it allocated two `int[n + 1]` rows per call.
+
+### Performance
+
+- **`DebateCacheKeyGenerator`** no longer materializes the entire knowledge base on the heap in
+  order to UTF-8 encode it. The buffer is `ArrayPool`-rented with an exact byte count, matching
+  the pattern already used in `CompressionCache`. The cache key value is unchanged.
+- **`TextSimilarity`** Levenshtein rows longer than 128 characters now come from
+  `ArrayPool<int>` instead of a fresh `int[n + 1]` each. At the 1024-character
+  `MaxComparedLength` bound this removes ~8 KiB of Gen0 garbage per comparison on a per-round
+  O(n²) loop.
+- **`ModelContextWindowRegistry`** lookups no longer enumerate the entire frozen collection for
+  every probe; the pattern-ordered index stops at the first (most specific) match.
+
+---
+
 ## [10.3.0] - 2026
 
 ### ⚠️ Breaking Changes (P-01)

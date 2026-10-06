@@ -4,7 +4,7 @@
 > **Date:** October 2026
 > **Branch:** `feature/v10.3.1`
 > **Baseline (v10.3.1 as found):** `dotnet build -c Release` → **11 errors** (NU1605) / 15 warnings; tests could not run at all
-> **Current:** **0 errors / 0 warnings** (also clean under `-warnaserror`); `dotnet test` → **483 passed** (381 Core + 102 Server)
+> **Current:** **0 errors / 0 warnings** (also clean under `-warnaserror`); `dotnet test` → **509 passed** of 514 discovered (406 Core + 103 Server), 0 skipped, **5 SSE failures outstanding**
 > **Status:** In progress
 
 ---

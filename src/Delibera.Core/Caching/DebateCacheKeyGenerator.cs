@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -68,10 +69,41 @@ public static class DebateCacheKeyGenerator
          // outer hash covers the digest just as well.
          KnowledgeHash = context.KnowledgeContent is null
             ? null
-            : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(context.KnowledgeContent))),
+            : ComputeKnowledgeHash(context.KnowledgeContent),
       }, _json);
 
-      var hash = SHA256.HashData(bytes);
-      return Convert.ToHexString(hash)[..16];
+      // Truncate to the first 8 bytes = 16 hex chars. Formatting only those 8 bytes
+      // produces the same string as slicing the full 64-char hex, without building
+      // (and immediately discarding) the 64-char intermediate.
+      Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
+      SHA256.HashData(bytes, hash);
+      return Convert.ToHexString(hash[..8]);
+   }
+
+   /// <summary>
+   ///    Knowledge bases can be megabytes, so the UTF-8 buffer is pooled rather than
+   ///    materialized on the heap — the same approach <c>CompressionCache.ComputeKey</c>
+   ///    uses. Above <see cref="MaxPooledKnowledgeChars" /> a rent would exceed the
+   ///    largest shared bucket and allocate anyway, so that case keeps the direct path.
+   /// </summary>
+   private const int MaxPooledKnowledgeChars = 1 << 20;
+
+   private static string ComputeKnowledgeHash(string knowledge)
+   {
+      if (knowledge.Length > MaxPooledKnowledgeChars)
+         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(knowledge)));
+
+      // GetByteCount is exact, so the rented buffer is sized to the payload rather than
+      // to the worst-case 3x expansion. It costs a counting pass and no allocation.
+      var buffer = ArrayPool<byte>.Shared.Rent(Encoding.UTF8.GetByteCount(knowledge));
+      try
+      {
+         var byteCount = Encoding.UTF8.GetBytes(knowledge.AsSpan(), buffer);
+         return Convert.ToHexString(SHA256.HashData(buffer.AsSpan(0, byteCount)));
+      }
+      finally
+      {
+         ArrayPool<byte>.Shared.Return(buffer);
+      }
    }
 }

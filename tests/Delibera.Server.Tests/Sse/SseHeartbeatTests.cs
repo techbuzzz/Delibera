@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using Delibera.Core.Council;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
+using Delibera.Server.Api.Contracts;
 using Delibera.Server.Services;
 using Delibera.Server.Sse;
 using Microsoft.AspNetCore.Http;

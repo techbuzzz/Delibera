@@ -82,7 +82,7 @@ public static class SseDebateStreamWriter
          while (!ct.IsCancellationRequested)
          {
             var next = enumerator.MoveNextAsync();
-            using var heartbeat = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var pulse = Task.Delay(heartbeat, heartbeatCts.Token);
 
             var winner = await Task.WhenAny(next.AsTask(), pulse).ConfigureAwait(false);
@@ -90,12 +90,12 @@ public static class SseDebateStreamWriter
             {
                // Nothing arrived in time. Keep the connection warm and wait for the same
                // pending MoveNextAsync — it is not cancelled or abandoned.
-               heartbeat.Cancel();
+               heartbeatCts.Cancel();
                await WriteSseCommentAsync(ctx, "keep-alive", ct);
                continue;
             }
 
-            heartbeat.Cancel();
+            heartbeatCts.Cancel();
             if (!next.Result)
                break; // the stream completed without a terminal event
 

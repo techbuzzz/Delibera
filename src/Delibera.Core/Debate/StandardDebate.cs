@@ -34,7 +34,7 @@ public sealed class StandardDebate : DebateScenario
       DebateExecutionOptions executionOptions,
       int maxRounds = 4,
       float temperature = 0.7f,
-      Action<DebateRound>? onRoundCompleted = null,
+      Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted = null,
       CancellationToken ct = default)
    {
       ArgumentNullException.ThrowIfNull(members);
@@ -74,7 +74,8 @@ public sealed class StandardDebate : DebateScenario
       var round1 = CreateRound(1, "Initial Responses",
          "All models provide their initial answers.", r1Responses, r1Prompt, r1Ki, r1Op, round1StartedAt);
       builder.AddRound(round1);
-      onRoundCompleted?.Invoke(round1);
+      if (onRoundCompleted is not null)
+         await onRoundCompleted(round1, ct).ConfigureAwait(false);
 
       if (maxRounds < 2) return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct).ConfigureAwait(false);
 
@@ -113,7 +114,8 @@ public sealed class StandardDebate : DebateScenario
       var round2 = CreateRound(2, "Critique",
          "Models critically analyse each other's responses.", r2Responses, r2Prompt, r2Ki, r2Op, round2StartedAt);
       builder.AddRound(round2);
-      onRoundCompleted?.Invoke(round2);
+      if (onRoundCompleted is not null)
+         await onRoundCompleted(round2, ct).ConfigureAwait(false);
 
       if (maxRounds < 3) return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct).ConfigureAwait(false);
 
@@ -155,7 +157,8 @@ public sealed class StandardDebate : DebateScenario
       var round3 = CreateRound(3, "Final Improved Responses",
          "Models provide refined answers incorporating critiques.", r3Responses, r3Prompt, r3Ki, r3Op, round3StartedAt);
       builder.AddRound(round3);
-      onRoundCompleted?.Invoke(round3);
+      if (onRoundCompleted is not null)
+         await onRoundCompleted(round3, ct).ConfigureAwait(false);
 
       return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct).ConfigureAwait(false);
    }
@@ -165,7 +168,7 @@ public sealed class StandardDebate : DebateScenario
       CouncilMember? chairman,
       KnowledgeKeeper? knowledgeKeeper,
       float temperature,
-      Action<DebateRound>? onRoundCompleted,
+      Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted,
       CancellationToken ct)
    {
       if (chairman is not null)
@@ -191,7 +194,8 @@ public sealed class StandardDebate : DebateScenario
                new Dictionary<string, string> { [chairman.DisplayName] = finalVerdict },
                startedAt: round4StartedAt);
             builder.AddRound(round4);
-            onRoundCompleted?.Invoke(round4);
+            if (onRoundCompleted is not null)
+               await onRoundCompleted(round4, ct).ConfigureAwait(false);
          }
          catch (OperationCanceledException) when (ct.IsCancellationRequested)
          {

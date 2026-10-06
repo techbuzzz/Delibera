@@ -30,7 +30,7 @@ public sealed class CritiqueDebate : DebateScenario
       DebateExecutionOptions executionOptions,
       int maxRounds = 4,
       float temperature = 0.7f,
-      Action<DebateRound>? onRoundCompleted = null,
+      Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted = null,
       CancellationToken ct = default)
    {
       ArgumentNullException.ThrowIfNull(members);
@@ -66,7 +66,8 @@ public sealed class CritiqueDebate : DebateScenario
       var r1Op = await ProcessOperatorRequestsAsync(@operator, r1, executionOptions, ct).ConfigureAwait(false);
       var round1 = CreateRound(1, "Initial Positions", "Each model states their initial position.", r1, knowledgeInteractions: r1Ki, operatorInteractions: r1Op, startedAt: round1StartedAt);
       builder.AddRound(round1);
-      onRoundCompleted?.Invoke(round1);
+      if (onRoundCompleted is not null)
+         await onRoundCompleted(round1, ct).ConfigureAwait(false);
       if (maxRounds < 2) return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct).ConfigureAwait(false);
 
       // Round 2: KK update
@@ -98,7 +99,8 @@ public sealed class CritiqueDebate : DebateScenario
       var r2Op = await ProcessOperatorRequestsAsync(@operator, r2, executionOptions, ct).ConfigureAwait(false);
       var round2 = CreateRound(2, "Directed Critique", "Models attack weaknesses in each other's positions.", r2, knowledgeInteractions: r2Ki, operatorInteractions: r2Op, startedAt: round2StartedAt);
       builder.AddRound(round2);
-      onRoundCompleted?.Invoke(round2);
+      if (onRoundCompleted is not null)
+         await onRoundCompleted(round2, ct).ConfigureAwait(false);
       if (maxRounds < 3) return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct).ConfigureAwait(false);
 
       // Round 3: KK update
@@ -130,7 +132,8 @@ public sealed class CritiqueDebate : DebateScenario
       var r3Op = await ProcessOperatorRequestsAsync(@operator, r3, executionOptions, ct).ConfigureAwait(false);
       var round3 = CreateRound(3, "Defence & Counter-Arguments", "Models defend their positions.", r3, knowledgeInteractions: r3Ki, operatorInteractions: r3Op, startedAt: round3StartedAt);
       builder.AddRound(round3);
-      onRoundCompleted?.Invoke(round3);
+      if (onRoundCompleted is not null)
+         await onRoundCompleted(round3, ct).ConfigureAwait(false);
 
       return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct).ConfigureAwait(false);
    }
@@ -140,7 +143,7 @@ public sealed class CritiqueDebate : DebateScenario
       CouncilMember? chairman,
       KnowledgeKeeper? knowledgeKeeper,
       float temperature,
-      Action<DebateRound>? onRoundCompleted,
+      Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted,
       CancellationToken ct)
    {
       // Round 4: Judge verdict
@@ -165,7 +168,8 @@ public sealed class CritiqueDebate : DebateScenario
                new Dictionary<string, string> { [chairman.DisplayName] = verdict },
                startedAt: round4StartedAt);
             builder.AddRound(round4);
-            onRoundCompleted?.Invoke(round4);
+            if (onRoundCompleted is not null)
+               await onRoundCompleted(round4, ct).ConfigureAwait(false);
          }
          catch (OperationCanceledException) when (ct.IsCancellationRequested)
          {

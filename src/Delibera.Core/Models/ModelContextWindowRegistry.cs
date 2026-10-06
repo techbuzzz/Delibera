@@ -97,41 +97,96 @@ public static class ModelContextWindowRegistry
       "pixtral", "llama4"
    };
 
-   private static FrozenDictionary<string, int> _frozenWindows = FrozenDictionary<string, int>.Empty;
-   private static FrozenSet<string> _frozenVisionPatterns = FrozenSet<string>.Empty;
+   // ── Derived, read-only lookup structures ──
+   // Both are rebuilt lazily and invalidated by Register/RegisterVisionPattern.
+   //
+   // The frozen dictionary is an EXACT-match fast path and the source of the public
+   // GetAll() snapshot. It cannot serve the real lookup contract on its own: model names
+   // carry tags ("llama3.2:7b"), so the common input is a substring, not a key. That is
+   // what _sortedWindows is for.
+   private static FrozenDictionary<string, int>? _frozenWindows;
+   private static (string Pattern, int Window)[] _sortedWindows = [];
 
-   private static FrozenDictionary<string, int> KnownWindows =>
-      _frozenWindows.Count == 0
-         ? FreezeWindows()
-         : _frozenWindows;
+   // Vision patterns are only ever tested for "does any pattern match", so there is no
+   // exact-match phase worth keeping — the sorted array serves the snapshot too.
+   private static string[] _sortedVisionPatterns = [];
 
-   private static FrozenSet<string> KnownVisionPatterns =>
-      _frozenVisionPatterns.Count == 0
-         ? FreezeVisionPatterns()
-         : _frozenVisionPatterns;
+   private static FrozenDictionary<string, int> KnownWindows
+   {
+      get
+      {
+         var current = _frozenWindows;
+         return current ?? FreezeWindows();
+      }
+   }
+
+   private static (string Pattern, int Window)[] SortedWindows
+   {
+      get
+      {
+         // The builder is never empty, so Length == 0 is a safe "not built yet" sentinel.
+         if (_sortedWindows.Length == 0)
+            FreezeWindows();
+
+         return _sortedWindows;
+      }
+   }
+
+   private static string[] SortedVisionPatterns
+   {
+      get
+      {
+         if (_sortedVisionPatterns.Length == 0)
+            FreezeVisionPatterns();
+
+         return _sortedVisionPatterns;
+      }
+   }
 
    private static FrozenDictionary<string, int> FreezeWindows()
    {
-      _frozenWindows = _windowsBuilder.ToFrozenDictionary();
+      // The comparer must be passed explicitly: the parameterless ToFrozenDictionary()
+      // falls back to EqualityComparer<string>.Default, which is ORDINAL, and would silently
+      // drop the case-insensitive behaviour the builder dictionaries are configured for.
+      _frozenWindows = _windowsBuilder.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+      // Ordered by descending pattern length so the first match is the most specific one and
+      // the scan can stop early. Without this, "llama3.2:7b" matched whichever of
+      // "llama3.2" (131072) / "llama3" (8192) the dictionary happened to enumerate first.
+      // The ordinal tie-break keeps the order reproducible for equal-length patterns.
+      _sortedWindows =
+      [
+         .. _windowsBuilder
+            .OrderByDescending(kvp => kvp.Key.Length)
+            .ThenBy(kvp => kvp.Key, StringComparer.Ordinal)
+            .Select(kvp => (kvp.Key, kvp.Value)),
+      ];
+
       return _frozenWindows;
    }
 
-   private static FrozenSet<string> FreezeVisionPatterns()
+   private static string[] FreezeVisionPatterns()
    {
-      _frozenVisionPatterns = _visionPatternsBuilder.ToFrozenSet();
-      return _frozenVisionPatterns;
+      _sortedVisionPatterns =
+      [
+         .. _visionPatternsBuilder
+            .OrderByDescending(pattern => pattern.Length)
+            .ThenBy(pattern => pattern, StringComparer.Ordinal),
+      ];
+
+      return _sortedVisionPatterns;
    }
 
    /// <summary>
-   ///    Freezes the registered model data so subsequent lookups use read-only
-   ///    frozen collections for optimal read performance. Call once at startup
-   ///    after all <see cref="Register" /> / <see cref="RegisterVisionPattern" />
-   ///    calls are complete.
+   ///    Eagerly builds the derived lookup structures so the first debate does not pay for
+   ///    it. Optional — every lookup builds them on first use. Call once at startup after all
+   ///    <see cref="Register" /> / <see cref="RegisterVisionPattern" /> calls are complete;
+   ///    a later Register still invalidates and rebuilds them.
    /// </summary>
    public static void Freeze()
    {
-      _frozenWindows = _windowsBuilder.ToFrozenDictionary();
-      _frozenVisionPatterns = _visionPatternsBuilder.ToFrozenSet();
+      FreezeWindows();
+      FreezeVisionPatterns();
    }
 
    /// <summary>
@@ -143,9 +198,12 @@ public static class ModelContextWindowRegistry
    public static bool SupportsVision(string modelName)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
-      foreach (var pattern in KnownVisionPatterns)
+
+      // Longest patterns first, so the most specific marker wins and the scan stops early.
+      foreach (var pattern in SortedVisionPatterns)
          if (modelName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
             return true;
+
       return false;
    }
 
@@ -179,13 +237,13 @@ public static class ModelContextWindowRegistry
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(modelNamePattern);
       _visionPatternsBuilder.Add(modelNamePattern);
-      _frozenVisionPatterns = FrozenSet<string>.Empty; // invalidate frozen cache
+      _sortedVisionPatterns = []; // invalidate the derived lookup
    }
 
    /// <summary>
    ///    Returns a read-only snapshot of all registered vision-capable model patterns.
    /// </summary>
-   public static IReadOnlyCollection<string> GetVisionPatterns() => KnownVisionPatterns;
+   public static IReadOnlyCollection<string> GetVisionPatterns() => SortedVisionPatterns;
 
    /// <summary>
    ///    Looks up the context window size for a model by name.
@@ -197,7 +255,14 @@ public static class ModelContextWindowRegistry
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
 
-      foreach (var (pattern, window) in KnownWindows)
+      // Fast path: the model name IS a registered pattern ("qwen", "gpt-4o").
+      if (KnownWindows.TryGetValue(modelName, out var exact))
+         return exact;
+
+      // Slow path: tagged or suffixed names ("llama3.2:7b", "my-fine-tuned-llama"), matched
+      // as case-insensitive substrings. The array is ordered longest-pattern-first, so the
+      // first hit is the most specific match rather than whichever entry came first.
+      foreach (var (pattern, window) in SortedWindows)
          if (modelName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
             return window;
 
@@ -219,7 +284,8 @@ public static class ModelContextWindowRegistry
       ArgumentOutOfRangeException.ThrowIfNegativeOrZero(contextWindowTokens);
 
       _windowsBuilder[modelNamePattern] = contextWindowTokens;
-      _frozenWindows = FrozenDictionary<string, int>.Empty; // invalidate frozen cache
+      _frozenWindows = null;                // invalidate the exact-match fast path
+      _sortedWindows = [];                  // invalidate the substring scan
    }
 
    /// <summary>

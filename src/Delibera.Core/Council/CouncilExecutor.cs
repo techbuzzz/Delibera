@@ -855,7 +855,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
             ExecutionOptions,
             _maxRounds,
             _temperature,
-            round =>
+            async (round, callbackCt) =>
             {
                Log(ExecutionLog.Info("Council", $"Round {round.RoundNumber} completed: {round.RoundName} ({round.Duration.TotalSeconds:F1}s, {round.Responses.Count} responses)"));
 
@@ -887,10 +887,7 @@ public sealed class CouncilExecutor : ICouncilExecutor
                      false);
                   try
                   {
-                     var next = selector.SelectNextAsync(progress, ct).AsTask();
-                     pendingSwitch = next.IsCompleted
-                        ? next.Result
-                        : next.GetAwaiter().GetResult();
+                     pendingSwitch = await selector.SelectNextAsync(progress, callbackCt).ConfigureAwait(false);
                      if (pendingSwitch is not null)
                         Log(ExecutionLog.Info("Council",
                            $"🔄 Adaptive strategy switch triggered after round {round.RoundNumber}: " +
@@ -908,8 +905,10 @@ public sealed class CouncilExecutor : ICouncilExecutor
                }
 
                // F-03: Save a checkpoint after each round so the debate can be resumed.
+               // Awaited rather than blocked on: this used to pin a thread-pool thread for
+               // the whole checkpoint write, once per round (W3-07).
                if (DebateStore is { } store)
-                  SaveCheckpointAsync(store, round, completedRounds, checkpointTarget, ct).GetAwaiter().GetResult();
+                  await SaveCheckpointAsync(store, round, completedRounds, checkpointTarget, callbackCt).ConfigureAwait(false);
 
                // Track the round AFTER the callbacks so it's included in the next checkpoint.
                completedRounds.Add(round);
