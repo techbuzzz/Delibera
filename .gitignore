@@ -451,3 +451,8 @@ FodyWeavers.xsd
 **/.*-session*
 **/.*-memory*
 **/.*-plans*
+
+# Local benchmark harness (never committed)
+# Ollama Cloud network sweep — needs a paid API key in UserSecrets and must stay
+# out of CI, so it lives outside Delibera.slnx by design.
+.bench/
