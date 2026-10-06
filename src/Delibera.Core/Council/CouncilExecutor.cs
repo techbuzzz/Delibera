@@ -78,7 +78,18 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
       Compressor = compressor;
       _compressionOptions = compressionOptions;
       CompressionCache = compressionCache;
-      ExecutionOptions = executionOptions ?? DebateExecutionOptions.Default;
+      ExecutionOptions = (executionOptions ?? DebateExecutionOptions.Default) with
+      {
+         // The compressor is attached to the execution options because that object is already
+         // threaded into every strategy, so the round-prompt path can reach it without widening
+         // the IDebateStrategy signature. Without this, a configured compressor was reachable
+         // only from CompressTextAsync, which no debate ever called.
+         ContextCompressor = compressor,
+         ContextCompressionOptions = compressionOptions,
+         ContextCompressionCache = compressionCache,
+         CompressionLogs = []
+      };
+      CompressionLogs = ExecutionOptions.CompressionLogs;
       _autoChunkingOptions = autoChunkingOptions;
       _telemetryOptions = telemetryOptions;
       DebateTimeout = debateTimeout;
@@ -113,6 +124,13 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
    ///    Populated from <see cref="CouncilBuilder" />.
    /// </summary>
    public DebateExecutionOptions ExecutionOptions { get; }
+
+   /// <summary>
+   ///   Compression operations recorded during the debate. Populated from
+   ///   <see cref="DebateResult.CompressionLogs" /> and <see cref="DebateResult.TokenStats" /> at
+   ///   the end of a run.
+   /// </summary>
+   public IReadOnlyList<CompressionLog> CompressionLogs { get; private set; } = [];
 
    /// <summary>
    ///    The configured debate-level wall-clock timeout. <c>null</c> means no timeout.
@@ -579,6 +597,49 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
    }
 
    /// <summary>
+   ///   Builds the token roll-up for a finished debate from the compression logs and the rounds.
+   /// </summary>
+   /// <remarks>
+   ///   Prompt figures come from the compressor's own counters, which are measured. Response
+   ///   figures come from <see cref="TokenCounter" />, the same estimator the library uses
+   ///   everywhere else, because the provider interface does not surface the API's exact output
+   ///   counter.
+   /// </remarks>
+   private static TokenStatistics BuildTokenStats(DebateResult result, IReadOnlyList<CompressionLog> logs)
+   {
+      ArgumentNullException.ThrowIfNull(result);
+      ArgumentNullException.ThrowIfNull(logs);
+
+      var counter = TokenCounter.Default;
+
+      var original = logs.Sum(l => l.OriginalTokens);
+      var compressed = logs.Sum(l => l.CompressedTokens);
+
+      var breakdown = new List<RoundTokenUsage>();
+      foreach (var round in result.Rounds)
+      {
+         var roundLogs = logs.Where(l => l.RoundNumber == round.RoundNumber).ToList();
+         var responseTokens = round.Responses.Sum(r => counter.EstimateTokens(r.Value));
+
+         breakdown.Add(new RoundTokenUsage(
+            round.RoundNumber,
+            round.RoundName,
+            roundLogs.Sum(l => l.OriginalTokens),
+            roundLogs.Sum(l => l.CompressedTokens),
+            responseTokens,
+            roundLogs.Count > 0 ? roundLogs[0].StrategyName : "None"));
+      }
+
+      return new TokenStatistics
+      {
+         TotalOriginalTokens = original,
+         TotalCompressedTokens = compressed,
+         TotalResponseTokens = result.Rounds.Sum(r => r.Responses.Sum(x => counter.EstimateTokens(x.Value))),
+         RoundBreakdown = breakdown
+      };
+   }
+
+   /// <summary>
    ///    Returns a formatted summary of the council configuration.
    /// </summary>
    public string GetInfo()
@@ -933,6 +994,21 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
             // Stamp the new strategy on the result's rounds so the audit trail reflects
             // which strategy was active when the switch was requested.
             result = result with { StrategyName = pendingSwitch.StrategyName };
+
+         // Publish what compression actually achieved. Until the round-prompt path called the
+         // compressor these two properties were never assigned anywhere in the library, so
+         // TokenStats stayed null and every consumer - telemetry, HTML export, the server DTO -
+         // had nothing to report.
+         if (CompressionLogs.Count > 0)
+         {
+            var logs = new List<CompressionLog>(CompressionLogs);
+            result = result with { CompressionLogs = logs, TokenStats = BuildTokenStats(result, logs) };
+
+            Log(ExecutionLog.Info(
+               "Compression",
+               $"{logs.Count} compression pass(es), {result.TokenStats!.SavedPercent:F1}% of prompt tokens saved " +
+               $"({result.TokenStats.TokensSaved:N0} tokens), total cost {logs.Aggregate(TimeSpan.Zero, (a, l) => a + l.Duration).TotalMilliseconds:F0} ms"));
+         }
 
          // F-09: Stamp StrategyUsed on every round so consumers can audit which strategy
          // produced each round.

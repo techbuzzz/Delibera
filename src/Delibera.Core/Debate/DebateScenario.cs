@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using Delibera.Core.Compression;
 using Delibera.Core.Council;
 
 namespace Delibera.Core.Debate;
@@ -76,12 +77,20 @@ public abstract partial class DebateScenario : IDebateStrategy
       var maxParallelism = executionOptions?.MaxDegreeOfParallelism ?? 0;
       var gates = maxParallelism > 0 ? new SemaphoreSlim(maxParallelism, maxParallelism) : null;
 
+      // Context compression. Historically the compressor was configured on the council but
+      // never invoked: CompressTextAsync is public API that nothing in the pipeline called, so
+      // every debate paid the full, growing transcript cost and DebateResult.TokenStats stayed
+      // null. The prompt that is about to be sent to every member is the thing compression
+      // exists to shrink, and in later rounds the accumulated transcript dominates it.
+      var effectivePrompt = await CompressPromptAsync(
+         userPrompt, roundNumber, roundName, executionOptions, ct).ConfigureAwait(false);
+
       var tasks = members.Select(async member =>
       {
          if (gates is not null) await gates.WaitAsync(ct).ConfigureAwait(false);
          try
          {
-            var response = await member.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
+            var response = await member.AskAsync(systemPrompt, effectivePrompt, temperature, ct).ConfigureAwait(false);
             return (member.Role, member.DisplayName, Response: response, Failed: false, Error: (string?)null);
          }
          catch (Exception ex)
@@ -138,6 +147,85 @@ public abstract partial class DebateScenario : IDebateStrategy
             return m.ModelName;
 
       return "unknown";
+   }
+
+   /// <summary>
+   ///   Compresses a round prompt when the configured compressor would actually save something.
+   /// </summary>
+   /// <remarks>
+   ///   Compression is best-effort: a compressor that throws or returns nothing leaves the prompt
+   ///   untouched, because a debate is more valuable than a few saved tokens. Each attempt appends a
+   ///   <see cref="CompressionLog" /> so the saving is observable afterwards - which is how the
+   ///   long-standing "compression silently does nothing" defect became visible in the first place.
+   /// </remarks>
+   protected static async Task<string> CompressPromptAsync(
+      string prompt,
+      int roundNumber,
+      string roundName,
+      DebateExecutionOptions? executionOptions,
+      CancellationToken ct)
+   {
+      ArgumentNullException.ThrowIfNull(prompt);
+
+      var compressor = executionOptions?.ContextCompressor;
+      var logs = executionOptions?.CompressionLogs;
+      if (compressor is null)
+         return prompt;
+
+      var counter = TokenCounter.Default;
+      var originalTokens = counter.EstimateTokens(prompt);
+      if (originalTokens < executionOptions!.CompressionThresholdTokens)
+         return prompt;
+
+      var sw = System.Diagnostics.Stopwatch.StartNew();
+      try
+      {
+         var result = await compressor
+            .CompressAsync(prompt, executionOptions.ContextCompressionOptions, ct)
+            .ConfigureAwait(false);
+         sw.Stop();
+
+         // A compressor that returns more text than it started with is not helping; keep the original.
+         if (string.IsNullOrWhiteSpace(result.Text) || result.OriginalTokens <= result.CompressedTokens)
+         {
+            logs?.Add(new CompressionLog
+            {
+               RoundNumber = roundNumber,
+               Description = $"Round {roundNumber} prompt ({roundName})",
+               StrategyName = result.StrategyUsed ?? compressor.StrategyName,
+               OriginalTokens = result.OriginalTokens,
+               CompressedTokens = result.OriginalTokens,
+               Duration = sw.Elapsed
+            });
+            return prompt;
+         }
+
+         logs?.Add(new CompressionLog
+         {
+            RoundNumber = roundNumber,
+            Description = $"Round {roundNumber} prompt ({roundName})",
+            StrategyName = result.StrategyUsed ?? compressor.StrategyName,
+            OriginalTokens = result.OriginalTokens,
+            CompressedTokens = result.CompressedTokens,
+            Duration = sw.Elapsed
+         });
+
+         return result.Text;
+      }
+      catch (Exception ex) when (ex is not OperationCanceledException)
+      {
+         sw.Stop();
+         logs?.Add(new CompressionLog
+         {
+            RoundNumber = roundNumber,
+            Description = $"Round {roundNumber} prompt ({roundName})",
+            StrategyName = compressor.StrategyName,
+            OriginalTokens = originalTokens,
+            CompressedTokens = originalTokens,
+            Duration = sw.Elapsed
+         });
+         return prompt;
+      }
    }
 
    /// <summary>Formats a single round's responses into readable text.</summary>

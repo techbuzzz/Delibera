@@ -1,3 +1,6 @@
+using Delibera.Core.Compression;
+using Microsoft.Extensions.Logging;
+
 namespace Delibera.Core.Models;
 
 /// <summary>
@@ -19,13 +22,38 @@ namespace Delibera.Core.Models;
 ///    Optional <see cref="ILogger" /> used by the executor and strategies to surface
 ///    progress to a host's logging pipeline. <c>null</c> disables structured logging.
 /// </param>
+/// <param name="ContextCompressor">
+///    Compressor applied to each round prompt before it is sent to the members. Populated by
+///    <c>CouncilExecutor</c> from the council's configured compressor; the round-prompt path is
+///    the only place in the pipeline that calls it.
+/// </param>
+/// <param name="ContextCompressionOptions">Options passed to <paramref name="ContextCompressor" />.</param>
+/// <param name="ContextCompressionCache">Optional cache for repeated prompts.</param>
+/// <param name="CompressionLogs">
+///    Sink for <see cref="CompressionLog" /> entries produced during the run. Shared by reference so
+///    that every round appends to the list the executor publishes on the result.
+/// </param>
 public sealed record DebateExecutionOptions(
    string? ResponseLanguage = null,
    int MaxDegreeOfParallelism = 0,
-   ILogger? Logger = null)
+   ILogger? Logger = null,
+   IContextCompressor? ContextCompressor = null,
+   CompressionOptions? ContextCompressionOptions = null,
+   CompressionCache? ContextCompressionCache = null,
+   List<CompressionLog>? CompressionLogs = null)
 {
+   /// <summary>
+   ///   Minimum prompt size, in tokens, before compression is attempted. Compressing a short
+   ///   prompt costs more than it saves, and every compressor in the library short-circuits
+   ///   below roughly this size anyway.
+   /// </summary>
+   public int CompressionThresholdTokens { get; init; } = 1_200;
+
    /// <summary>Singleton representing "no extra execution options" (legacy behaviour).</summary>
    public static DebateExecutionOptions Default { get; } = new();
+
+   /// <summary>Whether a compressor is available to the strategies.</summary>
+   public bool HasCompressor => ContextCompressor is not null;
 
    /// <summary>Whether a response language directive is configured.</summary>
    public bool HasResponseLanguage => !string.IsNullOrWhiteSpace(ResponseLanguage);
