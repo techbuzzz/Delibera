@@ -94,6 +94,19 @@ public sealed record DebateResult
    public IReadOnlyList<ExecutionLog> ExecutionLogs { get; init; } = [];
 
    /// <summary>
+   ///   Members that failed to produce an answer during the debate, in the round they failed.
+   /// </summary>
+   /// <remarks>
+   ///   A non-empty list means the verdict was synthesised from a partial council. Previously
+   ///   these failures were hidden: the error text was injected into the transcript as though it
+   ///   were the member's opinion, so nothing downstream could detect the gap.
+   /// </remarks>
+   public IReadOnlyList<MemberFailure> FailedMembers { get; init; } = [];
+
+   /// <summary><c>true</c> when at least one member failed during the debate.</summary>
+   public bool IsDegraded => FailedMembers.Count > 0;
+
+   /// <summary>
    ///    Deserialises <see cref="FinalVerdict" /> into <typeparamref name="TVerdict" />
    ///    using a <see cref="JsonSchemaOutputSerializer" />. Returns <c>null</c> on
    ///    failure. Used by <see cref="Interfaces.ICouncilExecutor.ExecuteTypedAsync{TVerdict}" />.

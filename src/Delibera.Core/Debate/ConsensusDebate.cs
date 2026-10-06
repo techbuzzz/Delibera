@@ -36,6 +36,9 @@ public sealed class ConsensusDebate : DebateScenario
       ArgumentNullException.ThrowIfNull(members);
       ArgumentNullException.ThrowIfNull(context);
       var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper, @operator);
+      // Same list instance handed to the builder and to every round; see StandardDebate.
+      var failures = new List<MemberFailure>();
+      builder.WithFailures(failures);
       var totalRounds = Math.Min(maxRounds, 4);
 
       // Operator briefing appended to participant system prompts.
@@ -62,7 +65,7 @@ public sealed class ConsensusDebate : DebateScenario
 
       // Round 1: Initial Perspectives
       var round1StartedAt = DateTime.UtcNow;
-      var r1 = await CollectResponsesAsync(members, baseSystemPrompt, enrichedPrompt, temperature, ct, executionOptions).ConfigureAwait(false);
+      var r1 = await CollectResponsesAsync(members, baseSystemPrompt, enrichedPrompt, temperature, ct, executionOptions, failures, 1, "Initial Perspectives").ConfigureAwait(false);
       var r1Op = await ProcessOperatorRequestsAsync(@operator, r1, executionOptions, ct).ConfigureAwait(false);
       var round1 = CreateRound(1, "Initial Perspectives", "Each model shares their perspective.", r1, knowledgeInteractions: r1Ki, operatorInteractions: r1Op, startedAt: round1StartedAt);
       builder.AddRound(round1);
@@ -95,7 +98,7 @@ public sealed class ConsensusDebate : DebateScenario
                       Identify: 1) Points of Agreement 2) Points of Disagreement 3) Bridge Proposals 4) Your Updated Position
                       """;
       var round2StartedAt = DateTime.UtcNow;
-      var r2 = await CollectResponsesAsync(members, r2Sys, r2Prompt, temperature, ct, executionOptions).ConfigureAwait(false);
+      var r2 = await CollectResponsesAsync(members, r2Sys, r2Prompt, temperature, ct, executionOptions, failures, 2, "Finding Common Ground").ConfigureAwait(false);
       var r2Op = await ProcessOperatorRequestsAsync(@operator, r2, executionOptions, ct).ConfigureAwait(false);
       var round2 = CreateRound(2, "Finding Common Ground", "Models identify agreements and disagreements.", r2, knowledgeInteractions: r2Ki, operatorInteractions: r2Op, startedAt: round2StartedAt);
       builder.AddRound(round2);
@@ -128,7 +131,7 @@ public sealed class ConsensusDebate : DebateScenario
                       Formulate: 1) Agreed points 2) Proposed unified answer 3) Remaining disagreements 4) Confidence (Low/Medium/High)
                       """;
       var round3StartedAt = DateTime.UtcNow;
-      var r3 = await CollectResponsesAsync(members, r3Sys, r3Prompt, temperature, ct, executionOptions).ConfigureAwait(false);
+      var r3 = await CollectResponsesAsync(members, r3Sys, r3Prompt, temperature, ct, executionOptions, failures, 3, "Consensus Building").ConfigureAwait(false);
       var r3Op = await ProcessOperatorRequestsAsync(@operator, r3, executionOptions, ct).ConfigureAwait(false);
       var round3 = CreateRound(3, "Consensus Building", "Models attempt a unified answer.", r3, knowledgeInteractions: r3Ki, operatorInteractions: r3Op, startedAt: round3StartedAt);
       builder.AddRound(round3);

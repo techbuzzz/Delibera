@@ -19,6 +19,7 @@ internal sealed class DebateResultBuilder(
    private DateTime? _completedAt;
    private string? _finalVerdict;
    private string? _openingStatement;
+   private IReadOnlyList<MemberFailure> _failures = [];
 
    public string StrategyName => strategy.StrategyName;
    public PromptContext Context => context;
@@ -39,6 +40,12 @@ internal sealed class DebateResultBuilder(
       _finalVerdict = verdict;
    }
 
+   /// <summary>Records members that failed during the debate so the result can report degradation.</summary>
+   public void WithFailures(IReadOnlyList<MemberFailure> failures)
+   {
+      _failures = failures;
+   }
+
    public void MarkCompleted()
    {
       _completedAt = DateTime.UtcNow;
@@ -57,7 +64,8 @@ internal sealed class DebateResultBuilder(
          OpeningStatement = _openingStatement,
          Rounds = _rounds,
          FinalVerdict = _finalVerdict,
-         CompletedAt = _completedAt
+         CompletedAt = _completedAt,
+         FailedMembers = _failures
       };
    }
 }

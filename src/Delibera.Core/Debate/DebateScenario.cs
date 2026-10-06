@@ -64,7 +64,10 @@ public abstract partial class DebateScenario : IDebateStrategy
       string userPrompt,
       float temperature,
       CancellationToken ct,
-      DebateExecutionOptions? executionOptions = null)
+      DebateExecutionOptions? executionOptions = null,
+      List<MemberFailure>? failures = null,
+      int roundNumber = 0,
+      string roundName = "")
    {
       // Bounding the fan-out keeps a large council from exhausting the HttpClient socket
       // pool or tripping provider rate limits. A semaphore is used rather than
@@ -79,11 +82,11 @@ public abstract partial class DebateScenario : IDebateStrategy
          try
          {
             var response = await member.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
-            return (member.Role, member.DisplayName, Response: response);
+            return (member.Role, member.DisplayName, Response: response, Failed: false, Error: (string?)null);
          }
          catch (Exception ex)
          {
-            return (member.Role, member.DisplayName, Response: $"[ERROR: {ex.Message}]");
+            return (member.Role, member.DisplayName, Response: (string?)null, Failed: true, Error: (string?)ex.Message);
          }
          finally
          {
@@ -97,7 +100,7 @@ public abstract partial class DebateScenario : IDebateStrategy
       // Disambiguate by appending a counter while preserving the original label for unique names.
       var seen = new HashSet<string>();
       var responses = new Dictionary<string, string>(results.Length);
-      foreach (var (role, displayName, response) in results)
+      foreach (var (role, displayName, response, failed, error) in results)
       {
          var key = $"{role}: {displayName}";
          if (!seen.Add(key))
@@ -109,10 +112,32 @@ public abstract partial class DebateScenario : IDebateStrategy
             key = $"{key} #{index}";
          }
 
-         responses[key] = response;
+         if (failed)
+         {
+            // A failed member is omitted from the round entirely. Substituting an "[ERROR: ...]"
+            // string here used to put an error into the transcript where the Chairman read it as
+            // an opinion, producing a verdict that looked complete but was not.
+            failures?.Add(new MemberFailure(
+               roundNumber, roundName, role, displayName, ResolveModel(members, displayName),
+               error ?? "unknown error"));
+            continue;
+         }
+
+         if (response is not null)
+            responses[key] = response;
       }
 
       return responses;
+   }
+
+   /// <summary>Resolves a member's model name for failure reporting, tolerating duplicate display names.</summary>
+   private static string ResolveModel(IReadOnlyList<CouncilMember> members, string displayName)
+   {
+      foreach (var m in members)
+         if (string.Equals(m.DisplayName, displayName, StringComparison.Ordinal))
+            return m.ModelName;
+
+      return "unknown";
    }
 
    /// <summary>Formats a single round's responses into readable text.</summary>

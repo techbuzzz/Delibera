@@ -55,6 +55,8 @@ public sealed partial class OllamaProvider : ILLMProvider
    private readonly IHttpClientFactory? _httpClientFactory;
    private readonly string? _httpClientName;
    private readonly int _maxOutputTokens;
+   private readonly bool _enableThinking;
+   private readonly bool _retryOnBudgetExhaustion;
    private readonly ResiliencePipeline? _pipeline;
    private bool _disposed;
 
@@ -97,6 +99,18 @@ public sealed partial class OllamaProvider : ILLMProvider
    ///    (the model/provider ceiling applies); overrides the OllamaSharp default of <c>128</c> which
    ///    truncates long responses mid-JSON. Pass a positive value to cap output per call.
    /// </param>
+   /// <param name="enableThinking">
+   ///   Sends <c>think</c> explicitly to the model. Reasoning models (gpt-oss, glm, deepseek)
+   ///   think by default, and the reasoning tokens come out of the same generation budget as the
+   ///   answer. When <c>false</c> the request carries <c>think: false</c>, so the whole budget is
+   ///   available for the answer. Set <c>true</c> only when you actually want the reasoning and
+   ///   have sized <paramref name="maxOutputTokens" /> to absorb it.
+   /// </param>
+   /// <param name="retryOnBudgetExhaustion">
+   ///   When a reasoning model burns the entire generation budget thinking and is cut off before
+   ///   emitting any answer (<c>done_reason: length</c> with zero content), retry once with a
+   ///   larger budget. Default <c>true</c>. Disable it to get the failure immediately.
+   /// </param>
    public OllamaProvider(
       string endpoint,
       string apiKey,
@@ -106,7 +120,9 @@ public sealed partial class OllamaProvider : ILLMProvider
       string? httpClientName = null,
       string? pipelineName = null,
       OllamaConnectionMode? mode = null,
-      int maxOutputTokens = -1)
+      int maxOutputTokens = -1,
+      bool enableThinking = false,
+      bool retryOnBudgetExhaustion = true)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
 
@@ -162,6 +178,79 @@ public sealed partial class OllamaProvider : ILLMProvider
 
       Client = client;
       _maxOutputTokens = maxOutputTokens;
+      _enableThinking = enableThinking;
+      _retryOnBudgetExhaustion = retryOnBudgetExhaustion;
+   }
+
+   /// <summary>One completed stream: the answer plus the signal needed to classify an empty one.</summary>
+   private readonly record struct StreamAttempt(
+      string Text,
+      string? DoneReason,
+      int ReasoningChars,
+      long PromptTokens,
+      long EvalTokens)
+   {
+      /// <summary>
+      ///   The generation budget ran out before any answer was produced. On a reasoning model
+      ///   this is the signature of "the whole budget went into thinking": content is empty,
+      ///   <c>done_reason</c> is <c>length</c>, and the reasoning field is non-empty.
+      /// </summary>
+      public bool ExhaustedBudget =>
+         string.IsNullOrEmpty(Text) && ReasoningChars > 0
+         && string.Equals(DoneReason, "length", StringComparison.OrdinalIgnoreCase);
+   }
+
+   /// <summary>
+   ///   Streams one request, accumulating the answer separately from the reasoning text.
+   /// </summary>
+   /// <remarks>
+   ///   <see cref="ChatRequest.Think" /> being false does not stop a model that thinks anyway
+   ///   from emitting reasoning, so <see cref="Message.Thinking" /> is counted rather than
+   ///   assumed absent. It is what distinguishes "budget spent on reasoning" from a genuinely
+   ///   empty response, and the two need different handling.
+   /// </remarks>
+   private async Task<StreamAttempt> StreamOnceAsync(ChatRequest request, CancellationToken token)
+   {
+      var sb = new StringBuilder();
+      var reasoningChars = 0;
+
+      var done = await Client.ChatAsync(request, token)
+         .StreamToEndAsync(chunk =>
+         {
+            if (chunk?.Message is not { } message)
+               return;
+
+            if (message.Content is { Length: > 0 } content)
+               sb.Append(content);
+
+            if (message.Thinking is { Length: > 0 } thought)
+               reasoningChars += thought.Length;
+         })
+         .ConfigureAwait(false);
+
+      return new StreamAttempt(
+         sb.ToString().Trim(),
+         done?.DoneReason,
+         reasoningChars,
+         done?.PromptEvalCount ?? 0,
+         done?.EvalCount ?? 0);
+   }
+
+   /// <summary>
+   ///   Picks the budget for the budget-exhaustion retry: double what the failed attempt was
+   ///   allowed, or fall back to the prompt size plus a generous allowance when the caller left
+   ///   the budget uncapped.
+   /// </summary>
+   private int NextBudget(long promptTokens, long evalTokens)
+   {
+      if (_maxOutputTokens > 0)
+         return _maxOutputTokens * 2;
+
+      // -1 means "unlimited" in the library, but the model still stops at its own ceiling and
+      // reports a length cut-off; a concrete retry budget is what makes the retry meaningful.
+      var spent = evalTokens > 0 ? (int)Math.Min(evalTokens, int.MaxValue) : 1024;
+      var floor = promptTokens > 0 ? (int)Math.Min(promptTokens, int.MaxValue) : 0;
+      return Math.Clamp(Math.Max(spent * 2, floor + 1024), 2048, 32_768);
    }
 
    /// <summary>The connection mode this provider was configured with.</summary>
@@ -270,14 +359,27 @@ public sealed partial class OllamaProvider : ILLMProvider
       {
          Model = model,
          Messages = messages,
-         // NumPredict: -1 (infinite) overrides the OllamaSharp default of 128 tokens, which
-         // truncates long responses (chairman council verdicts, schema discovery, summaries)
-         // mid-JSON and breaks downstream parsers. The provider ctor's maxOutputTokens
-         // (default -1) is the per-instance cap; pass a positive value to budget a call.
+         // NumPredict: the provider ctor's maxOutputTokens caps output per call.
+         //
+         // A non-positive maxOutputTokens means "no cap" and is sent as a *null* field, which
+         // OllamaSharp omits from the request so the server applies its own default (unlimited).
+         // Sending -1 explicitly does NOT work: Ollama Cloud rejects the request outright with
+         // "max_tokens must be positive, got: -1", so the previous -1 default made every call
+         // against Ollama Cloud fail before a single token was generated. Omitting the field also
+         // avoids OllamaSharp's own 128-token default, which truncated long responses
+         // (chairman verdicts, schema discovery, summaries) mid-JSON.
+         //
          // NumCtx is intentionally left unset — Ollama reads the native context window from
          // /api/show Modelfile (see GetModelCapabilitiesAsync), so hardcoding 8192 would
          // shrink the context for large models (gpt-oss:120b-cloud = 128K, yandexgpt-5-pro = 32K).
-         Options = new RequestOptions { Temperature = temperature, NumPredict = _maxOutputTokens }
+         Options = new RequestOptions
+         {
+            Temperature = temperature,
+            NumPredict = _maxOutputTokens > 0 ? _maxOutputTokens : null
+         },
+         // Sent explicitly: left unset, a reasoning model spends the shared generation budget on
+         // reasoning and can be cut off before writing a single character of answer.
+         Think = _enableThinking
       };
 
       // The chat operation is owned by OllamaSharp (it streams response chunks).
@@ -290,18 +392,21 @@ public sealed partial class OllamaProvider : ILLMProvider
       string? captured = null;
       Func<CancellationToken, ValueTask> operation = async token =>
       {
-         var sb = new StringBuilder();
-         await foreach (var chunk in Client.ChatAsync(request, token).ConfigureAwait(false))
+         var attempt = await StreamOnceAsync(request, token).ConfigureAwait(false);
+
+         // Budget exhaustion is not a transient failure: a reasoning model cut off at the same
+         // num_predict on the next attempt fails identically, and Polly's cloud pipeline only
+         // covers transport statuses. Retry once with a larger budget instead.
+         if (_retryOnBudgetExhaustion && attempt.ExhaustedBudget)
          {
-            if (chunk is not { Message.Content: { } content })
-               continue;
-            sb.Append(content);
+            request.Options.NumPredict = NextBudget(attempt.PromptTokens, attempt.EvalTokens);
+            attempt = await StreamOnceAsync(request, token).ConfigureAwait(false);
          }
 
-         var response = sb.ToString().Trim();
-         if (string.IsNullOrWhiteSpace(response))
-            throw new InvalidOperationException($"Empty response from model '{model}'.");
-         captured = response;
+         if (string.IsNullOrWhiteSpace(attempt.Text))
+            throw new OllamaEmptyResponseException(model, attempt.DoneReason, attempt.ReasoningChars);
+
+         captured = attempt.Text;
       };
 
       try

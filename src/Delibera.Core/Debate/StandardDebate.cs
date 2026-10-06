@@ -40,6 +40,11 @@ public sealed class StandardDebate : DebateScenario
       ArgumentNullException.ThrowIfNull(members);
       ArgumentNullException.ThrowIfNull(context);
       var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper, @operator);
+      // Handed to the builder up front: it is the same list instance the rounds fill in, so
+      // DebateResult.FailedMembers is complete by the time Build() runs, whichever FinalizeAsync
+      // path the round count selects.
+      var failures = new List<MemberFailure>();
+      builder.WithFailures(failures);
       var totalRounds = Math.Min(maxRounds, 4);
 
       // Operator briefing is appended to participant system prompts so they know what tools exist.
@@ -68,7 +73,7 @@ public sealed class StandardDebate : DebateScenario
          : $"{r1BasePrompt}\n\n📚 Knowledge Keeper context:\n{knowledgeContext}";
 
       var round1StartedAt = DateTime.UtcNow;
-      var r1Responses = await CollectResponsesAsync(members, baseSystemPrompt, r1Prompt, temperature, ct, executionOptions).ConfigureAwait(false);
+      var r1Responses = await CollectResponsesAsync(members, baseSystemPrompt, r1Prompt, temperature, ct, executionOptions, failures, 1, "Initial Responses").ConfigureAwait(false);
       // Operator: fulfil any [[OPERATOR: ...]] requests raised in round 1 (parallel, bounded).
       var r1Op = await ProcessOperatorRequestsAsync(@operator, r1Responses, executionOptions, ct).ConfigureAwait(false);
       var round1 = CreateRound(1, "Initial Responses",
@@ -109,7 +114,7 @@ public sealed class StandardDebate : DebateScenario
                       """;
 
       var round2StartedAt = DateTime.UtcNow;
-      var r2Responses = await CollectResponsesAsync(members, r2System, r2Prompt, temperature, ct, executionOptions).ConfigureAwait(false);
+      var r2Responses = await CollectResponsesAsync(members, r2System, r2Prompt, temperature, ct, executionOptions, failures, 2, "Critique").ConfigureAwait(false);
       var r2Op = await ProcessOperatorRequestsAsync(@operator, r2Responses, executionOptions, ct).ConfigureAwait(false);
       var round2 = CreateRound(2, "Critique",
          "Models critically analyse each other's responses.", r2Responses, r2Prompt, r2Ki, r2Op, round2StartedAt);
@@ -152,7 +157,7 @@ public sealed class StandardDebate : DebateScenario
                       """;
 
       var round3StartedAt = DateTime.UtcNow;
-      var r3Responses = await CollectResponsesAsync(members, r3System, r3Prompt, temperature, ct, executionOptions).ConfigureAwait(false);
+      var r3Responses = await CollectResponsesAsync(members, r3System, r3Prompt, temperature, ct, executionOptions, failures, 3, "Final Improved Responses").ConfigureAwait(false);
       var r3Op = await ProcessOperatorRequestsAsync(@operator, r3Responses, executionOptions, ct).ConfigureAwait(false);
       var round3 = CreateRound(3, "Final Improved Responses",
          "Models provide refined answers incorporating critiques.", r3Responses, r3Prompt, r3Ki, r3Op, round3StartedAt);
