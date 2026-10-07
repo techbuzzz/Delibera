@@ -71,7 +71,7 @@ dotnet add package Delibera.Core
 Или клонируйте репозиторий и сошлитесь на `Delibera.Core` напрямую:
 
 ```bash
-git clone https://github.com/delibera/Delibera.git
+git clone https://github.com/techbuzzz/Delibera.git
 cd Delibera
 ```
 

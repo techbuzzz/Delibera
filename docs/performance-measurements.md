@@ -1,7 +1,9 @@
 # Measured behaviour
 
 Everything on this page was measured against **Ollama Cloud** (`https://api.ollama.com`) on
-2026-10-06 with real API keys, not estimated. Reproduce with the harnesses described at the bottom.
+2026-10-06 with real API keys, not estimated. Sections 1-5 exercise the library through harnesses;
+section 6 measures `Delibera.Server` running as a container. Reproduce with the harnesses described
+at the bottom.
 
 Numbers are reported as observed. Where a result contradicted a documented claim, the claim is
 flagged rather than repeated.
@@ -186,6 +188,125 @@ overstate a sub-second lookup by roughly two orders of magnitude. Use `CacheHit`
 
 ---
 
+## 6. Delibera.Server
+
+Measured against the container: `docker compose -f docker-compose.yml up -d`, published on
+`localhost:5200`, with Redis and Qdrant alongside and models on Ollama Cloud (chat) plus a local
+`nomic-embed-text` (embeddings — Ollama Cloud serves none).
+
+### Transport and control surface
+
+Everything here is a stopwatch reading against a running container.
+
+| Check | Surface | ms |
+|---|---|---:|
+| `GET /health` | REST | 110 |
+| `GET /templates` (5 registered) | REST | 36 |
+| `POST /corpora` | REST | 37 |
+| `POST /corpora/{id}/documents` (1 real chunk written) | RAG ingest | 321 |
+| `POST /mcp` initialize | MCP | 132 |
+| `POST /mcp` tools/list (6 tools) | MCP | 46 |
+| `POST /mcp` tools/call | MCP | 52 |
+
+Control-plane calls answer in **36-321 ms**. Nothing in the request path is expensive; the entire
+server cost is deliberation time, below.
+
+### Debates over HTTP
+
+Completed records resident at the moment this table was taken — n=8:
+
+| | ms |
+|---|---:|
+| fastest | 125,308 |
+| slowest | 601,903 |
+
+By template: `risk-committee` n=3, 125,308–178,003 ms; `code-review` n=5, 202,968–601,903 ms.
+
+A median is deliberately not quoted: the population moves as records are evicted, so the median of
+this set changes every time a debate is added. The range and the per-template split are the stable
+statements.
+
+The spread is the template talking, not the server: `code-review` seats five members and
+`risk-committee` three, and rounds fan out in parallel, so round cost tracks member count.
+
+A full record with token accounting, `risk-committee` / grounded in a corpus:
+
+| | |
+|---|---|
+| `durationMs` | 155,309 |
+| rounds | 4 |
+| prompt tokens | 10,136 |
+| output tokens | 11,813 |
+| saved by compression | 5,105 |
+
+> **Round count caveat.** This record ran **4** rounds. The request asked for 2 — but
+> `CreateDebateRequest` has no top-level `maxRounds`; the only override is the nested
+> `Options.MaxRounds`. A top-level key is not an error, it is simply ignored by the JSON binder, so
+> the template fell back to its `DefaultMaxRounds` of 4. The override path is
+> `"options": { "maxRounds": 2 }`.
+
+**Caveat on this whole subsection:** completed records are evicted by a background timer
+(`CompletedRecordLifetime`), so the set shrinks while you read. Figures here were captured from the
+server's own `durationMs` at a point in time; re-running the harness produces a different sample,
+not the same one.
+
+### SSE
+
+`GET /debates/{id}/stream` replays a debate that has already completed. Verified on a completed
+4-round debate (82 KB of stream):
+
+| order | event | content |
+|---|---|---|
+| 1 | `debate-round` | **all** rounds in a single frame |
+| 2 | `debate-completed` | final payload, then the stream closes |
+
+A live tail behaves differently: it emits **one `debate-round` per completed round** as they happen,
+plus heartbeats, then `debate-completed`. So the two shapes are not interchangeable — a replay is
+one big frame, a live subscription is many. Subscribe before the debate finishes if you want
+progress; subscribing after gives you the whole thing at once.
+
+A `Failed` debate streams `debate-error` and a cancelled one `debate-cancelled`; neither replays
+rounds.
+
+### What measuring the server found
+
+Four defects, all fixed in this release. None were visible from the library harnesses in sections 1-5,
+because they live in the server's configuration surface and in code the library never reaches.
+
+1. **`createdAt` equalled `completedAt` on every debate.** The synchronous path built its record
+   *after* `ExecuteAsync` returned, and `CreatedAt` defaulted to an object initialiser, so a 41-second
+   debate reported zero duration. `DebateResponse` now carries `DurationMs`. Verified: a debate
+   measured at 110.2 s reported 110,038 ms.
+2. **The built-in templates could not reach any model the operator configured.** Five templates read
+   `Delibera:Models:Fast` / `Delibera:Models:Strong`, while compose published only
+   `Delibera__Providers__DefaultModel`, which templates never read. Ten code references, zero
+   configuration mappings — so the server started healthy and then returned HTTP 500 on the first real
+   debate with `HTTP error talking to Ollama (model: qwen2.5:7b): 404`.
+3. **Qdrant was permanently unhealthy.** Its healthcheck called `wget`, and the `qdrant/qdrant` image
+   ships bash but no wget, curl or nc, with `/bin/sh` as dash (no `/dev/tcp`). The server only started
+   at all because the dependency is marked `required: false`, so one of two backing stores failing
+   was invisible.
+4. **RAG was configured but inert.** `IRagProvider` was never resolvable from DI, the corpus API
+   computed a chunk estimate without embedding or storing anything, and no template attached a
+   Knowledge Keeper — although all five declared `RagEnabled => true`. Now fixed: real indexing, one
+   collection per corpus, and a keeper attached whenever RAG is on and the request names corpora.
+
+After the fixes, a corpus-grounded `risk-committee` debate produced **4 knowledge interactions —
+one in every round**, including the Chairman's. Verified twice: once on `5e5faa57…` and again on a
+fresh `bd4eb00b…` (178,003 ms, 4 rounds) after that earlier record had been evicted. In both cases
+`GET /debates/{id}/rounds` reported `knowledgeInteractions = 1` for each of rounds 1-4.
+
+`operatorInteractions` was 0 on every debate measured: the server attaches a Knowledge Keeper, not
+an Operator, so the MCP tooling in section 4 is not reachable through this surface.
+
+### A smaller finding
+
+A rejected request still leaves a `Failed` debate record behind: five `Failed` records of ~145 ms
+each were present in `GET /debates` for requests that never passed validation. Harmless today, but a
+polluting caller would misreport its rejection rate.
+
+---
+
 ## Reproducing
 
 | harness | what it measures |
@@ -193,11 +314,21 @@ overstate a sub-second lookup by roughly two orders of magnitude. Use `CacheHit`
 | `.bench/OllamaCloudBench` | per-model TTFT, throughput, token counts and cost |
 | `.bench/DebateBench` | full debate transcripts, per-round timing, per-model output volume, verdict quality |
 | `.bench/DeepBench` | compression, RAG, Operator/MCP, Redis, end-to-end feature matrix |
+| `.bench/ServerBench/Measure-Server.ps1` | `Delibera.Server` over REST, SSE and MCP plus the corpus ingest path |
 
 Each needs a key in `Bench:OllamaCloud:ApiKey` via `dotnet user-secrets set`. `DeepBench` also
 expects Redis and Qdrant in Docker and a local `nomic-embed-text` for embeddings — Ollama Cloud
 offers no embedding model. Harnesses live under `.bench/`, which is excluded from Git, CI and the
 solution.
+
+The server harness is a PowerShell script rather than a project, so it runs with no build step. Two
+things about it are worth knowing before debugging a failure from it:
+
+- **POSTs go through `curl.exe`, not `Invoke-RestMethod`.** Windows PowerShell 5.1 rejects these
+  JSON bodies with a bare HTTP 400 — verified as client-side, since the identical request via curl
+  returns 202. It looks like an API defect and is not.
+- **Drive `/debates/async`, not `/debates`.** The blocking endpoint holds the connection for the whole
+  deliberation, which measures as one opaque number and overruns client timeouts.
 
 ### The one harness bug in these numbers
 
