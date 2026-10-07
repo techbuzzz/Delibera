@@ -725,7 +725,7 @@ await result.SaveLogsAsync("logs.md");
 
 ```bash
 # Клонировать репозиторий
-git clone https://github.com/delibera/Delibera.git
+git clone https://github.com/techbuzzz/Delibera.git
 cd Delibera/src/Delibera.ConsoleApp
 
 # Запустить конкретный пример
@@ -754,7 +754,7 @@ dotnet run
 ### Клонирование и сборка
 
 ```bash
-git clone https://github.com/delibera/Delibera.git
+git clone https://github.com/techbuzzz/Delibera.git
 cd Delibera
 
 # Собрать всё решение

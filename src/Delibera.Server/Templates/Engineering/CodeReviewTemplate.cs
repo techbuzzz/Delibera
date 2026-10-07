@@ -1,4 +1,4 @@
-using Delibera.Core.Council;
+﻿using Delibera.Core.Council;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
 using Delibera.Core.Providers;
@@ -9,16 +9,16 @@ using Delibera.Server.Templates.Registry;
 namespace Delibera.Server.Templates.Engineering;
 
 /// <summary>
-/// Code Review Council — Vertical 2: Software Engineering &amp; Code/Architecture Review.
+/// Code Review Council â€” Vertical 2: Software Engineering &amp; Code/Architecture Review.
 ///
 /// Members:
-///   Reviewer         — code quality, patterns, readability
-///   Defender         — represents the author, explains intent
-///   QA               — edge cases, testability, regression risk
-///   SecurityEngineer — vulnerability, injection, secrets exposure
-///   TechLead         — overall judgement: merge / request changes / escalate
+///   Reviewer         â€” code quality, patterns, readability
+///   Defender         â€” represents the author, explains intent
+///   QA               â€” edge cases, testability, regression risk
+///   SecurityEngineer â€” vulnerability, injection, secrets exposure
+///   TechLead         â€” overall judgement: merge / request changes / escalate
 ///
-/// Strategy : CritiqueDebate → BordaCountVoting → Chairman produces structured verdict.
+/// Strategy : CritiqueDebate â†’ BordaCountVoting â†’ Chairman produces structured verdict.
 /// Output   : CodeReviewVerdict (Decision, Summary, Issues[], Suggestions[], Confidence)
 /// </summary>
 public sealed class CodeReviewTemplate : IServerTemplate
@@ -50,7 +50,7 @@ public sealed class CodeReviewTemplate : IServerTemplate
       var maxRounds = request.Options?.MaxRounds ?? DefaultMaxRounds;
       var temp = request.Options?.Temperature ?? 0.4f;
 
-      return new CouncilBuilder()
+      var builder = new CouncilBuilder()
          .AddMember(strongModel, llm, "Reviewer",
             persona: "Senior code reviewer. Champion of clean code, SOLID principles, naming clarity, and maintainability. " +
                      "You cite specific line numbers and patterns. You are thorough and objective.")
@@ -89,5 +89,7 @@ public sealed class CodeReviewTemplate : IServerTemplate
          .WithMaxRounds(maxRounds)
          .WithTemperature(temp)
          .WithStructuredOutput<CodeReviewVerdict>();
+
+      return TemplateKnowledge.Attach(builder, request, services);
    }
 }

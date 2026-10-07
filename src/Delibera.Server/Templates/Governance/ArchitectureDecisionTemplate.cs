@@ -1,4 +1,4 @@
-using Delibera.Core.Council;
+﻿using Delibera.Core.Council;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
 using Delibera.Core.Providers;
@@ -9,15 +9,15 @@ using Delibera.Server.Templates.Registry;
 namespace Delibera.Server.Templates.Governance;
 
 /// <summary>
-/// Architecture Decision Council — for ADR / RFC decisions.
+/// Architecture Decision Council â€” for ADR / RFC decisions.
 ///
 /// Members:
-///   Architect (lead)  — patterns, maintainability, coupling
-///   SecurityEngineer  — threat model, attack surface
-///   PerformanceEngineer — throughput, latency, scalability
-///   TechLead          — team capability, delivery risk, pragmatism
+///   Architect (lead)  â€” patterns, maintainability, coupling
+///   SecurityEngineer  â€” threat model, attack surface
+///   PerformanceEngineer â€” throughput, latency, scalability
+///   TechLead          â€” team capability, delivery risk, pragmatism
 ///
-/// Strategy : CritiqueDebate → BordaCountVoting → Chairman produces ADR summary.
+/// Strategy : CritiqueDebate â†’ BordaCountVoting â†’ Chairman produces ADR summary.
 /// </summary>
 public sealed class ArchitectureDecisionTemplate : IServerTemplate
 {
@@ -47,7 +47,7 @@ public sealed class ArchitectureDecisionTemplate : IServerTemplate
       var strongModel = configuration["Delibera:Models:Strong"] ?? "qwen2.5:7b";
       var maxRounds = request.Options?.MaxRounds ?? DefaultMaxRounds;
 
-      return new CouncilBuilder()
+      var builder = new CouncilBuilder()
          .AddMember(strongModel, llm, "Architect",
             persona: "Senior solution architect. Champion of clean boundaries, SOLID, and long-term maintainability.")
          .AddMember(fastModel, llm, "SecurityEngineer",
@@ -77,5 +77,7 @@ public sealed class ArchitectureDecisionTemplate : IServerTemplate
          .WithMaxRounds(maxRounds)
          .WithTemperature(request.Options?.Temperature ?? 0.7f)
          .WithStructuredOutput<ArchitectureVerdict>();
+
+      return TemplateKnowledge.Attach(builder, request, services);
    }
 }

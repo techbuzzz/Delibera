@@ -25,6 +25,10 @@ public static class ServerServiceExtensions
       // Business services
       services.AddSingleton<ITemplateRegistry, TemplateRegistry>();
       services.AddSingleton<IDebateOrchestrationService, DebateOrchestrationService>();
+      // Shared by corpus indexing and the Knowledge Keeper so both sides agree on the embedding
+      // model and vector size. Registered unconditionally: it reports Enabled == false rather than
+      // throwing when Rag is switched off.
+      services.AddSingleton<ServerRagProviderFactory>();
       services.AddSingleton<ICorpusService, CorpusService>();
 
       // Validators (auto-scan assembly)

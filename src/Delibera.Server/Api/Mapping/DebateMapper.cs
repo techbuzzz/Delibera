@@ -28,6 +28,9 @@ public static class DebateMapper
          ResultUrl = $"{baseUrl}/api/v1/debates/{record.DebateId}/result",
          CreatedAt = record.CreatedAt,
          CompletedAt = record.CompletedAt,
+         DurationMs = record.CompletedAt is { } completed
+            ? (long)(completed - record.CreatedAt).TotalMilliseconds
+            : null,
       };
    }
 

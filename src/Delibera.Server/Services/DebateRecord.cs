@@ -38,7 +38,13 @@ public sealed class DebateRecord
    public ConcurrentQueue<DebateRound> Rounds { get; } = new();
 
    public string? ErrorMessage { get; set; }
-   public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
+
+   /// <summary>
+   ///    When the debate started. Settable because the synchronous endpoints finish before the
+   ///    record is constructed, so the object initialiser would otherwise stamp it at completion
+   ///    and make it indistinguishable from <see cref="CompletedAt" />.
+   /// </summary>
+   public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
    public DateTimeOffset? CompletedAt { get; set; }
    public string Label { get; set; } = string.Empty;
 

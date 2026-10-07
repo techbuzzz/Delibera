@@ -471,7 +471,7 @@ project that exercises every feature. Run it from the repo root:
 
 ```bash
 # Clone the repository
-git clone https://github.com/delibera/Delibera.git
+git clone https://github.com/techbuzzz/Delibera.git
 cd Delibera/src/Delibera.ConsoleApp
 
 # Run a specific example
@@ -499,7 +499,7 @@ multiple providers, RAG, and compression in one place.
 ### Clone & Build
 
 ```bash
-git clone https://github.com/delibera/Delibera.git
+git clone https://github.com/techbuzzz/Delibera.git
 cd Delibera
 
 # Build the entire solution

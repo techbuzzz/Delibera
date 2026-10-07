@@ -57,8 +57,9 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
       CancellationToken ct = default)
    {
       var builder = ResolveTemplateBuilder(request);
+      var startedAt = DateTimeOffset.UtcNow;
       var result = await _orchestrator.ExecuteAsync(builder, ct).ConfigureAwait(false);
-      var record = CreateRecord(request.TemplateId, tenantId, request.Question);
+      var record = CreateRecord(request.TemplateId, tenantId, request.Question, startedAt);
       record.Result = result;
       record.Status = DebateStatus.Completed;
       record.CompletedAt = DateTimeOffset.UtcNow;
@@ -84,8 +85,9 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
       CancellationToken ct = default)
    {
       var builder = ScenarioBuilder.Build(scenario, _configuration);
+      var startedAt = DateTimeOffset.UtcNow;
       var result = await _orchestrator.ExecuteAsync(builder, ct).ConfigureAwait(false);
-      var record = CreateRecord("scenario", tenantId, scenario.Label ?? scenario.Question);
+      var record = CreateRecord("scenario", tenantId, scenario.Label ?? scenario.Question, startedAt);
       record.Result = result;
       record.Status = DebateStatus.Completed;
       record.CompletedAt = DateTimeOffset.UtcNow;
@@ -195,7 +197,13 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
       return template.Configure(request, _services, _configuration);
    }
 
-   private DebateRecord CreateRecord(string templateId, string tenantId, string label)
+   /// <param name="createdAt">
+   ///   When the debate actually started. Must be stamped <i>before</i> execution begins: on the
+   ///   synchronous paths the record is created after the debate returns, so defaulting
+   ///   <c>CreatedAt</c> to the object initialiser made it identical to <c>CompletedAt</c> and
+   ///   reported a 41-second debate as zero-length.
+   /// </param>
+   private DebateRecord CreateRecord(string templateId, string tenantId, string label, DateTimeOffset? createdAt = null)
    {
       var record = new DebateRecord
       {
@@ -203,6 +211,7 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
          TemplateId = templateId,
          TenantId = tenantId,
          Label = label,
+         CreatedAt = createdAt ?? DateTimeOffset.UtcNow,
       };
 
       _records[record.DebateId] = record;

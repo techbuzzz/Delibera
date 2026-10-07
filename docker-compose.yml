@@ -46,6 +46,15 @@ services:
       Delibera__Providers__DefaultModel:    ${DELIBERA_MODEL:-qwen2.5:14b}
       Delibera__Providers__EmbeddingModel:  ${DELIBERA_EMBEDDING_MODEL:-nomic-embed-text}
       Delibera__Providers__ApiKey:          ${DELIBERA_API_KEY:-}
+      # — council models —
+      # The built-in templates (code-review, architecture-decision, risk-committee,
+      # requirements-review, legal-contract-review) read these two keys, NOT
+      # Delibera:Providers:DefaultModel, to pick their fast and strong participants.
+      # Without them every template falls back to llama3.2:3b / qwen2.5:7b, which
+      # Ollama Cloud answers with HTTP 404 — so setting DELIBERA_MODEL alone produced a
+      # server that started healthy and then failed on the first real debate.
+      Delibera__Models__Fast:               ${DELIBERA_MODELS_FAST:-llama3.2:3b}
+      Delibera__Models__Strong:             ${DELIBERA_MODELS_STRONG:-qwen2.5:7b}
       # — debate defaults —
       Delibera__Strategy:    ${DELIBERA_STRATEGY:-Standard}
       Delibera__MaxRounds:   ${DELIBERA_MAX_ROUNDS:-4}
@@ -57,6 +66,11 @@ services:
       # — RAG —
       Delibera__Rag__Enabled:           ${DELIBERA_RAG_ENABLED:-false}
       Delibera__Rag__ProviderType:      ${DELIBERA_RAG_PROVIDER:-Qdrant}
+      # Qdrant is addressed over gRPC, so it needs Host/Port — ConnectionString below is only
+      # consulted by the pgvector provider.
+      Delibera__Rag__Host:               ${DELIBERA_RAG_HOST:-qdrant}
+      Delibera__Rag__Port:               ${DELIBERA_RAG_PORT:-6334}
+      Delibera__Rag__CollectionName:     ${DELIBERA_RAG_COLLECTION:-council_knowledge}
       Delibera__Rag__ConnectionString:  ${DELIBERA_RAG_CONNECTION:-http://qdrant:6333}
       # — output —
       Delibera__Output__Directory:      /app/debate_results
@@ -143,8 +157,10 @@ services:
       - "6334:6334"
     volumes:
       - qdrant-data:/qdrant/storage
+    # The qdrant/qdrant image ships bash but no wget, curl or nc, and its /bin/sh is dash
+    # (no /dev/tcp) — a wget-based check therefore fails forever. Bash's /dev/tcp does the job.
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:6333/readyz"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && printf 'GET /readyz HTTP/1.0\\r\\n\\r\\n' >&3 && timeout 5 head -n 1 <&3 | grep -q '200'"]
       interval: 10s
       timeout: 5s
       retries: 10
