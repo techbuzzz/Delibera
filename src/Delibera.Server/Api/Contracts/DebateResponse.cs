@@ -13,6 +13,17 @@ public sealed record DebateResponse
    public string? ErrorMessage { get; init; }
    public bool? CacheHit { get; init; }
    public string? CacheKey { get; init; }
+
+   /// <summary>
+   ///   Wall-clock duration in milliseconds, derived from <c>CompletedAt - CreatedAt</c>.
+   ///   <c>null</c> while the debate is still running.
+   /// </summary>
+   /// <remarks>
+   ///   Present because the timestamps alone are easy to misread: on the synchronous endpoint the
+   ///   record is built after execution returns, so a defaulted <c>CreatedAt</c> made both stamps
+   ///   identical and a 41-second debate looked instantaneous.
+   /// </remarks>
+   public long? DurationMs { get; init; }
    public string? Label { get; init; }
    public required string StreamUrl { get; init; } // SSE endpoint
    public required string ResultUrl { get; init; }
