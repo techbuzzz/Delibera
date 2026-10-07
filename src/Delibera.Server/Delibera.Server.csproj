@@ -11,6 +11,42 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
   </PropertyGroup>
 
+  <!-- NuGet package metadata.
+       Microsoft.NET.Sdk.Web does not inherit the library defaults, so every field Core gets for
+       free has to be stated here: otherwise the package ships with no description, no licence
+       expression and no icon, and nuget.org rejects it. -->
+  <PropertyGroup>
+    <PackageId>Delibera.Server</PackageId>
+    <!-- Microsoft.NET.Sdk.Web sets IsPackable=false because the Web SDK's default output is an
+         app, not a library. This project ships as a reusable library, so it must opt back in. -->
+    <IsPackable>true</IsPackable>
+    <Version>10.5.1</Version>
+    <Title>Delibera Server</Title>
+    <Description>ASP.NET Core host for the Delibera multi-model AI council framework: debate, scenario, corpus, SSE streaming and MCP endpoints mountable inside an existing application through AddDeliberaServer/UseDeliberaServer. All routes live under /api/v1 so they cannot collide with your own endpoints. Depends on Delibera.Core.</Description>
+    <Authors>Victor Buzin</Authors>
+    <PackageTags>llm;ai;debate;council;deliberation;aspnetcore;minimal-api;server;api;sse;server-sent-events;mcp;model-context-protocol;rag;opentelemetry;serilog;multi-model</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageProjectUrl>https://github.com/techbuzzz/Delibera</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/techbuzzz/Delibera</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReleaseNotes>First GA release of Delibera.Server as a standalone package.
+
+The 10.5.0 package page for Delibera.Core shows a 514-test figure; the measured count at that tag was 532 (424 Core + 108 Server). This package ships the corrected numbers in the 10.5.1 release notes.</PackageReleaseNotes>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <!-- icon.png and README.md must physically exist next to the csproj: a PackageIcon or
+       PackageReadmeFile pointing at ..\..\ does not resolve during pack. -->
+  <ItemGroup>
+    <None Include="icon.png" Pack="true" PackagePath="\" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Core -->
     <ProjectReference Include="..\Delibera.Core\Delibera.Core.csproj" />

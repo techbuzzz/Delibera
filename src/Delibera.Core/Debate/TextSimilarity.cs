@@ -4,7 +4,8 @@ namespace Delibera.Core.Debate;
 
 /// <summary>
 ///    Text similarity used by the adaptive-strategy heuristics: the per-round diversity
-///    score and the near-identical-response stalemate check.
+///    score and the near-identical-response stalemate check. Also used by
+///    <c>DebateResult.Diff</c> to score how far two debates drifted apart.
 /// </summary>
 /// <remarks>
 ///    <para>
@@ -13,35 +14,47 @@ namespace Delibera.Core.Debate;
 ///    implementation here so the two heuristics cannot drift apart.
 ///    </para>
 ///    <para>
-///    The score is a <em>heuristic</em>, not a metric anyone consumes: it decides whether a
-///    council looks stuck. Edit distance is quadratic in the input, and a participant
+///    The heuristics score is a <em>heuristic</em>, not a metric anyone consumes: it decides
+///    whether a council looks stuck. Edit distance is quadratic in the input, and a participant
 ///    response can be several thousand characters, so a 5-member round spent hundreds of
-///    millions of cell updates on the strategy's own thread between two LLM calls. Input is
-///    therefore truncated to <see cref="MaxComparedLength" /> characters: the cost becomes
-///    bounded and constant, while the properties the heuristics rely on — identical texts
-///    score 1.0, unrelated texts score low — are unaffected.
+///    millions of cell updates on the strategy's own thread between two LLM calls. Those
+///    callers therefore keep the default <see cref="MaxComparedLength" /> cap: the cost becomes
+///    bounded and constant, while the properties the heuristics rely on — identical texts score
+///    1.0, unrelated texts score low — are unaffected.
+///    </para>
+///    <para>
+///    A caller that needs the score to mean something over the <em>whole</em> text passes an
+///    explicit maximum length (the debate diff passes <see cref="int.MaxValue" />).
+///    Quietly inheriting the heuristic cap there would report two long verdicts that differ at
+///    the end as "similar" purely because the comparison stopped early.
 ///    </para>
 /// </remarks>
-internal static class TextSimilarity
+public static class TextSimilarity
 {
    /// <summary>
-   ///    Maximum number of characters compared per text. Bounds the cost at
+   ///    Default maximum number of characters compared per text. Bounds the cost at
    ///    2 × MaxComparedLength² cell updates per pair instead of scaling with the response.
    /// </summary>
-   internal const int MaxComparedLength = 1024;
+   public const int MaxComparedLength = 1024;
 
    /// <summary>
    ///    Normalised similarity in [0, 1], where 1.0 means the compared prefixes are
    ///    identical. Short-circuits on reference equality, on a length difference too large
    ///    to be similar, and on a difference inside the compared prefix.
    /// </summary>
-   internal static double Similarity(string? a, string? b)
+   /// <param name="a">First text.</param>
+   /// <param name="b">Second text.</param>
+   /// <param name="maxLength">
+   ///    Maximum characters taken from each side. Pass <see cref="int.MaxValue" /> to compare
+   ///    the full text; the default keeps the cost bounded for the adaptive-strategy heuristics.
+   /// </param>
+   public static double Similarity(string? a, string? b, int maxLength = MaxComparedLength)
    {
       if (ReferenceEquals(a, b) || string.Equals(a, b, StringComparison.Ordinal)) return 1.0;
       if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return 0.0;
 
-      var lenA = Math.Min(a.Length, MaxComparedLength);
-      var lenB = Math.Min(b.Length, MaxComparedLength);
+      var lenA = Math.Min(a.Length, maxLength);
+      var lenB = Math.Min(b.Length, maxLength);
       var maxLen = Math.Max(lenA, lenB);
       if (maxLen == 0) return 1.0;
 
@@ -56,10 +69,11 @@ internal static class TextSimilarity
 
    /// <summary>
    ///    True when the two responses are similar enough to count as the same argument.
-   ///    Uses the same truncation as <see cref="Similarity" />, so the threshold keeps a
-   ///    stable meaning regardless of how long the responses are.
+   ///    Uses the same truncation as <see cref="Similarity(string, string, int)" /> with the
+   ///    default cap, so the threshold keeps a stable meaning regardless of how long the
+   ///    responses are.
    /// </summary>
-   internal static bool AreNearIdentical(string? a, string? b, double threshold = 0.8)
+   public static bool AreNearIdentical(string? a, string? b, double threshold = 0.8)
    {
       // Length alone can rule it out: the distance is at least |lenA - lenB|.
       if (a is not null && b is not null && a.Length > 0 && b.Length > 0)

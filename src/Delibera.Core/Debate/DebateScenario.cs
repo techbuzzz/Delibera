@@ -1,7 +1,9 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using Delibera.Core.Compression;
+using Delibera.Core.Cost;
 using Delibera.Core.Council;
+using Delibera.Core.Tools;
 
 namespace Delibera.Core.Debate;
 
@@ -90,7 +92,35 @@ public abstract partial class DebateScenario : IDebateStrategy
          if (gates is not null) await gates.WaitAsync(ct).ConfigureAwait(false);
          try
          {
-            var response = await member.AskAsync(systemPrompt, effectivePrompt, temperature, ct).ConfigureAwait(false);
+            // Cost gate and rate limiter run before the call, not after: the point is to avoid
+            // spending the next call, and a check placed after the response can only report a
+            // breach that already happened. A denial records the member as failed rather than
+            // throwing, so the debate still returns a degraded result carrying the spend so far.
+            var admission = await AdmitAsync(member, executionOptions, ct).ConfigureAwait(false);
+            if (!admission.IsAllowed)
+               return (member.Role, member.DisplayName, Response: (string?)null, Failed: true, Error: admission.DenialReason);
+
+            var tools = await ResolveToolsAsync(executionOptions, ct).ConfigureAwait(false);
+
+         string response;
+         IReadOnlyList<ToolCallLog> toolCalls = [];
+         if (tools.Count > 0)
+         {
+            // Tools change what a member call costs, so the ledger has to see the extra
+            // round-trips the tool loop makes, not just the final answer.
+            (response, toolCalls) = await ToolCallingMemberExecutor.AskAsync(
+               member, tools, systemPrompt, effectivePrompt, temperature,
+               executionOptions?.MaxToolIterations ?? 3, roundNumber, ct).ConfigureAwait(false);
+
+            if (toolCalls.Count > 0)
+               executionOptions?.GetOrCreateToolCalls().AddRange(toolCalls);
+         }
+         else
+         {
+            response = await member.AskAsync(systemPrompt, effectivePrompt, temperature, ct).ConfigureAwait(false);
+         }
+
+         executionOptions?.RecordMemberCall(member, systemPrompt, effectivePrompt, response);
             return (member.Role, member.DisplayName, Response: response, Failed: false, Error: (string?)null);
          }
          catch (Exception ex)
@@ -137,6 +167,68 @@ public abstract partial class DebateScenario : IDebateStrategy
       }
 
       return responses;
+   }
+
+   /// <summary>
+   ///    Resolves the tool catalogue for this run, caching it on the options so every member and
+   ///    every round enumerates the providers once rather than per call.
+   /// </summary>
+   private static ValueTask<IReadOnlyList<AIFunction>> ResolveToolsAsync(
+      DebateExecutionOptions? options,
+      CancellationToken ct)
+   {
+      if (options is null || options.ToolProvider is null && options.MemberTools is null)
+         return ValueTask.FromResult<IReadOnlyList<AIFunction>>([]);
+
+      return options.GetOrCreateToolsAsync(ct);
+   }
+
+   /// <summary>
+   ///    Runs the configured cost gate and rate limiter for one member call and reports whether
+   ///    the call may proceed.
+   /// </summary>
+   /// <remarks>
+   ///    The cost gate is consulted first: waiting behind a rate limiter only to be denied by the
+   ///    budget would burn the wait. A rate limiter that refuses (<c>Throw</c> or <c>Drop</c>)
+   ///    surfaces as a member failure rather than an exception, matching how the rest of the
+   ///    fan-out reports per-member trouble.
+   /// </remarks>
+   private static async ValueTask<(bool IsAllowed, string? DenialReason)> AdmitAsync(
+      CouncilMember member,
+      DebateExecutionOptions? options,
+      CancellationToken ct)
+   {
+      if (options is null) return (true, null);
+
+      if (options.CostGate is { } gate)
+      {
+         var decision = await gate.CheckAsync(options.GetOrCreateLedger().Build(), ct).ConfigureAwait(false);
+         if (!decision.IsAllowed)
+         {
+            options.GetOrCreateLedger().MarkTruncated();
+            options.Logger?.LogWarning(
+               "Debate stopped before {Member} could be called: {Reason}",
+               member.DisplayName,
+               decision.Reason);
+
+            return (false, decision.Reason ?? "Cost limit reached.");
+         }
+      }
+
+      if (options.RateLimiter is { } limiter)
+      {
+         try
+         {
+            await limiter.AcquireAsync(member.Provider.ProviderName, member.ModelName, member.DisplayName, ct)
+               .ConfigureAwait(false);
+         }
+         catch (RateLimitExceededException ex)
+         {
+            return (false, ex.Message);
+         }
+      }
+
+      return (true, null);
    }
 
    /// <summary>Resolves a member's model name for failure reporting, tolerating duplicate display names.</summary>

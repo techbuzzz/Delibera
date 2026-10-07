@@ -1,0 +1,214 @@
+syntax = "proto3";
+
+package delibera.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Delibera.Grpc.V1";
+
+// ---------------------------------------------------------------------------
+// Debates
+// ---------------------------------------------------------------------------
+
+// Lifecycle of a debate. The numeric values are pinned explicitly: the REST API
+// serialises the same states as strings (JsonStringEnumConverter), so a client
+// reading either transport has to be able to line the two up. Relying on implicit
+// ordinals would silently couple the wire format to declaration order, which is
+// exactly the kind of change that breaks clients without failing a build.
+enum DebateStatus {
+  DEBATE_STATUS_UNSPECIFIED = 0;
+  DEBATE_STATUS_PENDING = 1;
+  DEBATE_STATUS_RUNNING = 2;
+  DEBATE_STATUS_COMPLETED = 3;
+  DEBATE_STATUS_CANCELLED = 4;
+  DEBATE_STATUS_FAILED = 5;
+}
+
+// Which RAG backend a corpus is indexed against.
+enum CorpusProvider {
+  CORPUS_PROVIDER_UNSPECIFIED = 0;
+  CORPUS_PROVIDER_QDRANT = 1;
+  CORPUS_PROVIDER_PGVECTOR = 2;
+}
+
+message DebateOptionsOverride {
+  optional float temperature = 1;
+  optional int32 max_rounds = 2;
+}
+
+message MemberWeight {
+  string member = 1;
+  float weight = 2;
+}
+
+message CreateDebateRequest {
+  string question = 1;
+  optional DebateOptionsOverride options = 2;
+  map<string, float> member_weights = 3;
+  // Free-form JSON the caller wants visible to members; the REST contract types
+  // this as JsonElement, which has no protobuf equivalent.
+  optional google.protobuf.Struct input_data = 4;
+}
+
+message DebateResponse {
+  string debate_id = 1;
+  DebateStatus status = 2;
+  google.protobuf.Timestamp created_at = 3;
+  optional google.protobuf.Timestamp completed_at = 4;
+  optional string label = 5;
+  optional bool cache_hit = 6;
+  optional string cache_key = 7;
+}
+
+message DebateListResponse {
+  repeated DebateResponse debates = 1;
+}
+
+message RoundDto {
+  string debate_id = 1;
+  int32 round_number = 2;
+  string round_name = 3;
+  string description = 4;
+  map<string, string> responses = 5;
+}
+
+// Round bodies are deliberately absent from this surface: the orchestrator exposes
+// progress as a stream and the durable transcript through the debate store, which
+// the REST surface reads. A response whose `rounds` list was always empty would
+// read as "this debate produced no rounds", so GetDebate returns the status instead.
+message DebateDetailResponse {
+  DebateResponse debate = 1;
+}
+
+message CancelDebateRequest {
+  string debate_id = 1;
+}
+
+message CancelDebateResponse {
+  bool cancelled = 1;
+}
+
+// One event on the streaming channel. Terminal events carry a debate_* kind;
+// RoundEvent carries a completed round.
+message DebateStreamEvent {
+  oneof kind {
+    DebateResponse started = 1;
+    RoundDto round = 2;
+    DebateResponse completed = 3;
+    DebateStreamError error = 4;
+  }
+}
+
+message DebateStreamError {
+  string message = 1;
+  DebateStatus status = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Scenarios
+// ---------------------------------------------------------------------------
+
+message ScenarioMember {
+  string name = 1;
+  string model = 2;
+  string role = 3;
+  float weight = 4;
+}
+
+message ScenarioRequest {
+  string question = 1;
+  string name = 2;
+  repeated ScenarioMember members = 3;
+  optional float temperature = 4;
+  optional google.protobuf.Struct input_data = 5;
+  map<string, string> metadata = 6;
+}
+
+message ScenarioValidationResult {
+  bool is_valid = 1;
+  repeated string errors = 2;
+  repeated string warnings = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Corpus / knowledge
+// ---------------------------------------------------------------------------
+
+message CorpusDocument {
+  string id = 1;
+  string file_name = 2;
+  int64 size_bytes = 3;
+  google.protobuf.Timestamp indexed_at = 4;
+  int32 chunk_count = 5;
+  map<string, string> metadata = 6;
+}
+
+message CorpusDto {
+  string id = 1;
+  string name = 2;
+  CorpusProvider provider = 3;
+  google.protobuf.Timestamp created_at = 4;
+  int32 document_count = 5;
+}
+
+message ListCorpusRequest {
+  optional int32 page = 1;
+  optional int32 page_size = 2;
+}
+
+message CorpusListResponse {
+  repeated CorpusDto corpora = 1;
+  int32 total = 2;
+}
+
+message CorpusDocumentListResponse {
+  repeated CorpusDocument documents = 1;
+}
+
+message IndexDocumentRequest {
+  string corpus_id = 1;
+  bytes content = 2;
+  string file_name = 3;
+}
+
+message IndexDocumentResponse {
+  CorpusDocument document = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Services
+// ---------------------------------------------------------------------------
+
+service DebateService {
+  rpc CreateDebate (CreateDebateRequest) returns (DebateResponse);
+  rpc GetDebate (GetDebateRequest) returns (DebateResponse);
+  rpc ListDebates (ListDebatesRequest) returns (DebateListResponse);
+  rpc CancelDebate (CancelDebateRequest) returns (CancelDebateResponse);
+  // Server streaming: one DebateStreamEvent per round, then exactly one terminal
+  // event. The SSE writer in Delibera.Server already had a defect where the
+  // heartbeat pump compared a winner against a second ValueTask.AsTask() and
+  // delivered zero rounds; the reader here must not repeat that pattern — one
+  // pending move per iteration, settled before disposal.
+  rpc StreamDebate (GetDebateRequest) returns (stream DebateStreamEvent);
+}
+
+message GetDebateRequest {
+  string debate_id = 1;
+}
+
+message ListDebatesRequest {
+  optional int32 page = 1;
+  optional int32 page_size = 2;
+}
+
+service ScenarioService {
+  rpc RunScenario (ScenarioRequest) returns (DebateResponse);
+  rpc ValidateScenario (ScenarioRequest) returns (ScenarioValidationResult);
+}
+
+service CorpusService {
+  rpc ListCorpora (ListCorpusRequest) returns (CorpusListResponse);
+  rpc ListDocuments (CancelDebateRequest) returns (CorpusDocumentListResponse);
+  rpc IndexDocument (IndexDocumentRequest) returns (IndexDocumentResponse);
+}

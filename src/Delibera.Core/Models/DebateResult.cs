@@ -94,6 +94,19 @@ public sealed record DebateResult
    public IReadOnlyList<ExecutionLog> ExecutionLogs { get; init; } = [];
 
    /// <summary>
+   ///    What the debate cost, populated when a cost gate, rate limiter or price list was
+   ///    configured. <c>null</c> otherwise — token counts are only ever an estimate of what the
+   ///    provider billed, so they are reported explicitly rather than always-on.
+   /// </summary>
+   public CostEstimate? CostEstimate { get; init; }
+
+   /// <summary>
+   ///    Tool calls made by members across the whole debate, populated when tools were
+   ///    configured. Round-level detail is on <see cref="DebateRound.ToolCalls" />.
+   /// </summary>
+   public IReadOnlyList<ToolCallLog> ToolCalls { get; init; } = [];
+
+   /// <summary>
    ///   Members that failed to produce an answer during the debate, in the round they failed.
    /// </summary>
    /// <remarks>

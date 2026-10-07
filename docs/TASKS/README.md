@@ -1,11 +1,15 @@
-# Delibera · Stabilization & Performance Plan (v10.3.1 → v10.4.0)
+# Delibera · Stabilization & Performance Plan (v10.3.1 → v10.5.1)
 
 > **Author:** AI assistant (with @techbuzzz input)
 > **Date:** October 2026
-> **Branch:** `feature/v10.3.1`
+> **Branch:** `feat/v10.5.1`
 > **Baseline (v10.3.1 as found):** `dotnet build -c Release` → **11 errors** (NU1605) / 15 warnings; tests could not run at all
-> **Current:** **0 errors / 0 warnings** (also clean under `-warnaserror`); `dotnet test` → **514 passed** of 514 discovered (406 Core + 108 Server), 0 failed, 0 skipped — the 5 SSE failures outstanding at 10.3.x are fixed
-> **Status:** Release gate green for v10.4.0
+> **Current (measured on this tree, v10.5.1):** **0 errors / 0 warnings** (also clean under `-warnaserror`); `dotnet test` → **595 passed** of 595 discovered (477 Core + 108 Server + 10 gRPC contract), 0 failed, 0 skipped
+> **Status:** Release gate green for v10.5.1. All six open GitHub issues closed.
+
+Test counts in this file are measured at the commit they describe, not carried forward. An earlier
+revision quoted 514/406 — the 10.4.0 figure — and that number reached the public nuget.org page for
+`Delibera.Core` 10.5.0, which still shows it.
 
 ---
 
@@ -62,7 +66,7 @@ comfort: W1 correctness → W2 performance → W3 architecture → W4 server →
 
 ## 4. Master table
 
-Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · ❓ needs owner decision
+Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · ❓ needs owner decision · 📋 documented, no code change · 🟡 partial
 
 ### W0 — Build & toolchain
 | ID | Task | Pri | Status |
@@ -97,6 +101,18 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · �
 | W2-07 | `YandexGptProvider`: throwaway `HttpRequestMessage` + double payload copy | P2 | ⬜ |
 | W2-08 | `DebateScenario` operator regex runs on every response even with no operator | P2 | ✅ |
 | W2-09 | Fan-out without `MaxDegreeOfParallelism` cap (`:58-71`) | P2 | ✅ |
+| W2-10 | Context compression configured but never invoked from the pipeline | P1 | ✅ |
+| W2-11 | `[ERROR: ...]` substituted as a member response; Chairman read it as an opinion | P1 | ✅ |
+| W2-12 | `DebateResult.TotalDuration` negative on every debate | P1 | ✅ |
+| W2-13 | `WithCache` missing from `ICouncilBuilder` | P2 | ❓ |
+| W2-14 | Cache-hit `TotalDuration` reports provenance, not caller wait time | P2 | ❓ |
+| W2-15 | Vector-store indexing not idempotent — duplicate corpus on re-index | P1 | ✅ |
+| W2-16 | One reasoning model produced 68.8% of member output (roster hazard) | P2 | 📋 |
+
+W2-10…W2-16 come from the 2026-10-06 measurement round; they were previously tracked only in
+[W2-performance-core.md](W2-performance-core.md) and were missing from this index. W2-13 and W2-14
+are ❓ pending an owner decision (both are documented rather than patched); W2-16 is 📋 — a
+roster-selection hazard recorded with guidance, no framework change.
 
 ### W3 — API & architecture
 | ID | Task | Pri | Status |
@@ -120,9 +136,14 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · �
 | W4-05 | FluentValidation covers 1 of 4 request contracts | P1 | ✅ |
 | W4-06 | `ValidationFilter` returns 422 while OpenAPI documents 400 | P2 | ✅ |
 | W4-07 | `CorpusService` singleton mutates a plain `Dictionary`/`List` | P1 | ✅ |
-| W4-08 | Dockerfile HEALTHCHECK calls `wget` that the image does not contain | P1 | ⬜ |
+| W4-08 | Dockerfile HEALTHCHECK calls `wget` that the image does not contain | P1 | ✅ |
 | W4-09 | MCP tool JSON built by string concatenation (unescaped) | P1 | ✅ |
-| W4-10 | SSE: no heartbeat, no terminal event, unbounded channel | P2 | ⬜ |
+| W4-10 | SSE: no heartbeat, no terminal event, unbounded channel | P2 | 🟡 |
+
+🟡 W4-10 is partial: the SSE writer is fixed (heartbeat, `retry:` hint, terminal event pinned
+by tests), but the round channels at `LocalDebateOrchestrator.cs:251` and
+`RedisDebateOrchestrator.cs:419` are still `Channel.CreateUnbounded`. W4-08 is code-fixed and
+still needs `docker compose up` + `docker inspect` to confirm the built image reports healthy.
 
 ### W5 — Tests, gates, docs
 | ID | Task | Pri | Status |
@@ -155,8 +176,9 @@ standing property of the test suite:
 - [x] `dotnet build -c Release` → 0 errors, **0 warnings**
 - [x] `TreatWarningsAsErrors=true` in CI — `publish-nuget.yml` builds with `-warnaserror`
 - [ ] `dotnet test` → green, with a regression test for every W1 item
-      *(tests are green: 514/514. The "regression test for every W1 item" half is not
-      re-verified here.)*
+      *(tests are green: 532/532 — 424 Core + 108 Server, re-measured on this tree, not carried
+      forward. The "regression test for every W1 item" half is **not verified**: no audit has
+      established that every W1 item has a corresponding test, so this box stays open.)*
 - [x] No `GetAwaiter().GetResult()` / `.Result` / `.Wait()` in `src/` outside `Dispose` —
       one occurrence remains, `VectorStoreFactory.DisposeInstances`, which is a disposal path
 - [ ] No `new Regex(` in a hot path (already true — keep it true)

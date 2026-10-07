@@ -66,17 +66,27 @@ public sealed class VectorStoreFactory : CachingFactory<Func<IConfigurationSecti
    /// <summary>
    ///    Creates a Qdrant RAG provider with direct parameters.
    /// </summary>
+   /// <param name="embeddingProvider">Embedding provider for vectorisation.</param>
+   /// <param name="host">Qdrant host name.</param>
+   /// <param name="port">Qdrant gRPC port.</param>
+   /// <param name="https">Whether to connect over TLS.</param>
+   /// <param name="apiKey">Optional Qdrant API key.</param>
+   /// <param name="logger">
+   ///    Optional logger. Supplying one lets the provider report a collection that still holds
+   ///    legacy random-id points from Delibera 10.5.0 or earlier.
+   /// </param>
    public IRagProvider CreateQdrant(
       IEmbeddingProvider embeddingProvider,
       string host = "localhost",
       int port = 6334,
       bool https = false,
-      string? apiKey = null)
+      string? apiKey = null,
+      ILogger? logger = null)
    {
       var key = $"qdrant:{host}:{port}";
       if (GetInstance(key) is { } existing) return existing;
 
-      var provider = new QdrantRagProvider(embeddingProvider, host, port, https, apiKey);
+      var provider = new QdrantRagProvider(embeddingProvider, host, port, https, apiKey, logger);
       return CacheInstance(key, provider);
    }
 
@@ -85,12 +95,16 @@ public sealed class VectorStoreFactory : CachingFactory<Func<IConfigurationSecti
    /// </summary>
    /// <param name="embeddingProvider">Embedding provider for vectorisation.</param>
    /// <param name="connectionString">PostgreSQL connection string.</param>
-   public IRagProvider CreatePgVector(IEmbeddingProvider embeddingProvider, string connectionString)
+   /// <param name="logger">
+   ///    Optional logger. Supplying one lets the provider report a collection that still holds
+   ///    legacy random-id points from Delibera 10.5.0 or earlier.
+   /// </param>
+   public IRagProvider CreatePgVector(IEmbeddingProvider embeddingProvider, string connectionString, ILogger? logger = null)
    {
       var key = $"pgvector:{connectionString.GetHashCode():X8}";
       if (GetInstance(key) is { } existing) return existing;
 
-      var provider = new PgVectorRagProvider(embeddingProvider, connectionString);
+      var provider = new PgVectorRagProvider(embeddingProvider, connectionString, logger);
       return CacheInstance(key, provider);
    }
 

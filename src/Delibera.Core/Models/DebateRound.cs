@@ -74,6 +74,13 @@ public sealed record DebateRound
    public string? RoundPrompt { get; init; }
 
    /// <summary>
+   ///    Tool calls made by members during this round. Empty when no tools were configured or
+   ///    when no member used one. Init-only, so adding it does not disturb existing construction
+   ///    sites.
+   /// </summary>
+   public IReadOnlyList<ToolCallLog> ToolCalls { get; init; } = [];
+
+   /// <summary>
    ///    The strategy that produced this round. <c>null</c> for rounds built before
    ///    F-09 (adaptive strategy switching) was introduced. Set by
    ///    <see cref="Council.CouncilExecutor" /> when a <see cref="Debate.IStrategySelector" />

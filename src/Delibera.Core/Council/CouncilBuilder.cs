@@ -2,6 +2,7 @@ using Delibera.Core.Attachments;
 using Delibera.Core.Caching;
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
+using Delibera.Core.Cost;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Memory;
@@ -26,6 +27,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private IAgentMemory? _agentMemory;
    private AutoChunkingOptions? _autoChunkingOptions;
    private CouncilMember? _chairman;
+   private ICostGate? _costGate;
    private CompressionCache? _compressionCache;
    private CompressionOptions? _compressionOptions;
    private IContextCompressor? _compressor;
@@ -34,6 +36,13 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private IKnowledgeBase? _knowledgeBase;
    private KnowledgeKeeper? _knowledgeKeeper;
    private ILogger? _logger;
+   private IModelPricingRegistry? _pricingRegistry;
+   private IRateLimiter? _rateLimiter;
+   private RateLimitPolicy? _rateLimitPolicy;
+   private IToolProvider? _toolProvider;
+   private IReadOnlyList<AIFunction>? _memberTools;
+   private int _maxToolIterations = 3;
+   private int _compressionThresholdTokens = 1_200;
    private int _maxDegreeOfParallelism;
    private int? _maxParticipants;
    private int _maxRounds = 4;
@@ -759,7 +768,18 @@ public sealed class CouncilBuilder : ICouncilBuilder
       var executionOptions = new DebateExecutionOptions(
          _responseLanguage,
          _maxDegreeOfParallelism,
-         _logger);
+         _logger)
+      {
+         CompressionThresholdTokens = _compressionThresholdTokens,
+         CostGate = _costGate,
+         RateLimiter = _rateLimiter,
+         PricingRegistry = _pricingRegistry,
+         RateLimitPolicy = _rateLimitPolicy,
+         ToolProvider = _toolProvider,
+         MemberTools = _memberTools,
+         MaxToolIterations = _maxToolIterations,
+         ToolCallLog = []
+      };
 
       return new CouncilExecutor(
          _members.AsReadOnly(),
@@ -789,5 +809,152 @@ public sealed class CouncilBuilder : ICouncilBuilder
          _fileReaders,
          _cacheBehavior,
          _cache);
+   }
+
+   // ──────────────────────────────────────────────
+   // Cost control and rate limiting
+   //
+   // Deliberately on the concrete class only. These set builder state, so an abstract member on
+   // ICouncilBuilder would be a source-breaking change for anyone who implemented that
+   // interface — the cost of which the 10.5.x releases explicitly avoid. A caller holding an
+   // ICouncilBuilder can still pass these through DebateExecutionOptions.
+   // ──────────────────────────────────────────────
+
+   /// <summary>
+   ///    Caps the total spend of a debate. Once the ceiling would be crossed the remaining
+   ///    member calls are skipped, the debate returns a degraded result carrying the spend so
+   ///    far, and <see cref="CostEstimate.WasTruncated" /> is set.
+   /// </summary>
+   /// <param name="limit">Maximum total spend; must be positive.</param>
+   /// <param name="behavior">
+   ///    What to do at the ceiling. Defaults to <see cref="CostLimitBehavior.Abort" />, which
+   ///    stops calling models and still reports the money already spent.
+   /// </param>
+   /// <returns>The same builder.</returns>
+   /// <exception cref="ArgumentOutOfRangeException">The limit is not positive.</exception>
+   public CouncilBuilder WithCostLimit(decimal limit, CostLimitBehavior behavior = CostLimitBehavior.Abort)
+   {
+      ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+      _costGate = new BudgetCostGate(limit, behavior);
+      return this;
+   }
+
+   /// <summary>
+   ///    Uses a caller-supplied cost gate, for ceilings this builder does not model.
+   /// </summary>
+   /// <param name="gate">The gate to consult before each member call.</param>
+   /// <returns>The same builder.</returns>
+   public CouncilBuilder WithCostGate(ICostGate gate)
+   {
+      _costGate = gate ?? throw new ArgumentNullException(nameof(gate));
+      return this;
+   }
+
+   /// <summary>
+   ///    Allows at most <paramref name="callsPerWindow" /> model calls inside
+   ///    <paramref name="window" />. Excess calls wait asynchronously rather than failing, so a
+   ///    throttled debate is slower, not wrong.
+   /// </summary>
+   /// <param name="callsPerWindow">Permit count; must be positive.</param>
+   /// <param name="window">Rolling window length; must be positive.</param>
+   /// <param name="behavior">What to do when the window is exhausted.</param>
+   /// <param name="scope">What the limit applies to.</param>
+   /// <returns>The same builder.</returns>
+   public CouncilBuilder WithRateLimit(
+      int callsPerWindow,
+      TimeSpan window,
+      RateLimitBehavior behavior = RateLimitBehavior.Queue,
+      RateLimitScope scope = RateLimitScope.PerModel)
+   {
+      _rateLimitPolicy = RateLimitPolicy.PerMinute(callsPerWindow, window, behavior, scope);
+      _rateLimiter = new TokenBucketRateLimiter(_rateLimitPolicy);
+      return this;
+   }
+
+   /// <summary>
+   ///    Uses a caller-supplied rate limiter, replacing any limit set previously.
+   /// </summary>
+   /// <param name="limiter">The limiter to consult before each member call.</param>
+   /// <returns>The same builder.</returns>
+   public CouncilBuilder WithRateLimiter(IRateLimiter limiter)
+   {
+      _rateLimiter = limiter ?? throw new ArgumentNullException(nameof(limiter));
+      return this;
+   }
+
+   /// <summary>
+   ///    Supplies the price list used to turn token counts into money. Without one, costs are
+   ///    reported as estimates at zero — a model with no price must not read as a free model.
+   /// </summary>
+   /// <param name="registry">The price list to consult per model.</param>
+   /// <returns>The same builder.</returns>
+   public CouncilBuilder WithPricingRegistry(IModelPricingRegistry registry)
+   {
+      _pricingRegistry = registry ?? throw new ArgumentNullException(nameof(registry));
+      return this;
+   }
+
+   /// <summary>
+   ///    Lowers or raises the prompt size, in tokens, at which compression is attempted.
+   /// </summary>
+   /// <param name="tokens">Threshold in tokens; must be positive.</param>
+   /// <returns>The same builder.</returns>
+   /// <exception cref="ArgumentOutOfRangeException">The threshold is not positive.</exception>
+   public CouncilBuilder WithCompressionThreshold(int tokens)
+   {
+      ArgumentOutOfRangeException.ThrowIfNegativeOrZero(tokens);
+      _compressionThresholdTokens = tokens;
+      return this;
+   }
+
+   /// <summary>
+   ///    Lets members call tools while forming their response.
+   /// </summary>
+   /// <remarks>
+   ///    <para>
+   ///    A provider whose members run on <c>ChatClientLLMProvider</c> gets native function
+   ///    calling. Any other provider gets the <c>[[TOOL: name {json}]]</c> marker protocol,
+   ///    because the string-only adapter cannot carry structured tool traffic. Both write the
+   ///    same <see cref="ToolCallLog" />, so the audit trail is identical either way.
+   ///    </para>
+   ///    <para>
+   ///    Granting members tools grants them the tool's authority. A filesystem provider is
+   ///    rooted at one directory; an HTTP provider is limited to an allow-list and refuses
+   ///    plain HTTP. Neither is safe by accident.
+   ///    </para>
+   /// </remarks>
+   /// <param name="provider">Supplies the tools members may call.</param>
+   /// <returns>The same builder.</returns>
+   public CouncilBuilder WithTools(IToolProvider provider)
+   {
+      _toolProvider = provider ?? throw new ArgumentNullException(nameof(provider));
+      return this;
+   }
+
+   /// <summary>
+   ///    Hands specific tools to every member, for callers that already have
+   ///    <see cref="AIFunction" /> instances and need no provider abstraction.
+   /// </summary>
+   /// <param name="tools">Tools every member may call.</param>
+   /// <returns>The same builder.</returns>
+   public CouncilBuilder WithTools(params AIFunction[] tools)
+   {
+      ArgumentNullException.ThrowIfNull(tools);
+      _memberTools = tools;
+      return this;
+   }
+
+   /// <summary>
+   ///    Bounds how many tool round-trips one member turn may make. A model that keeps asking
+   ///    for tools would otherwise keep the debate alive indefinitely.
+   /// </summary>
+   /// <param name="iterations">Maximum round-trips; must be positive.</param>
+   /// <returns>The same builder.</returns>
+   /// <exception cref="ArgumentOutOfRangeException">The bound is not positive.</exception>
+   public CouncilBuilder WithMaxToolIterations(int iterations)
+   {
+      ArgumentOutOfRangeException.ThrowIfNegativeOrZero(iterations);
+      _maxToolIterations = iterations;
+      return this;
    }
 }

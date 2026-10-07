@@ -19,8 +19,9 @@ public sealed class PgVectorRagProvider : BaseRagProvider
    /// </summary>
    /// <param name="vectorStore">PgVector vector store instance.</param>
    /// <param name="embeddingProvider">Embedding provider for vectorisation.</param>
-   public PgVectorRagProvider(IVectorStore vectorStore, IEmbeddingProvider embeddingProvider)
-      : base(vectorStore, embeddingProvider)
+   /// <param name="logger">Optional logger used to report collections holding legacy random-id points.</param>
+   public PgVectorRagProvider(IVectorStore vectorStore, IEmbeddingProvider embeddingProvider, ILogger? logger = null)
+      : base(vectorStore, embeddingProvider, logger)
    {
    }
 
@@ -29,8 +30,12 @@ public sealed class PgVectorRagProvider : BaseRagProvider
    /// </summary>
    /// <param name="embeddingProvider">Embedding provider for vectorisation.</param>
    /// <param name="connectionString">PostgreSQL connection string.</param>
-   public PgVectorRagProvider(IEmbeddingProvider embeddingProvider, string connectionString)
-      : this(new PgVectorStore(connectionString), embeddingProvider)
+   /// <param name="logger">Optional logger used to report collections holding legacy random-id points.</param>
+   public PgVectorRagProvider(
+      IEmbeddingProvider embeddingProvider,
+      string connectionString,
+      ILogger? logger = null)
+      : this(new PgVectorStore(connectionString), embeddingProvider, logger)
    {
    }
 

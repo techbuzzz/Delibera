@@ -9,6 +9,9 @@
 **Collective decision making through structured AI deliberation — with RAG, pgvector, Knowledge Keeper, 🛠️ Operator (MCP tools), Chairman, 🔥 Context Compression, ✂️ AutoChunking, 💉 Dependency Injection & 📋 Execution Logging**
 
 [![NuGet](https://img.shields.io/nuget/v/Delibera.Core.svg)](https://www.nuget.org/packages/Delibera.Core)
+[![NuGet: Server](https://img.shields.io/nuget/v/Delibera.Server.svg)](https://www.nuget.org/packages/Delibera.Server)
+[![NuGet: Redis](https://img.shields.io/nuget/v/Delibera.Redis.svg)](https://www.nuget.org/packages/Delibera.Redis)
+[![CI](https://github.com/techbuzzz/Delibera/actions/workflows/publish-nuget.yml/badge.svg)](https://github.com/techbuzzz/Delibera/actions/workflows/publish-nuget.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-1F2937.svg)](https://dotnet.microsoft.com)
 [![C# 15](https://img.shields.io/badge/C%23-15.0--preview-239120.svg)](https://learn.microsoft.com/dotnet/csharp/)
@@ -46,7 +49,12 @@ well-reasoned outcomes** rather than single-model guesses.
 | **✂️ AutoChunking**           | Progressive disclosure of large documents across rounds — respects model context windows |
 | **🌐 Distributed Debates**    | `IDebateOrchestrator` with local and Redis backends — parallelize debates across machines |
 | **💾 Result Caching**          | `IDebateCache` with in-memory, file, and Redis backends — skip re-running identical debates |
-| **🖥️ Delibera.Server**        | ASP.NET Core 10 Minimal API with REST + SSE streaming for debates over HTTP           |
+| **🖥️ Delibera.Server**        | ASP.NET Core 10 Minimal API with REST + SSE streaming for debates over HTTP — now published as its own NuGet package |
+| **🔧 Tool Use (Function Calling)** | `IToolProvider` + `AIFunction` — members call tools mid-debate. Native function calling where the provider supports it, `[[TOOL: …]]` markers otherwise. Ships filesystem, HTTP and MCP providers |
+| **💸 Cost Gates & Rate Limits** | Hard spend ceilings and per-model call limits. A breach returns a degraded result carrying what was spent — never a thrown exception |
+| **🔀 Debate Diff**            | `baseline.Diff(candidate)` — word-level Markdown/HTML comparison of two runs, matched by round number and member name |
+| **⌨️ delibera CLI**           | `run`, `resume`, `compare`, `benchmark` from the shell |
+| **📡 gRPC Transport**         | Server-streaming debate events over gRPC, layered on `IDebateOrchestrator` so caching and distribution behave identically |
 | **💉 Dependency Injection**   | `AddDelibera()` extension for `IServiceCollection` with full options binding          |
 | **📋 Execution Logging**      | `ExecutionLog` model with `LogLevel` — Chairman, KK, Compression & participant events |
 | **📁 Separate File Output**   | Export `result.md`, `statistics.md`, and `logs.md` independently                      |

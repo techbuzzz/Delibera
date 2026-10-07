@@ -200,7 +200,7 @@ Everything here is a stopwatch reading against a running container.
 
 | Check | Surface | ms |
 |---|---|---:|
-| `GET /health` | REST | 110 |
+| `GET /api/v1/health` | REST | 110 |
 | `GET /templates` (5 registered) | REST | 36 |
 | `POST /corpora` | REST | 37 |
 | `POST /corpora/{id}/documents` (1 real chunk written) | RAG ingest | 321 |

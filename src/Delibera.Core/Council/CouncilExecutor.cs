@@ -90,6 +90,18 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
          CompressionLogs = []
       };
       CompressionLogs = ExecutionOptions.CompressionLogs;
+
+      // A cost ceiling is enforced against observed spend, which only exists once a price list
+      // is supplied. Without one every member call bills zero, the gate compares zero against the
+      // limit and never denies, and the caller is left with a ceiling that is configured, logged
+      // and completely inert. Say so once, at construction, where it can still be acted on.
+      if (ExecutionOptions.CostGate is not null && ExecutionOptions.PricingRegistry is null)
+      {
+         ExecutionOptions.Logger?.LogWarning(
+            "A cost limit is configured but no pricing registry is, so member calls cannot be priced "
+            + "and the ceiling cannot be enforced — every call bills zero against it. Call "
+            + "WithPricingRegistry(...) to make the limit effective.");
+      }
       _autoChunkingOptions = autoChunkingOptions;
       _telemetryOptions = telemetryOptions;
       DebateTimeout = debateTimeout;
@@ -1008,6 +1020,39 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
                "Compression",
                $"{logs.Count} compression pass(es), {result.TokenStats!.SavedPercent:F1}% of prompt tokens saved " +
                $"({result.TokenStats.TokensSaved:N0} tokens), total cost {logs.Aggregate(TimeSpan.Zero, (a, l) => a + l.Duration).TotalMilliseconds:F0} ms"));
+         }
+
+         // Same reasoning for spend: a cost gate, rate limiter or price list is only meaningful if
+         // the result says what it actually cost. Reported whenever any of them was configured, so
+         // a caller that enabled a ceiling always gets the number it was protecting.
+         if (ExecutionOptions.CostGate is not null
+            || ExecutionOptions.RateLimiter is not null
+            || ExecutionOptions.PricingRegistry is not null)
+         {
+            var cost = ExecutionOptions.GetOrCreateLedger().Build();
+            result = result with { CostEstimate = cost };
+
+            Log(ExecutionLog.Info(
+               "Cost",
+               $"{cost.TotalCost:F4} across {cost.Members.Sum(m => m.CallCount)} call(s), " +
+               $"{cost.TotalPromptTokens:N0} prompt + {cost.TotalCompletionTokens:N0} completion tokens" +
+               (cost.IsEstimate ? " (estimated — at least one model had no registered price)" : string.Empty) +
+               (cost.WasTruncated ? " (debate truncated by the cost gate)" : string.Empty)));
+         }
+
+         // Publish the tool calls members actually made. The strategy layer accumulates them on the
+         // execution options because member turns run concurrently; without this the only record
+         // of a tool having been called was the model's own text, which is exactly the kind of
+         // claim a debate result should not take on trust.
+         var allToolCalls = ExecutionOptions.GetOrCreateToolCalls();
+         if (allToolCalls.Count > 0)
+         {
+            result = result with { ToolCalls = allToolCalls.ToList() };
+
+            Log(ExecutionLog.Info(
+               "Tools",
+               $"{allToolCalls.Count} tool call(s): {string.Join(", ", allToolCalls.Select(c => $"{c.MemberName}→{c.ToolName}").Distinct())}"
+               + (allToolCalls.Any(c => !c.Succeeded) ? $" — {allToolCalls.Count(c => !c.Succeeded)} failed" : string.Empty)));
          }
 
          // F-09: Stamp StrategyUsed on every round so consumers can audit which strategy

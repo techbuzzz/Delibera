@@ -49,6 +49,107 @@ public sealed record DebateExecutionOptions(
    /// </summary>
    public int CompressionThresholdTokens { get; init; } = 1_200;
 
+   /// <summary>
+   ///   Optional cost gate consulted before every member model call. A denial stops further
+   ///   calls and marks the ledger truncated, so the debate returns a degraded result carrying
+   ///   the spend so far rather than throwing.
+   /// </summary>
+   public ICostGate? CostGate { get; init; }
+
+   /// <summary>
+   ///   Optional rate limiter consulted before every member model call.
+   /// </summary>
+   public IRateLimiter? RateLimiter { get; init; }
+
+   /// <summary>
+   ///   Optional price list used to turn token counts into money. Without it every cost is
+   ///   reported as an estimate at zero, which is what makes an unregistered model visible
+   ///   instead of silently free.
+   /// </summary>
+   public IModelPricingRegistry? PricingRegistry { get; init; }
+
+   /// <summary>
+   ///   Optional rate-limit policy. When set and no explicit <see cref="RateLimiter" /> was
+   ///   supplied, the executor builds a <see cref="Cost.TokenBucketRateLimiter" /> from it.
+   /// </summary>
+   public RateLimitPolicy? RateLimitPolicy { get; init; }
+
+   /// <summary>
+   ///   Shared accumulator of token counts and spend. Left <c>null</c> until a member call
+   ///   actually needs it, then created once and reused by every round so that concurrent member
+   ///   tasks accumulate into a single estimate.
+   /// </summary>
+   public Cost.CostLedger? CostLedger
+   {
+      get => _ledger;
+      init => _ledger = value;
+   }
+
+   private Cost.CostLedger? _ledger;
+
+   /// <summary>
+   ///   Returns the ledger for this run, creating and caching it on first access so that every
+   ///   round and every member task shares one instance.
+   /// </summary>
+   public Cost.CostLedger GetOrCreateLedger()
+      => _ledger ??= new Cost.CostLedger(PricingRegistry);
+
+   /// <summary>
+   ///   Optional catalogue of tools members may call. A provider supplies the tools; the
+   ///   pipeline decides when to invoke them.
+   /// </summary>
+   public IToolProvider? ToolProvider { get; init; }
+
+   /// <summary>
+   ///   Tools handed directly to every member, for callers that already have
+   ///   <see cref="AIFunction" /> instances and need no provider abstraction.
+   /// </summary>
+   public IReadOnlyList<AIFunction>? MemberTools { get; init; }
+
+   /// <summary>
+   ///   Maximum tool round-trips per member turn. A model that keeps requesting tools would
+   ///   otherwise keep the debate running; three is enough for look-up-then-answer and stops
+   ///   the pathological case.
+   /// </summary>
+   public int MaxToolIterations { get; init; } = 3;
+
+   private IReadOnlyList<AIFunction>? _resolvedTools;
+
+   /// <summary>
+   ///   Shared sink for tool calls, reused across rounds so the executor can publish every call
+   ///   on the result. Shared by reference for the same reason <c>CompressionLogs</c> is.
+   /// </summary>
+   public List<ToolCallLog>? ToolCallLog
+   {
+      get => _toolCalls;
+      init => _toolCalls = value;
+   }
+
+   private List<ToolCallLog>? _toolCalls;
+
+   /// <summary>Returns the shared tool-call sink, creating it on first use.</summary>
+   public List<ToolCallLog> GetOrCreateToolCalls() => _toolCalls ??= [];
+
+   /// <summary>
+   ///   Resolves and caches the tool catalogue for this run, so the providers are enumerated
+   ///   once rather than on every member call of every round.
+   /// </summary>
+   /// <param name="ct">Cancellation token forwarded to the providers.</param>
+   public async ValueTask<IReadOnlyList<AIFunction>> GetOrCreateToolsAsync(CancellationToken ct = default)
+   {
+      if (_resolvedTools is not null) return _resolvedTools;
+
+      var tools = new List<AIFunction>();
+      if (MemberTools is { Count: > 0 })
+         tools.AddRange(MemberTools);
+
+      if (ToolProvider is not null)
+         tools.AddRange(await ToolProvider.GetToolsAsync(ct).ConfigureAwait(false));
+
+      _resolvedTools = tools;
+      return _resolvedTools;
+   }
+
    /// <summary>Singleton representing "no extra execution options" (legacy behaviour).</summary>
    public static DebateExecutionOptions Default { get; } = new();
 
