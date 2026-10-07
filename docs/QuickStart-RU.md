@@ -203,7 +203,7 @@ var result = await new CouncilBuilder()
 Console.WriteLine(result.TokenStats?.ToSummary());
 ```
 
-Сжатие экономит примерно **30–70% токенов** без потери смысла контекста дебатов.
+Сжатие экономит замеренные **11.7–12.1% prompt-токенов** без потери смысла контекста дебатов. См. [performance-measurements.md](performance-measurements.md#3-context-compression).
 
 ---
 

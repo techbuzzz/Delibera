@@ -42,7 +42,6 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private bool _operatorReuseCompression;
    private IReadOnlyList<McpServerConfig>? _operatorServers;
    private string? _outputPath;
-   private CouncilOptions? _persistedOptionsSnapshot;
    private string? _responseLanguage;
    private string? _resumeFromDebateId;
    private IDebateStrategy _strategy = new StandardDebate();

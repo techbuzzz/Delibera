@@ -5,6 +5,198 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.5.0] - 2026-10-06
+
+Multi-model deliberations measured end-to-end against Ollama Cloud for the first time. That
+surfaced five defects, two of which made headline features non-functional. Every number below is
+from a real run; see [docs/performance-measurements.md](docs/performance-measurements.md) for the
+full evidence and for the claims these results contradict.
+
+### Fixed
+
+- **Context compression never ran.** `CouncilExecutor.CompressTextAsync` was public API that nothing
+  in the pipeline called, `TokenStats` and `CompressionLogs` were never assigned, and ten measured
+  runs with compression enabled reported 0.00% saved at 0 ms overhead while context grew past
+  10,000 tokens per round. The compressor is now attached through `DebateExecutionOptions` and
+  applied to each round prompt above a `CompressionThresholdTokens` (default 1,200) floor, with
+  every attempt logged. Measured saving is now **11.7–12.1%**.
+
+  > This is far below the **30–70%** claimed in the README and compression docs. The wiring is what
+  > made the feature work at all; the strategy's yield is about a sixth of what was advertised.
+
+- **`OllamaProvider` could not talk to Ollama Cloud in its default configuration.** The provider
+  defaulted to `maxOutputTokens = -1` and sent that as `num_predict`, which the endpoint rejects:
+  `OllamaException: max_tokens must be positive, got: -1`. Every request failed before generating a
+  token. A non-positive cap is now sent as a `null` `NumPredict`, which OllamaSharp omits from the
+  request so the server applies its own default. Positive caps pass through unchanged.
+
+- **`DebateResult.TotalDuration` was negative on every debate.** `StartedAt` relied on a property
+  initialiser that runs inside `DebateResultBuilder.Build()` — after `MarkCompleted()` had already
+  stamped `CompletedAt` — so `CompletedAt - StartedAt` came out below zero. Start time is now
+  captured when the builder is created.
+
+- **A failed participant's error text was fed to the Chairman as an opinion.** `DebateScenario`
+  substituted `$"[ERROR: {ex.Message}]"` as the member's response, so an error entered the
+  transcript, was read as a viewpoint, and produced a verdict that looked complete while being
+  synthesised from a partial council. Failed members are now omitted from the round and recorded on
+  the result.
+
+- **An empty response gave no diagnostic.** `InvalidOperationException("Empty response from model
+  '...'")` did not distinguish the two causes, which behave completely differently.
+
+### Added
+
+- **`DebateResult.FailedMembers`** (`IReadOnlyList<MemberFailure>`) and **`DebateResult.IsDegraded`**.
+  A non-empty list means the verdict came from a partial council; nothing downstream has to infer it
+  from text.
+- **`MemberFailure`** record — round number and name, role, display name, model, and the error, with
+  a `ToString()` suited to execution logs and report rows.
+- **`OllamaEmptyResponseException`** carrying `DoneReason` and `ReasoningChars`, with
+  **`BudgetConsumedByReasoning`** separating "the generation budget went into reasoning" from "the
+  model returned nothing at all". Its message states which case occurred and what to do about it.
+- **`OllamaProvider(enableThinking:)`** (default `false`) — sends `Think` explicitly instead of
+  leaving it unset, so a reasoning model does not silently consume the answer budget.
+- **`OllamaProvider(retryOnBudgetExhaustion:)`** (default `true`) — retries once with a larger
+  budget when a call ends `done_reason: length` with no content and reasoning present. This is a
+  budget repair, not a transport retry, so it sits inside the Polly-wrapped operation.
+- **`DebateExecutionOptions.ContextCompressor` / `ContextCompressionOptions` /
+  `ContextCompressionCache` / `CompressionLogs` / `CompressionThresholdTokens`** — how the
+  executor reaches the compressor without widening `IDebateStrategy`.
+- **Four regression tests** (`ContextCompressionWiringTests`) pinning that a configured compressor is
+  invoked, that savings reach the result, that an unconfigured run invents nothing, and that a
+  compressor returning *more* text is not trusted.
+
+### Known issues (reported, not fixed)
+
+- **`DebateResult.TotalDuration` on a cache hit** reports the cached debate's duration, not the time
+  the caller waited. Measured: a cached lookup served in 0.0 s reported 189.0 s. `CacheHit` and
+  `CachedAt` are the only signals distinguishing the two. Whether the property should carry
+  provenance or wait time is a product decision, so the behaviour is documented rather than changed.
+- **`WithCache(CacheBehavior, IDebateCache)` exists only on the concrete `CouncilBuilder`**, not on
+  `ICouncilBuilder`. The interface exposes only `WithCacheBehavior`, documented as picking the cache
+  up from DI, so an interface-typed consumer cannot supply a backend.
+- **Vector-store indexing is not idempotent.** `IndexFileAsync` appends unconditionally: three runs
+  over the same 24 chunks left 72 points, diluting retrieval with exact duplicates. A deployment
+  that indexes on startup degrades its own search quality over time.
+- **Documented compression savings (30–70%) are inaccurate.** Measured 11.7–12.1%.
+
+## [10.4.0] - 2026
+
+### ⚠️ Breaking Changes (W3-07 — async round callback)
+
+`IDebateStrategy.ExecuteAsync` accepts an awaitable round callback. Implementations and callers
+must update; everything else in this release is backwards compatible.
+
+| Before | After |
+|--------|-------|
+| `Action<DebateRound>? onRoundCompleted` | `Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted` |
+| `onRoundCompleted?.Invoke(round);` | `if (onRoundCompleted is not null) await onRoundCompleted(round, ct).ConfigureAwait(false);` |
+
+The public `CouncilExecutor.OnRoundCompleted` **event** is unchanged and remains a
+fire-and-forget `Action<DebateRound>` — existing `+=` subscribers are unaffected.
+
+```csharp
+// Before — synchronous callback
+public Task<DebateResult> ExecuteAsync(
+    IReadOnlyList<CouncilMember> members, PromptContext context, CouncilMember? chairman,
+    KnowledgeKeeper? knowledgeKeeper, Operator? @operator, DebateExecutionOptions executionOptions,
+    int maxRounds = 4, float temperature = 0.7f,
+    Action<DebateRound>? onRoundCompleted = null, CancellationToken ct = default)
+{
+    // ...
+    onRoundCompleted?.Invoke(round1);
+    return Task.FromResult(result);
+}
+
+// After — awaitable callback
+public async Task<DebateResult> ExecuteAsync(
+    IReadOnlyList<CouncilMember> members, PromptContext context, CouncilMember? chairman,
+    KnowledgeKeeper? knowledgeKeeper, Operator? @operator, DebateExecutionOptions executionOptions,
+    int maxRounds = 4, float temperature = 0.7f,
+    Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted = null, CancellationToken ct = default)
+{
+    // ...
+    if (onRoundCompleted is not null)
+        await onRoundCompleted(round1, ct).ConfigureAwait(false);
+    return result;
+}
+```
+
+**Why.** A synchronous callback forced the executor to block on asynchronous work
+(`CouncilExecutor`, per-round selector consult and checkpoint write). One thread-pool thread was
+pinned for the duration of a file/network checkpoint write on **every round** of **every**
+in-flight debate, and `OperationCanceledException` was repackaged as `AggregateException`.
+Awaiting the callback removes the blocked thread and propagates cancellation unchanged.
+
+Custom strategies that invoke the callback from a synchronous helper must become async and
+await the helper. Because the callback is now awaited before the next round is produced, the
+existing backpressure guarantee is unchanged — it is now enforced by `await` rather than by
+blocking.
+
+### Fixed
+
+- **SSE debate streaming dropped every round.** `SseDebateStreamWriter`'s heartbeat pump
+  compared `Task.WhenAny(...)`'s winner against a *second* `next.AsTask()` call.
+  `ValueTask.AsTask()` on a compiler-generated async iterator returns a different `Task`
+  instance on the second call, so the comparison was false even when an event had already
+  arrived — every genuine event was misclassified as a heartbeat and skipped, and a debate
+  streamed **zero** rounds.
+- **SSE debates that completed mid-stream raised `NotSupportedException` after the terminal
+  event.** After a heartbeat pulse the loop `continue`d and called `MoveNextAsync` again
+  while the previous move was still in flight, then left that move pending when the method
+  `return`ed on a terminal event. An async iterator forbids a second concurrent
+  `MoveNextAsync` and forbids `DisposeAsync` while one is in flight, so a client could
+  receive a successful `debate-completed` event and an error on the same connection. One
+  `MoveNextAsync` is now created per iteration and reused across pulses, the winner is
+  compared against that single task by reference, and any pending move is settled before
+  disposal. Terminal events are still delivered exactly once, keep-alive comments are still
+  emitted, and the reconnect hint is still the first thing on the wire.
+- **`Microsoft.OpenApi` 3.10.2 could not build.** `Microsoft.AspNetCore.OpenApi` 10.0.12
+  still emits `Example = ...` assignments against `IOpenApiMediaType.Example`, which is
+  read-only in Microsoft.OpenApi 3.x, producing `CS0200` inside generated
+  `OpenApiXmlCommentSupport` code. Pinned to **2.12.2** in `Delibera.Server`: the last
+  published 2.x, and the floor `Microsoft.AspNetCore.OpenApi` 10.0.12 requires
+  (`[2.12.0, 3.0.0)`). A literal `2.7.5` pin does not restore — it is `NU1605` (detected
+  package downgrade 2.12.0 → 2.7.5).
+- **`Qdrant.Client` 1.19.0 marked `QdrantClient.SearchAsync` obsolete**, which is a build
+  error under `-warnaserror`. `QdrantVectorStore` now calls `QueryAsync` with the same
+  collection, query vector, limit, score threshold and cancellation token.
+  `float[] → VectorInput → Query` is written as two statements because C# will not chain
+  two user-defined implicit conversions.
+- **`ModelContextWindowRegistry` lookups** resolved whichever pattern the frozen dictionary
+  happened to enumerate first. A tagged name such as `llama3.2:7b` matches both `llama3.2`
+  (131072) and `llama3` (8192); the correct answer depended on authoring order rather than on a
+  rule. Lookup is now exact-pattern-first via the frozen dictionary, then longest-matching-
+  substring via a pattern-ordered index. `Freeze()` is now an eager warm-up that does not change
+  results. 25 new tests pin the contract.
+- **`ModelContextWindowRegistry`** built its `FrozenDictionary` via the parameterless
+  `ToFrozenDictionary()`, which falls back to `EqualityComparer<string>.Default` — ordinal, not
+  the case-insensitive comparer the source dictionaries use. The comparer is now passed
+  explicitly.
+- **`TextSimilarity`** doc comment claimed pooled fallback buffers that the code did not
+  implement; it allocated two `int[n + 1]` rows per call.
+
+### Performance
+
+- **`DebateCacheKeyGenerator`** no longer materializes the entire knowledge base on the heap in
+  order to UTF-8 encode it. The buffer is `ArrayPool`-rented with an exact byte count, matching
+  the pattern already used in `CompressionCache`. The cache key value is unchanged.
+- **`TextSimilarity`** Levenshtein rows longer than 128 characters now come from
+  `ArrayPool<int>` instead of a fresh `int[n + 1]` each. At the 1024-character
+  `MaxComparedLength` bound this removes ~8 KiB of Gen0 garbage per comparison on a per-round
+  O(n²) loop.
+- **`ModelContextWindowRegistry`** lookups no longer enumerate the entire frozen collection for
+  every probe; the pattern-ordered index stops at the first (most specific) match.
+
+### Verification
+
+514 unit tests discovered, **514 passing** (406 Core + 108 Server), 0 failed, 0 skipped. The
+five SSE failures carried since 10.3.x are fixed. `dotnet build Delibera.slnx -c Release
+-warnaserror` is clean (0 warnings, 0 errors) and a forced restore reports no NU1605 /
+NU1608 / NU1701.
+
+---
+
 ## [10.3.0] - 2026
 
 ### ⚠️ Breaking Changes (P-01)

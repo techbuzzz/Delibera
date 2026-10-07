@@ -114,8 +114,9 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
       if (!_entries.TryGetValue(debateId, out var entry))
          yield break;
 
-      // Yield rounds that completed before the client connected.
-      foreach (var round in entry.CompletedRounds)
+      // Yield rounds that completed before the client connected. Snapshot first: the debate
+      // loop keeps appending to the same collection while this runs.
+      foreach (var round in entry.CompletedRounds.ToArray())
          yield return new DebateRoundEvent.RoundCompleted(debateId, round);
 
       // If terminal, yield the terminal event and exit.
@@ -175,7 +176,7 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
          var executor = entry.Builder.Build();
          executor.OnRoundCompleted += round =>
          {
-            entry.CompletedRounds.Add(round);
+            entry.CompletedRounds.Enqueue(round);
             entry.Channel.Writer.TryWrite(round);
 
             // Publish to Redis stream for cross-instance SSE subscribers
@@ -240,6 +241,13 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
             hash.Add(new HashEntry("errorMessage", errorMessage));
 
          await _db.HashSetAsync(key, [.. hash]).ConfigureAwait(false);
+
+         // Without a TTL the state hash is permanent: every debate ever run leaves a key
+         // behind, completed ones included. The expiry is refreshed on each write, so a
+         // progressing debate never disappears mid-flight and only a stalled one is
+         // forgotten.
+         if (_options.StateKeyTtl is { } ttl)
+            await _db.KeyExpireAsync(key, ttl).ConfigureAwait(false);
       }
       catch (Exception ex)
       {
@@ -286,12 +294,18 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
          var redisEvent = round.ToRedisEvent(debateId);
          var json = RedisSerializer.Serialize(redisEvent);
 
+         var maxLength = _options.StreamMaxLength > 0 ? _options.StreamMaxLength : (int?)null;
          await _db.StreamAddAsync(_options.EventStreamKey,
          [
             new NameValueEntry("debateId", debateId),
             new NameValueEntry("eventType", "round-completed"),
             new NameValueEntry("payload", json),
-         ]).ConfigureAwait(false);
+         ],
+         // MAXLEN ~ N: approximate trimming is O(1) and may overshoot the cap slightly,
+         // which is the right trade for an event log — an unbounded stream would grow with
+         // every debate the deployment has ever run.
+         maxLength: maxLength,
+         useApproximateMaxLength: true).ConfigureAwait(false);
       }
       catch (Exception ex)
       {
@@ -398,7 +412,10 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
       public string? ErrorMessage { get; set; }
       public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
       public DateTimeOffset? CompletedAt { get; set; }
-      public List<DebateRound> CompletedRounds { get; } = [];
+      // ConcurrentQueue, not List<T>: the round-completed handler appends from the debate
+      // loop's thread while StreamAsync enumerates from a request thread. Enumerating a
+      // List<T> under concurrent writes throws "Collection was modified".
+      public ConcurrentQueue<DebateRound> CompletedRounds { get; } = new();
       public Channel<DebateRound> Channel { get; } = System.Threading.Channels.Channel.CreateUnbounded<DebateRound>();
       public CancellationTokenSource Cts { get; } = new();
 

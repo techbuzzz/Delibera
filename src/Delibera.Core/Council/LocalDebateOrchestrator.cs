@@ -38,7 +38,7 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
    {
       _completedEntryLifetime = completedEntryLifetime ?? CompletedEntryLifetime;
       if (_completedEntryLifetime > TimeSpan.Zero)
-         _evictionTimer = new(EvictCompletedEntries, null, _completedEntryLifetime, _completedEntryLifetime);
+         _evictionTimer = new(EvictCompletedEntries, new WeakReference<LocalDebateOrchestrator>(this), _completedEntryLifetime, _completedEntryLifetime);
    }
 
    /// <inheritdoc />
@@ -93,8 +93,9 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
       if (!_entries.TryGetValue(debateId, out var entry))
          yield break;
 
-      // Yield rounds that already completed before the client connected.
-      foreach (var round in entry.CompletedRounds)
+      // Yield rounds that already completed before the client connected. Snapshot first:
+      // the debate loop keeps appending to the same collection while this runs.
+      foreach (var round in entry.CompletedRounds.ToArray())
          yield return new DebateRoundEvent.RoundCompleted(debateId, round);
 
       // If already terminal, yield the terminal event and exit.
@@ -146,7 +147,19 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
 
    // ── Eviction ──────────────────────────────────────────────────────────────────
 
-   private void EvictCompletedEntries(object? state)
+   /// <summary>
+   ///    Timer callback. Static with a <see cref="WeakReference{T}" /> state on purpose:
+   ///    an instance-method group makes the <see cref="Timer" /> hold a strong reference to
+   ///    this orchestrator for the timer's whole lifetime. Passing <c>null</c> state does not
+   ///    help — the delegate's own target is the strong reference.
+   /// </summary>
+   private static void EvictCompletedEntries(object? state)
+   {
+      if (state is WeakReference<LocalDebateOrchestrator> weak && weak.TryGetTarget(out var self))
+         self.EvictCompletedEntriesCore();
+   }
+
+   private void EvictCompletedEntriesCore()
    {
       var cutoff = DateTimeOffset.UtcNow - _completedEntryLifetime;
       foreach (var kvp in _entries)
@@ -186,7 +199,7 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
          var executor = entry.Builder.Build();
          executor.OnRoundCompleted += round =>
          {
-            entry.CompletedRounds.Add(round);
+            entry.CompletedRounds.Enqueue(round);
             entry.Channel.Writer.TryWrite(round);
          };
 
@@ -229,7 +242,10 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
       public string? ErrorMessage { get; set; }
       public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
       public DateTimeOffset? CompletedAt { get; set; }
-      public List<DebateRound> CompletedRounds { get; } = [];
+      // ConcurrentQueue, not List<T>: the round-completed handler appends from the debate
+      // loop's thread while StreamAsync enumerates from a request thread. Enumerating a
+      // List<T> under concurrent writes throws "Collection was modified".
+      public ConcurrentQueue<DebateRound> CompletedRounds { get; } = new();
 
       public System.Threading.Channels.Channel<DebateRound> Channel { get; } =
          System.Threading.Channels.Channel.CreateUnbounded<DebateRound>();

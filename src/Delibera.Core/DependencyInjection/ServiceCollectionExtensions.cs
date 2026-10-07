@@ -362,6 +362,12 @@ public static class ServiceCollectionExtensions
       this IServiceCollection services,
       TimeSpan? ttl = null)
    {
+      // The factory below resolves IMemoryCache lazily, on first debate. AddMemoryCache
+      // is idempotent, so registering it here is a no-op for hosts that already did —
+      // and it keeps the documented one-liner (AddDelibera().UseInMemoryCache())
+      // resolvable instead of throwing at first use.
+      services.AddMemoryCache();
+
       services.TryAddSingleton<IDebateCache>(sp =>
          new InMemoryDebateCache(
             sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(),

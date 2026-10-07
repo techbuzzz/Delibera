@@ -17,6 +17,12 @@ public sealed class DeliberaMcpTools(
    IDebateOrchestrationService orchestration,
    ITemplateRegistry templates)
 {
+   /// <summary>
+   ///    Tenant that owns every debate started through MCP. The MCP surface has no
+   ///    <c>X-Tenant-Id</c> header, so it gets its own identity and can only see the
+   ///    debates it started itself — the same isolation the HTTP surface enforces.
+   /// </summary>
+   private const string McpTenantId = "mcp";
    // ── 1. run_debate_template ────────────────────────────────────────────────
 
    [McpServerTool]
@@ -42,7 +48,7 @@ public sealed class DeliberaMcpTools(
          KnowledgeText = context,
       };
 
-      var record = await orchestration.RunAsync(request, "mcp", ct);
+      var record = await orchestration.RunAsync(request, McpTenantId, ct);
       return SerialiseRecord(record);
    }
 
@@ -81,23 +87,31 @@ public sealed class DeliberaMcpTools(
       }
       catch (Exception ex)
       {
-         return $"{{\"error\":\"Invalid membersJson: {ex.Message}\"}}";
+         // Serialise the message instead of interpolating it: an exception message may
+         // contain quotes or backslashes, which would produce invalid JSON for the model.
+         return ErrorPayload($"Invalid membersJson: {ex.Message}");
       }
 
       var scenario = new ScenarioRequest
       {
          Question = question,
          Members = members,
-         Strategy = strategy,
+         // The tool documents "Standard|Critique|Consensus" and the HTTP path falls back
+         // to Standard for anything unknown; a null must do the same rather than flowing
+         // into a non-nullable member.
+         Strategy = strategy ?? "Standard",
          VotingStrategy = votingStrategy,
-         MaxRounds = maxRounds ?? 3,
+         // The tool advertises "1-10" but never enforced it, while list_debates already
+         // clamps pageSize. An anonymous MCP client could otherwise ask for any number of
+         // paid LLM rounds.
+         MaxRounds = Math.Clamp(maxRounds ?? 3, 1, 10),
          Chairman = chairmanPrompt is null
             ? null
             : new ScenarioChairman { SystemPrompt = chairmanPrompt },
          KnowledgeText = knowledgeText,
       };
 
-      var record = await orchestration.RunScenarioAsync(scenario, "mcp", ct);
+      var record = await orchestration.RunScenarioAsync(scenario, McpTenantId, ct);
       return SerialiseRecord(record);
    }
 
@@ -113,9 +127,9 @@ public sealed class DeliberaMcpTools(
       [Description("The debate ID returned by run_debate_template or run_debate_scenario.")]
       string debateId)
    {
-      var record = orchestration.Find(debateId);
+      var record = orchestration.Find(debateId, McpTenantId);
       return record is null
-         ? $"{{\"error\":\"Debate '{debateId}' not found.\"}}"
+         ? ErrorPayload($"Debate '{debateId}' not found.")
          : SerialiseRecord(record);
    }
 
@@ -137,7 +151,7 @@ public sealed class DeliberaMcpTools(
       int pageSize = 20)
    {
       pageSize = Math.Clamp(pageSize, 1, 100);
-      var records = orchestration.List(templateId, status, page, pageSize);
+      var records = orchestration.List(McpTenantId, templateId, status, page, pageSize);
 
       var summaries = records.Select(r => new
       {
@@ -166,7 +180,7 @@ public sealed class DeliberaMcpTools(
       [Description("The debate ID to cancel.")]
       string debateId)
    {
-      var cancelled = orchestration.Cancel(debateId);
+      var cancelled = orchestration.Cancel(debateId, McpTenantId);
       return System.Text.Json.JsonSerializer.Serialize(new { debateId, cancelled });
    }
 
@@ -192,6 +206,15 @@ public sealed class DeliberaMcpTools(
 
    // ── Helpers ───────────────────────────────────────────────────────────────
 
+   /// <summary>
+   ///    Builds an <c>{ "error": … }</c> payload. Real serialisation, so a message
+   ///    containing quotes, backslashes or newlines cannot produce invalid JSON.
+   /// </summary>
+   private static string ErrorPayload(string message) =>
+      System.Text.Json.JsonSerializer.Serialize(
+         new { error = message },
+         new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
    private static string SerialiseRecord(DebateRecord record)
    {
       var result = record.Result;
@@ -207,7 +230,7 @@ public sealed class DeliberaMcpTools(
          Confidence = (object?)null,
          Rationale = (object?)null,
          Risks = (object?)null,
-         Rounds = record.Rounds.Select(r => new
+         Rounds = record.RoundsSnapshot().Select(r => new
          {
             r.RoundNumber,
             // Speeches → Responses (словарь)

@@ -45,17 +45,38 @@ dotnet run
 
 ## 📐 Coding Standards
 
-- **Target framework:** .NET 8.0, C# 12 (`LangVersion 12.0`).
+- **Target framework:** .NET 10.0 (`net10.0`), C# with `LangVersion preview`.
 - **Modern C#:** file-scoped namespaces, `record` types, init-only properties, and global usings.
 - **Nullable reference types** are enabled — keep the build warning-free.
 - **XML documentation** is required on public APIs (`GenerateDocumentationFile` is on).
 - **Naming:** `PascalCase` for types/methods, `camelCase` for locals, `_camelCase` for private fields.
-- **Formatting:** four-space indentation; keep lines reasonably short and readable.
-- The solution **must build with 0 errors and 0 warnings** before a PR is merged.
+- **Formatting:** four-space indentation in tests, three-space in `Delibera.Core`; match the
+  file you are editing.
+- The solution **must build with 0 errors and 0 warnings** before a PR is merged, and CI
+  builds with `-warnaserror` so a new warning fails the build.
 
 ```bash
 # Verify a clean build
 dotnet clean && dotnet restore && dotnet build --configuration Release
+```
+
+### 🧪 Testing rules
+
+**A test of a callback, event or continuation must use a provider that suspends at least
+once before completing.** `FakeLLMProvider` suspends by default for exactly this reason.
+
+A fake that returns `Task.FromResult` completes synchronously, so the code under test runs
+to the end inline. Anything that is only valid while nothing has suspended — a handler
+installed on a field and uninstalled in a `finally`, for instance — looks correct and is
+dead against a real provider, which awaits network I/O.
+
+This is not hypothetical: the SSE streaming path had eleven passing tests and returned **no
+rounds at all** in production, because the interceptor was uninstalled before the first real
+await. If a test genuinely needs synchronous completion, ask for it explicitly
+(`new FakeLLMProvider(suspends: false)`) and say why in the test.
+
+```bash
+dotnet test --configuration Release
 ```
 
 ---

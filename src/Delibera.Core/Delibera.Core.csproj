@@ -12,9 +12,9 @@
 
       <!-- NuGet Package Metadata -->
       <PackageId>Delibera.Core</PackageId>
-      <Version>10.3.0</Version>
+      <Version>10.5.0</Version>
       <Title>Delibera</Title>
-      <Description>Delibera — Thoughtful AI Decisions. A framework for collective decision making through structured AI deliberation. v10.3.0 is a platform release: it introduces the IDebateOrchestrator abstraction for distributed debate execution (in-process and Redis-backed), a pluggable result-caching layer (in-memory, file, Redis) with per-debate behavior control, and removes deprecated APIs (Moderator→Chairman, ModelCapabilities non-nullable, VectorStoreFactory, DebateStatus/DebateOrchestrationStatus dead values). v10.3.0 also ships a major performance &amp; integrity pass: timer-based eviction of completed debate entries, IDisposable on internal caches, volatile int backing for cross-thread status, ConcurrentDictionary throughout, ConfigureAwait(false) library-wide, ValueTask on synchronous cache/store paths, FrozenDictionary/FrozenSet for O(1) model-registry lookups, and allocation-free single-row Levenshtein via Span&lt;int&gt;+stackalloc. Full feature set: multi-model councils with RAG (Qdrant, PgVector), debate strategies, Knowledge Keeper, Chairman roles, dependency injection, context compression, AutoChunking (progressive disclosure for large documents), Microsoft.Extensions.Logging, Microsoft.Extensions.Http.Resilience (Polly v8 retry pipelines), IHttpClientFactory wiring, response-language enforcement, parallel Operator requests, async streaming council (IAsyncEnumerable&lt;DebateRound&gt;), pluggable voting engine (Majority/BordaCount/Weighted), debate persistence &amp; resume via checkpoints, agent memory (in-memory/Qdrant/pgvector), OpenTelemetry-style observability (spans + metrics), structured JSON output (schema-validated verdicts with retry), adaptive strategy switching on stagnation, debate templates &amp; presets library, multi-modal attachments via IFileContentReader, HTML export, debate timeout, persona presets, benchmark mode, and participant limit guard.</Description>
+      <Description>Delibera — Thoughtful AI Decisions. A framework for collective decision making through structured AI deliberation. v10.4.0 is the API-truth release and carries ONE BREAKING CHANGE: IDebateStrategy.ExecuteAsync takes Func&lt;DebateRound, CancellationToken, ValueTask&gt;? instead of Action&lt;DebateRound&gt;? for onRoundCompleted, because a synchronous callback pinned a thread-pool thread for the duration of every per-round checkpoint write and repackaged OperationCanceledException as AggregateException. The public CouncilExecutor.OnRoundCompleted event is unchanged and existing subscribers keep working. Platform surface: the IDebateOrchestrator abstraction for distributed debate execution (in-process and Redis-backed), a pluggable result-caching layer (in-memory, file, Redis) with per-debate behavior control, and removed deprecated APIs (Moderator→Chairman, ModelCapabilities non-nullable, VectorStoreFactory, DebateStatus/DebateOrchestrationStatus dead values). Performance &amp; integrity: timer-based eviction of completed debate entries, IDisposable on internal caches, volatile int backing for cross-thread status, ConcurrentDictionary throughout, ConfigureAwait(false) library-wide, ValueTask on synchronous cache/store paths, ArrayPool buffers on the debate cache-key and text-similarity paths, and a rule-based model-context-window lookup (exact pattern first, then longest matching substring) instead of the previous order-dependent enumeration. Full feature set: multi-model councils with RAG (Qdrant, PgVector), debate strategies, Knowledge Keeper, Chairman roles, dependency injection, context compression, AutoChunking (progressive disclosure for large documents), Microsoft.Extensions.Logging, Microsoft.Extensions.Http.Resilience (Polly v8 retry pipelines), IHttpClientFactory wiring, response-language enforcement, parallel Operator requests, async streaming council (IAsyncEnumerable&lt;DebateRound&gt;), pluggable voting engine (Majority/BordaCount/Weighted), debate persistence &amp; resume via checkpoints, agent memory (in-memory/Qdrant/pgvector), OpenTelemetry-style observability (spans + metrics), structured JSON output (schema-validated verdicts with retry), adaptive strategy switching on stagnation, debate templates &amp; presets library, multi-modal attachments via IFileContentReader, HTML export, debate timeout, persona presets, benchmark mode, and participant limit guard.</Description>
       <Authors>Victor Buzin</Authors>
       <Company>Techbuzzz</Company>
       <Product>Delibera</Product>
@@ -26,7 +26,33 @@
       <RepositoryUrl>https://github.com/techbuzzz/Delibera</RepositoryUrl>
       <RepositoryType>git</RepositoryType>
       <PackageProjectUrl>https://github.com/techbuzzz/Delibera</PackageProjectUrl>
-      <PackageReleaseNotes>v10.3.0 — Platform Release. Distributed debates (S-01), result caching (S-03), breaking-change cleanup (P-01), Delibera.Server Minimal API, and a comprehensive performance &amp; integrity pass.
+      <PackageReleaseNotes>v10.4.0 — Async Round Callback. Contains a BREAKING API CHANGE.
+
+⚠️ BREAKING CHANGE (W3-07): IDebateStrategy.ExecuteAsync now takes Func&lt;DebateRound, CancellationToken, ValueTask&gt;? instead of Action&lt;DebateRound&gt;? for onRoundCompleted. Custom strategy implementations must change their parameter type and await the invocation. The public CouncilExecutor.OnRoundCompleted EVENT is unchanged and stays a fire-and-forget Action, so all existing event subscribers keep working. Migration: Action&lt;DebateRound&gt; r =&gt; { ... } becomes async (r, ct) =&gt; { ... } and onRoundCompleted?.Invoke(round) becomes if (onRoundCompleted is not null) await onRoundCompleted(round, ct).ConfigureAwait(false);
+
+Why: the synchronous callback forced the executor to block on asynchronous work — one thread-pool thread pinned per debate for the duration of a file/network checkpoint write, on every round — and repackaged OperationCanceledException as AggregateException. The callback is now awaited, so no pool thread is held and cancellation propagates unchanged. See CHANGELOG for before/after code.
+
+Performance: three allocation hot spots fixed. DebateCacheKeyGenerator no longer materializes the whole knowledge base on the heap to UTF-8 encode it — the buffer is ArrayPool-rented with an exact byte count, matching the pattern already proven in CompressionCache. TextSimilarity Levenshtein no longer allocates two int[n+1] rows per call: rows past 128 characters come from ArrayPool&lt;int&gt;, so the per-round response-similarity loop stops producing ~8 KiB of Gen0 garbage per comparison. Its doc comment claimed pooling that the code did not implement; it now matches the code.
+
+Correctness: ModelContextWindowRegistry lookups were scanning a FrozenDictionary that was never probed by key, so the v10.3.0 "O(1) lookups" claim did not hold — and which pattern matched depended on dictionary enumeration order. A tagged name like "llama3.2:7b" matches both "llama3.2" (131072) and "llama3" (8192); correctness now rests on an explicit rule instead of authoring order: the exact pattern wins via a FrozenDictionary fast path, otherwise the longest matching substring wins via a pattern-ordered index with early exit. FrozenDictionary is now built with StringComparer.OrdinalIgnoreCase explicitly — the parameterless ToFrozenDictionary() had silently fallen back to the ordinal default. 25 new tests pin the contract.
+
+SSE streaming (SseDebateStreamWriter): two defects in the heartbeat pump made the stream wrong rather than slow. ValueTask.AsTask() returns a different Task instance on a second call, so the winner comparison was false even when an event had already arrived — every genuine event was misread as a heartbeat and skipped, and a debate streamed ZERO rounds. And after a heartbeat pulse the loop re-issued MoveNextAsync while the previous move was still in flight, then left that move pending when the method returned on a terminal event; an async iterator forbids both a concurrent move and a DisposeAsync with one in flight, so a debate completing mid-stream raised NotSupportedException AFTER its terminal event had already been written to the client. One MoveNextAsync is now created per iteration and reused across pulses, the winner is compared against that single task by reference, and any pending move is settled before disposal. Terminal events are still delivered exactly once, keep-alive comments are still emitted, and the reconnect hint is still first on the wire.
+
+Dependencies: Microsoft.OpenApi is pinned to 2.12.2 in Delibera.Server. Microsoft.AspNetCore.OpenApi 10.0.12 still emits Example = ... assignments against IOpenApiMediaType.Example, which is read-only in Microsoft.OpenApi 3.x, so 3.10.2 fails the build with CS0200 inside generated OpenApiXmlCommentSupport code. 2.12.2 is the last published 2.x and the floor Microsoft.AspNetCore.OpenApi 10.0.12 requires ([2.12.0, 3.0.0)). Qdrant.Client 1.19.0 marks IVectorStore's QdrantClient.SearchAsync obsolete in favour of QueryAsync; QdrantVectorStore now calls QueryAsync with the same collection, query vector, limit, score threshold and cancellation token. The float[] -> VectorInput -> Query conversion is written as two statements because C# will not chain two user-defined implicit conversions.
+
+Tests: 514 unit tests discovered, 514 passing (406 Core + 108 Server), 0 failed, 0 skipped. The five SSE failures carried since 10.3.x are fixed; the release build is clean under -warnaserror and a forced restore reports no NU1605/NU1608/NU1701.
+
+v10.3.1 — Stabilization Pass. No new features and no breaking API changes: this is a correctness, performance and server-hardening pass over v10.3.0, plus the toolchain fixes needed to make a Release build and test clean. 489 tests discovered, 484 passing (381 Core + 103 Server), 0 skipped, 5 known SSE failures outstanding.
+
+Correctness: SSE debate streaming delivers every round exactly once (draining record.Rounds alongside the orchestrator stream had sent earlier rounds twice), keeps the connection warm with a periodic comment, and now emits an explicit terminal outcome event instead of stopping silently; tenant isolation enforced across the debate endpoints; UseInMemoryCache no longer throws at resolve; the Redis debate worker no longer busy-loops on an idle stream.
+
+Performance: TokenCounter rewritten (single-row Levenshtein over Span&lt;int&gt; + stackalloc, narrower lock scope), parallel debate execution, and DebateCacheKeyGenerator no longer hashes the knowledge base twice per debate.
+
+Server hardening: request-validation filter plus FluentValidation validators for the scenario and corpus endpoints, RFC 7807 ProblemDetails exception handling, and concurrent-safety fixes in CorpusService.
+
+Toolchain &amp; CI: NuGet versions aligned across the test projects (NU1605), Microsoft.SourceLink.Git bumped past CVE-2026-62900, and publish-nuget.yml builds the root solution so the test projects cannot be silently skipped.
+
+v10.3.0 — Platform Release. Distributed debates (S-01), result caching (S-03), breaking-change cleanup (P-01), Delibera.Server Minimal API, and a comprehensive performance &amp; integrity pass.
 
 ⚠️ BREAKING CHANGES (P-01) — upgrade from v10.2.x: Moderator → Chairman (all APIs); IDebateStrategyWithOptions removed (use IDebateStrategy with DebateExecutionOptions); ModelCapabilities now non-nullable (use ModelCapabilities.IsUnknown); RagProviderFactory → VectorStoreFactory / IRagProviderFactory → IVectorStoreFactory; ILLMProvider.GetModelCapabilitiesAsync must return ModelCapabilities.Unknown(model) when unknown; DebateStatus.Paused and DebateOrchestrationStatus.Pending removed (dead enums); WeightedVotingStrategy.ResolveWeight now falls back to ballot.Weight (per-ballot weights work as documented); DebateRecord.Label defaults to string.Empty; DebateResponse now includes Label/CacheHit/CacheKey; SseDebateStreamWriter now consumes IDebateOrchestrator.StreamAsync (was DebateRecord.RoundReader); DebateOrchestrationService rewritten from 200ms polling to event-driven streaming.
 
@@ -36,7 +62,7 @@ S-03 Result Caching: IDebateCache interface (GetAsync/SetAsync/InvalidateAsync/E
 
 Performance &amp; Integrity: 30-min Timer-based eviction on LocalDebateOrchestrator/DebateOrchestrationService/RedisDebateOrchestrator (prevents unbounded growth); ProviderFactory disposed via using var in all server templates and ScenarioBuilder; CompressionCache and FileDebateStore now implement IDisposable; volatile int backing field for DebateRecord.Status and DebateEntry.Status (cross-thread visibility); ProviderFactory.CachingFactory uses ConcurrentDictionary+GetOrAdd; ConfigureAwait(false) added to all await in Delibera.Core and Delibera.Redis; fire-and-forget CancelAsync wrapped in Task.Run with try/catch; IDebateCache/IDebateStore/IDebateOrchestrator.GetStatusAsync return ValueTask (no Task allocation on sync paths); FrozenDictionary/FrozenSet in ModelContextWindowRegistry (O(1) lookups, cache invalidated on Register); JsonSerializer.SerializeToUtf8Bytes in SseDebateStreamWriter and DebateCacheKeyGenerator; single-row Levenshtein with Span&lt;int&gt;+stackalloc; ReaderWriterLockSlim in TokenCounter; readonly record struct RankedOption; StringBuilder capacity hints in DebateResult.ToMarkdown.
 
-402 unit tests pass (337 Core + 65 Server). v10.2.7 — Multi-Modal Council (F-06). v10.2.6 — Nine new features: streaming, voting, persistence, agent memory, observability, structured output, adaptive strategy, templates, quick wins. v10.2.5 — OllamaProvider maxOutputTokens fix. v10.2.4 — Full CancellationToken support. v10.2.0–v10.2.3 — AutoChunking, Polly v8, parallel Operator, response language, logging, M.E.AI bridge.</PackageReleaseNotes>
+514 unit tests discovered, 509 passing (406 Core + 103 Server), 5 SSE failures outstanding. v10.2.7 — Multi-Modal Council (F-06). v10.2.6 — Nine new features: streaming, voting, persistence, agent memory, observability, structured output, adaptive strategy, templates, quick wins. v10.2.5 — OllamaProvider maxOutputTokens fix. v10.2.4 — Full CancellationToken support. v10.2.0–v10.2.3 — AutoChunking, Polly v8, parallel Operator, response language, logging, M.E.AI bridge.</PackageReleaseNotes>
       <IncludeSymbols>true</IncludeSymbols>
       <SymbolPackageFormat>snupkg</SymbolPackageFormat>
       <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -49,23 +75,38 @@ Performance &amp; Integrity: 30-min Timer-based eviction on LocalDebateOrchestra
    </ItemGroup>
 
    <ItemGroup>
-      <PackageReference Include="Microsoft.Extensions.AI" Version="10.8.0" />
-      <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.10" />
-      <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.10" />
-      <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
-      <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
-      <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.10" />
-      <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.8.0" />
-      <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.10" />
-      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
-      <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.10" />
-      <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
-      <PackageReference Include="ModelContextProtocol" Version="1.4.1" />
+      <PackageReference Include="Microsoft.Extensions.AI" Version="10.10.0" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.12" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.12" />
+      <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+      <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+      <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.12" />
+      <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
+      <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.12" />
+      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+      <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.12" />
+      <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
+      <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
       <PackageReference Include="Npgsql" Version="10.0.3" />
-      <PackageReference Include="OllamaSharp" Version="5.4.27" />
+      <PackageReference Include="OllamaSharp" Version="5.5.0" />
       <PackageReference Include="Pgvector" Version="0.3.2" />
-      <PackageReference Include="Qdrant.Client" Version="1.18.1" />
-      <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.301" PrivateAssets="all" />
-   </ItemGroup>
+      <PackageReference Include="Qdrant.Client" Version="1.19.0" />
+      <!-- 10.0.303 is the first release of the 10.0.3xx band that is not flagged by
+           GHSA-23fw-v26w-5fgq / CVE-2026-62900 (Microsoft.Build.Tasks.Git information
+           disclosure). 10.0.301 pulled the vulnerable component transitively. -->
+      <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="all" />
+    <!-- Delibera.Core exposes Microsoft.Extensions.Caching.Memory.IMemoryCache in its
+         public surface (InMemoryDebateCache ctor, UseInMemoryCache) and now registers the
+         implementation itself. Previously the interface arrived transitively while the
+         concrete MemoryCache/AddMemoryCache did not, so UseInMemoryCache threw at resolve. -->
+   <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Lets the test project assert on internal invariants that are part of the public
+         contract (e.g. TokenCounter honouring MaxMemoizedEntries) without widening the
+         public API just for testability. -->
+    <InternalsVisibleTo Include="Delibera.Core.Tests" />
+  </ItemGroup>
 
 </Project>

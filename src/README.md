@@ -39,7 +39,7 @@ well-reasoned outcomes** rather than single-model guesses.
 | **⚖️ Chairman Synthesis**     | A dedicated moderator opens, regulates, and synthesises the final verdict             |
 | **📚 Knowledge Keeper (RAG)** | Per-round semantic retrieval with structured, cited responses                         |
 | **🐘 Qdrant + pgvector**      | Pluggable vector stores — use a dedicated DB or your existing PostgreSQL              |
-| **🗜️ Context Compression**   | 4 strategies (Semantic, Deduplication, Summarization, Hybrid) save 30–70% of tokens   |
+| **🗜️ Context Compression**   | 4 strategies (Semantic, Deduplication, Summarization, Hybrid) applied to every round prompt — measured 11.7–12.1% token savings |
 | **💉 Dependency Injection**   | `AddDelibera()` extension for `IServiceCollection` with full options binding          |
 | **📋 Execution Logging**      | `ExecutionLog` model with `ExecutionLogLevel` — Chairman, KK, Compression & participant events |
 | **📝 M.E.Logging**           | Inject your own `ILogger`/`ILoggerFactory` — every debate event is forwarded to the host's logging pipeline |
@@ -316,7 +316,7 @@ streaming, embeddings, DI registration and limitations:**
 
 ## 🗜️ Context Compression
 
-Automatically compress context between deliberation rounds — save **30–70% of tokens** without losing meaning.
+Automatically compress context between deliberation rounds — a measured **11.7–12.1% of prompt tokens** without losing meaning.
 
 | Strategy          | How It Works                                               | Best For                         |
 | ----------------- | ---------------------------------------------------------- | -------------------------------- |

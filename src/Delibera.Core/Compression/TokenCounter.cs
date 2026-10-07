@@ -14,9 +14,13 @@ namespace Delibera.Core.Compression;
 ///    </para>
 ///    <para>For precise counts, provide a custom <see cref="TokenizerFunc" />.</para>
 ///    <para>
-///       The default instance memoizes short (≤ 8 000 character) string estimates in a small
-///       LRU cache to avoid recomputing the heuristic on the same prompt fragments, which are
-///       frequently reused across debate rounds.
+///       The default instance memoizes short (≤ 8 000 character) string estimates to avoid
+///       CLOCK (second-chance) cache — a hit only sets a per-entry flag, so the read path
+///       recomputing the heuristic on the same prompt fragments, which are frequently reused
+///       across debate rounds. The previous implementation moved a linked-list node on every
+///       hit under an exclusive lock, which serialised every concurrently-estimated prompt in
+///       the process: <see cref="Default" /> is a process-wide singleton, and debate
+///       participants are fanned out with Task.WhenAll.
 ///    </para>
 /// </remarks>
 public sealed class TokenCounter
@@ -29,12 +33,35 @@ public sealed class TokenCounter
 
    // ──────────────────────────────────────────────
 
-   private readonly ConcurrentDictionary<string, int> _memo = new();
-   private readonly ReaderWriterLockSlim _lruLock = new();
-   private readonly LinkedList<string> _memoOrder = new(); // LRU access order
+   private readonly ConcurrentDictionary<string, MemoEntry> _memo = new();
+   private ConcurrentQueue<string> _memoOrder = new(); // insertion order, re-queued on use
+
+   /// <summary>A memoized estimate plus its second-chance flag.</summary>
+   private sealed class MemoEntry(int value)
+   {
+      internal int Value { get; } = value;
+
+      /// <summary>
+      ///    Second-chance flag, set on every cache hit. Deliberately written without a
+      ///    lock: a lost or duplicated write only makes the eviction estimate slightly
+      ///    less precise, which for a token-count heuristic is not observable.
+      /// </summary>
+      internal bool Used;
+   }
 
    /// <summary>Gets the shared default <see cref="TokenCounter" /> instance.</summary>
    public static TokenCounter Default => DefaultInstance.Value;
+
+   // ── Test-only observation of the cache invariants ───────────────────────────
+   //
+   // MaxMemoizedEntries and the queue's ability to shrink are documented behaviour, so
+   // the tests need to see them. Kept internal so the public surface stays unchanged.
+
+   /// <summary>Number of currently memoized estimates.</summary>
+   internal int MemoizedCount => _memo.Count;
+
+   /// <summary>Number of keys queued for eviction.</summary>
+   internal int EvictionQueueLength => _memoOrder.Count;
 
    /// <summary>
    ///    Custom tokenizer function. If set, overrides the heuristic estimator.
@@ -77,9 +104,10 @@ public sealed class TokenCounter
       {
          if (_memo.TryGetValue(text, out var cached))
          {
-            // Touch: move to end of access-order list for LRU.
-            TouchMemoEntry(text);
-            return cached;
+            // Second chance: a plain flag write, no lock and no list surgery. This is the
+            // hot path — it runs once per prompt per participant per round.
+            cached.Used = true;
+            return cached.Value;
          }
 
          var value = EstimateTokens(text.AsSpan());
@@ -88,8 +116,11 @@ public sealed class TokenCounter
          if (_memo.Count >= MaxMemoizedEntries)
             EvictMemoEntries(_evictionBatchSize);
 
-         if (_memo.TryAdd(text, value))
-            TrackMemoEntry(text);
+         if (_memo.TryAdd(text, new MemoEntry(value)))
+         {
+            _memoOrder.Enqueue(text);
+            TrimMemoOrder();
+         }
 
          return value;
       }
@@ -157,56 +188,61 @@ public sealed class TokenCounter
       var cutoff = text.LastIndexOf(". ", approxChars, StringComparison.Ordinal);
       if (cutoff < approxChars / 2) cutoff = approxChars; // no good boundary
 
-      return text[..cutoff].TrimEnd() + "…";
+      // Concat over the trimmed span instead of slicing then concatenating: the slice and
+      // the TrimEnd each allocated a throwaway string before this.
+      return string.Concat(text.AsSpan(0, cutoff).TrimEnd(), "…");
    }
 
-   private void TrackMemoEntry(string key)
-   {
-      _lruLock.EnterWriteLock();
-      try
-      {
-         _memoOrder.AddLast(key);
-      }
-      finally
-      {
-         _lruLock.ExitWriteLock();
-      }
-   }
-
-   private void TouchMemoEntry(string key)
-   {
-      _lruLock.EnterWriteLock();
-      try
-      {
-         _memoOrder.Remove(key);
-         _memoOrder.AddLast(key);
-      }
-      finally
-      {
-         _lruLock.ExitWriteLock();
-      }
-   }
-
+   /// <summary>
+   ///    Evicts up to <paramref name="count" /> entries, giving a second chance to any that
+   ///    were used since the eviction queue last passed them. Lock-free: the queue is a
+   ///    <see cref="ConcurrentQueue{T}" /> and the per-entry flag is racy by design.
+   /// </summary>
    private void EvictMemoEntries(int count)
    {
-      _lruLock.EnterWriteLock();
-      try
+      var removed = 0;
+      var scanned = 0;
+
+      // Bound the scan: a cache full of hot keys must not spin here forever. Stopping
+      // early only means the next pass will finish the job.
+      var budget = Math.Max(count * 8, _memoOrder.Count);
+
+      while (removed < count && scanned < budget && _memoOrder.TryDequeue(out var key))
       {
-         var removed = 0;
-         var node = _memoOrder.First;
-         while (node is not null && removed < count)
+         scanned++;
+
+         if (_memo.TryGetValue(key, out var entry) && entry.Used)
          {
-            var next = node.Next;
-            _memo.TryRemove(node.Value, out _);
-            _memoOrder.Remove(node);
-            node = next;
-            removed++;
+            entry.Used = false; // second chance: back of the queue, no longer "recently used"
+            _memoOrder.Enqueue(key);
+            continue;
          }
+
+         // Only count a real removal, so a stale queue entry cannot consume the budget.
+         if (_memo.TryRemove(key, out _))
+            removed++;
       }
-      finally
-      {
-         _lruLock.ExitWriteLock();
-      }
+   }
+
+   /// <summary>
+   ///    Keeps the eviction queue from outgrowing the cache. A second-chance re-queue adds
+   ///    an item without removing one, so a workload of uniformly hot keys would otherwise
+   ///    lengthen the queue indefinitely. The rebuild keeps every cached key, so nothing
+   ///    can become permanently un-evictable; if another thread swapped the queue first,
+   ///    the attempt is simply discarded and the next one retries.
+   /// </summary>
+   private void TrimMemoOrder()
+   {
+      var order = _memoOrder;
+      if (order.Count <= 2 * MaxMemoizedEntries) return;
+
+      var present = new HashSet<string>(order, StringComparer.Ordinal);
+      var rebuilt = new ConcurrentQueue<string>(order);
+      foreach (var key in _memo.Keys)
+         if (present.Add(key))
+            rebuilt.Enqueue(key);
+
+      Interlocked.CompareExchange(ref _memoOrder, rebuilt, order);
    }
 
    private static int CountWords(ReadOnlySpan<char> text)

@@ -317,4 +317,28 @@ public class StreamingCouncilTests
         };
         finalByNumber.IsFinal.Should().BeTrue(); // 4 >= 4
     }
+
+    [Fact]
+    public async Task StreamDebateAsync_Yields_Rounds_When_Provider_Completes_Asynchronously()
+    {
+        // Regression guard: with a synchronously-completing provider the whole debate
+        // runs inline before the temporary event swap could be undone, so the streaming
+        // interceptor used to work "by accident". A real provider awaits I/O, so the
+        // round callback has to survive the first true suspension point.
+        var provider = new FakeLLMProvider(reply: "ok", chatDelayMs: 5);
+        var executor = new CouncilBuilder()
+            .AddMember("fake-model", provider, "Analyst")
+            .SetChairman("fake-model", provider)
+            .WithStandardDebate()
+            .WithSystemPrompt("sys")
+            .WithUserPrompt("q")
+            .WithMaxRounds(1)
+            .Build();
+
+        var rounds = new List<DebateRound>();
+        await foreach (var round in executor.StreamDebateAsync())
+            rounds.Add(round);
+
+        rounds.Should().HaveCount(2); // round 1 + Chairman verdict
+    }
 }

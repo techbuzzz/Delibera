@@ -12,9 +12,10 @@ public static class ScenarioEndpoints
 {
    public static IEndpointRouteBuilder MapScenarioEndpoints(this IEndpointRouteBuilder routes)
    {
+      // No WithOpenApi(): deprecated in .NET 10 (ASPDEPR002); the built-in OpenAPI
+      // pipeline covers this group already.
       var group = routes.MapGroup("/scenarios")
-         .WithTags("Scenarios")
-         .WithOpenApi();
+         .WithTags("Scenarios");
 
       // POST /api/v1/scenarios  — sync
       group.MapPost("/", RunScenarioAsync)
@@ -117,7 +118,7 @@ public static class ScenarioEndpoints
       HttpContext ctx,
       CancellationToken ct)
    {
-      var record = orchestration.Find(id);
+      var record = orchestration.Find(id, TenantResolutionMiddleware.Resolve(ctx));
       if (record is null)
       {
          ctx.Response.StatusCode = StatusCodes.Status404NotFound;

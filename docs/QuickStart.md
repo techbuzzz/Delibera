@@ -202,7 +202,7 @@ var result = await new CouncilBuilder()
 Console.WriteLine(result.TokenStats?.ToSummary());
 ```
 
-Compression saves roughly **30–70% of tokens** without losing the meaning of the debate context.
+Compression saves a measured **11.7–12.1% of prompt tokens** without losing the meaning of the debate context. See [performance-measurements.md](performance-measurements.md#3-context-compression).
 
 ---
 

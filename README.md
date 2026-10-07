@@ -42,7 +42,7 @@ well-reasoned outcomes** rather than single-model guesses.
 | **📚 Knowledge Keeper (RAG)** | Per-round semantic retrieval with structured, cited responses                         |
 | **🛠️ Operator (MCP Tools)**  | A micro-agent that delegates tasks to MCP servers (web, files, Marp, Notion, …) on demand during the debate |
 | **🐘 Qdrant + pgvector**      | Pluggable vector stores — use a dedicated DB or your existing PostgreSQL              |
-| **🗜️ Context Compression**   | 4 strategies (Semantic, Deduplication, Summarization, Hybrid) save 30–70% of tokens   |
+| **🗜️ Context Compression**   | 4 strategies (Semantic, Deduplication, Summarization, Hybrid) applied to every round prompt — [measured at 11.7–12.1% prompt-token savings](docs/performance-measurements.md#3-context-compression) |
 | **✂️ AutoChunking**           | Progressive disclosure of large documents across rounds — respects model context windows |
 | **🌐 Distributed Debates**    | `IDebateOrchestrator` with local and Redis backends — parallelize debates across machines |
 | **💾 Result Caching**          | `IDebateCache` with in-memory, file, and Redis backends — skip re-running identical debates |
@@ -55,6 +55,21 @@ well-reasoned outcomes** rather than single-model guesses.
 | **🛑 Cooperative Cancellation**| Every public async method accepts a `CancellationToken`; a host shutdown or user cancel aborts the debate mid-flight (rounds, LLM calls, MCP tools, RAG, file saves) |
 | **🧱 Modern C# 15 (preview)** | Built on .NET 10 with `LangVersion=preview`, file-scoped namespaces, records, span/SIMD hot paths |
 
+### 🆕 What's new in v10.5.0
+
+Five defects found by measuring real deliberations against Ollama Cloud. Two of them made headline
+features silently non-functional — full evidence in
+[docs/performance-measurements.md](docs/performance-measurements.md).
+
+| Fix | Description |
+| --- | --- |
+| **🗜️ Compression now runs** | `CompressTextAsync` was public API that nothing in the pipeline called; `TokenStats` stayed null and ten runs reported **0.00% saved at 0 ms overhead**. The compressor is now applied to each round prompt and every pass is logged. Measured **11.7–12.1%** — still well under the 30–70% previously claimed, which the docs now say. |
+| **🌐 Ollama Cloud works at all** | The provider defaulted to `num_predict: -1`, which the endpoint rejects outright (`max_tokens must be positive`). **Every request failed before generating a token.** A non-positive cap is now omitted from the request. |
+| **⚠️ Degradation is visible** | A failed member used to be substituted into the transcript as `"[ERROR: ...]"` — read by the Chairman as an opinion. Failures are now excluded from the round and reported as `DebateResult.FailedMembers` + `IsDegraded`. |
+| **🔍 Empty responses explained** | New `OllamaEmptyResponseException` separates *"the budget went into reasoning"* from *"the model returned nothing"*, with the remedy in the message. |
+| **🧠 Reasoning is controllable** | `OllamaProvider(enableThinking:)` sends `Think` explicitly; `retryOnBudgetExhaustion` retries once with a larger budget when generation was cut off mid-thought. |
+| **⏱️ Durations were negative** | `TotalDuration` came out as `-0.0s` on every debate because `StartedAt` was initialised after `CompletedAt` was stamped. |
+
 ### 🆕 What's new in v10.3.0
 
 | Feature | Description |
@@ -64,12 +79,35 @@ well-reasoned outcomes** rather than single-model guesses.
 | **🖥️ Delibera.Server** | ASP.NET Core 10 Minimal API hosting Delibera over HTTP. REST API (`POST /api/debates`, `GET /api/debates/{id}`, `DELETE /api/debates/{id}`), SSE streaming via `GET /api/debates/{id}/stream` powered by `IDebateOrchestrator.StreamAsync()`, background queue via `IHostedService` + `System.Threading.Channels`. |
 | **⚠️ Breaking Changes** | `Moderator` → `Chairman`; removed `IDebateStrategyWithOptions`; `ModelCapabilities` non-nullable (use `IsUnknown`); `RagProviderFactory` → `VectorStoreFactory`; removed `DebateStatus.Paused`, `DebateOrchestrationStatus.Pending`; `SseDebateStreamWriter` rewritten for `IDebateOrchestrator.StreamAsync()`; removed `DebateRecord._channel`/`RoundWriter`/`RoundReader`. |
 
-> See [CHANGELOG.md](CHANGELOG.md) for the full v10.3.0 release notes and [docs/ROADMAP.md](docs/ROADMAP.md) for the roadmap.
+> See [CHANGELOG.md](CHANGELOG.md) for the full release notes, [docs/performance-measurements.md](docs/performance-measurements.md)
+> for what was measured, and [docs/ROADMAP.md](docs/ROADMAP.md) for the roadmap.
+
+---
+
+## 💡 Use Cases
+
+The same council shape fits a lot of decisions. These are the ones that measurably benefit from
+multiple models disagreeing rather than one model answering twice.
+
+| Use case | Council shape | Why a council earns its cost |
+|---|---|---|
+| **Architecture decision** | 3 experts + chairman, 4 rounds, RAG over your ADRs | Different models surface different failure modes; the Chairman is forced to name where they disagree. Measured: an architecture verdict flagged two risks nobody raised — a licence change and the unasked question *why* the migration was wanted. |
+| **Code review before a human** | Code specialist + 2 generalists, 3 rounds | Catches the two things a linter misses: a wrong fix and an unstated assumption. Measured: the cheapest roster answered "name the one defect" with 78,000 characters and still picked the weaker of two available answers. |
+| **Incident post-mortem** | 3 experts, chairman, RAG over runbooks + `chrome-devtools-mcp` for live evidence | Forces the "what do we know vs. what do we assume" split into the record. |
+| **Security and compliance review** | 3 experts, chairman, `IsDegraded` checked | A member that fails is a hole in the review, not a footnote — `IsDegraded` makes that impossible to miss. |
+| **Vendor and tool selection** | 3 experts + chairman, criteria in the prompt | Turns a preference argument into an explicit trade-off table with dissent preserved. |
+| **Research with citations** | Knowledge Keeper over your docs, 4 rounds | Measured: retrieval returned the right passage (top score 0.738) and verdicts cited documents by line range. |
+| **On-call decision support** | 2–3 experts, 2 rounds, cached | Same incident shape twice costs one debate: measured cache hit served in **0.0 s** against 154–209 s uncached. |
+| **Prompt and agent design review** | 3 experts, chairman | Finds the prompt that lets the most confident model win rather than the best-reasoned one. |
+
+**When *not* to use it:** single-fact lookups, anything where one strong model and a tool call beats
+three opinions, and latency budgets under a second. A measured 4-round debate runs **154–209 s**.
 
 ---
 
 ## 📑 Table of Contents
 
+- [Use Cases](#-use-cases)
 - [Quick Start](#-quick-start)
   - [Prerequisites & Models](#prerequisites--models)
   - [Installation](#installation)
@@ -83,6 +121,7 @@ well-reasoned outcomes** rather than single-model guesses.
 - [Debate Strategies](#-debate-strategies)
 - [Output Files Structure](#-output-files-structure)
 - [Cancellation Support](#-cancellation-support)
+- [Measured Behaviour](#-measured-behaviour)
 - [ConsoleApp Examples](#-consoleapp-examples)
 - [Installation & Build](#-installation--build)
 - [Architecture](#-architecture)
@@ -413,7 +452,7 @@ Configure the Operator declaratively in `appsettings.json` under `Delibera:Opera
 
 ## 🗜️ Context Compression
 
-Automatically compress context between deliberation rounds — save **30–70% of tokens** without losing meaning.
+Automatically compress context between deliberation rounds — **11.7–12.1% of prompt tokens** measured, without losing meaning.
 
 | Strategy          | How It Works                                               | Best For                         |
 | ----------------- | ---------------------------------------------------------- | -------------------------------- |
@@ -667,6 +706,33 @@ The `Delibera.ConsoleApp` includes a `--cancellation` demo that exercises this e
 
 See the [Cancellation section in `Delibera.Core` README](src/Delibera.Core/README.md#-cancellation-support)
 for the full table of cancellable operations and the linked-token pattern.
+
+---
+
+## 📏 Measured Behaviour
+
+Numbers below come from real deliberations against Ollama Cloud, not estimates. Method, caveats
+and the full evidence are in
+[docs/performance-measurements.md](docs/performance-measurements.md).
+
+| What | Measured |
+|---|---|
+| **Framework overhead** | **0.0 s** — time no model call explains, across every run |
+| **Debate wall time** | 154–209 s for 4 rounds, 3 members + chairman |
+| **Throughput** | 840–1,144 chars/s, flat — wall time tracks output volume, not Delibera |
+| **Round cost profile** | Critique + refinement are 62–77% of a debate; round 1 is the cheapest |
+| **Context compression** | **11.7–12.1%** prompt tokens saved |
+| **Knowledge Keeper** | 3 retrieval queries per debate, steady across topics; probe top score 0.738 |
+| **Operator (MCP)** | 1–3 delegated tasks per debate, scaling with how much the question needs looking up |
+| **Cache hit** | **0.0 s** against 154–209 s uncached |
+| **Output balance** | One verbose model produced **68.8%** of all member text — roster composition mattered more than the framework |
+
+Two honest caveats worth knowing before you copy a number:
+
+- **Compression saves ~12%, not the 30–70% this README used to claim.** The old figure was never
+  measured. v10.5.0 corrects it.
+- **A debate is not fast.** 154–209 s is the honest cost. If that does not fit your budget, use two
+  rounds, three members, or the cache.
 
 ---
 

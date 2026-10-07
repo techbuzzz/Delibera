@@ -109,18 +109,7 @@ public abstract class BaseRagProvider : IRagProvider
       CancellationToken ct = default)
    {
       var results = await SearchAsync(collectionName, query, limit, ct: ct);
-      if (results.Count == 0)
-         return string.Empty;
-
-      var sb = new StringBuilder();
-      for (var i = 0; i < results.Count; i++)
-      {
-         sb.AppendLine($"[Source {i + 1} — score: {results[i].Score:F3}]");
-         sb.AppendLine(results[i].Text);
-         sb.AppendLine();
-      }
-
-      return sb.ToString().TrimEnd();
+      return RagContextFormatter.Format(results);
    }
 
    /// <inheritdoc />

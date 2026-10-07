@@ -96,4 +96,50 @@ public sealed class DebateCacheKeyGeneratorTests
 
         key1.Should().NotBe(key2);
     }
+
+    // ── Chairman identity (W2-06 follow-up) ─────────────────────────────────
+
+    [Fact]
+    public void Generate_DifferentChairmen_ProduceDifferentKeys()
+    {
+        // The chairman produces the final verdict. Without this input in the key, two
+        // debates with identical members but different chairmen shared a cache entry and
+        // one caller received the other's verdict.
+        var withChairA = DebateCacheKeyGenerator.Generate(
+            _context, _members, "Standard", 4, 0.7f, "system prompt", "gpt-4o (OpenAI)");
+        var withChairB = DebateCacheKeyGenerator.Generate(
+            _context, _members, "Standard", 4, 0.7f, "system prompt", "claude (Anthropic)");
+
+        withChairA.Should().NotBe(withChairB);
+    }
+
+    [Fact]
+    public void Generate_SameChairman_ProducesTheSameKey()
+    {
+        var key1 = DebateCacheKeyGenerator.Generate(
+            _context, _members, "Standard", 4, 0.7f, "system prompt", "gpt-4o (OpenAI)");
+        var key2 = DebateCacheKeyGenerator.Generate(
+            _context, _members, "Standard", 4, 0.7f, "system prompt", "gpt-4o (OpenAI)");
+
+        key1.Should().Be(key2);
+    }
+
+    [Fact]
+    public void Generate_NoChairman_DiffersFrom_A_NamedChair()
+    {
+        var withoutChair = DebateCacheKeyGenerator.Generate(
+            _context, _members, "Standard", 4, 0.7f, "system prompt");
+        var withChair = DebateCacheKeyGenerator.Generate(
+            _context, _members, "Standard", 4, 0.7f, "system prompt", "gpt-4o (OpenAI)");
+
+        withoutChair.Should().NotBe(withChair);
+    }
+
+    [Fact]
+    public void Generate_KeyFormat_IsVersioned()
+    {
+        // A key minted before the chairman was added must not collide with one minted
+        // after it — hence the explicit version field rather than a bare field addition.
+        DebateCacheKeyGenerator.KeyVersion.Should().BeGreaterThanOrEqualTo(2);
+    }
 }

@@ -165,60 +165,10 @@ public sealed class AdaptiveStrategySelector : IStrategySelector
       for (var i = 0; i < responses.Count; i++)
       for (var j = i + 1; j < responses.Count; j++)
       {
-         var sim = TextSimilarity(responses[i], responses[j]);
-         if (sim > 0.8) return true;
+         if (TextSimilarity.AreNearIdentical(responses[i], responses[j]))
+            return true;
       }
 
       return false;
-   }
-
-   /// <summary>
-   ///    Simple normalised Levenshtein similarity in [0,1]. 1.0 = identical strings.
-   ///    Used as a fallback when no embedding provider is configured.
-   /// </summary>
-   private static double TextSimilarity(string a, string b)
-   {
-      if (a == b) return 1.0;
-      if (a.Length == 0 || b.Length == 0) return 0.0;
-      var maxLen = Math.Max(a.Length, b.Length);
-      var dist = LevenshteinDistance(a, b);
-      return 1.0 - (double)dist / maxLen;
-   }
-
-   private static int LevenshteinDistance(string a, string b)
-   {
-      if (a.Length < b.Length)
-         (a, b) = (b, a);
-
-      var n = b.Length;
-      Span<int> prevRow = n <= 128
-         ? stackalloc int[n + 1]
-         : new int[n + 1];
-      Span<int> currRow = n <= 128
-         ? stackalloc int[n + 1]
-         : new int[n + 1];
-
-      for (var i = 0; i <= n; i++)
-         prevRow[i] = i;
-
-      for (var i = 1; i <= a.Length; i++)
-      {
-         currRow[0] = i;
-         for (var j = 1; j <= n; j++)
-         {
-            var cost = a[i - 1] == b[j - 1]
-               ? 0
-               : 1;
-            currRow[j] = Math.Min(
-               Math.Min(prevRow[j] + 1, currRow[j - 1] + 1),
-               prevRow[j - 1] + cost);
-         }
-
-         var tmp = prevRow;
-         prevRow = currRow;
-         currRow = tmp;
-      }
-
-      return prevRow[n];
    }
 }

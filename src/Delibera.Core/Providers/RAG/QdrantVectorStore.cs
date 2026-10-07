@@ -79,9 +79,22 @@ public sealed class QdrantVectorStore : IVectorStore
       float scoreThreshold = 0.0f,
       CancellationToken ct = default)
    {
-      var scored = await _client.SearchAsync(
+      // Qdrant.Client 1.19.0 marks SearchAsync obsolete ("Use QueryAsync instead"), which is a
+      // build error under -warnaserror. QueryAsync is the universal query API — it covers
+      // search, recommend, discover and filters — so the old call maps onto it argument for
+      // argument: same collection, same query vector, same limit, same score threshold, same
+      // cancellation token. Neither call passed a Filter, so none is passed here. The payload
+      // selector keeps its default (true) exactly as SearchAsync's did; the projection below
+      // reads s.Payload, so the payload has to come back either way.
+      //
+      // float[] -> VectorInput -> Query is a chain of two user-defined implicit conversions,
+      // which C# will not collapse into one expression, so each step gets its own statement.
+      VectorInput vector = queryVector;
+      Query nearest = vector;
+
+      var scored = await _client.QueryAsync(
          collectionName,
-         queryVector,
+         nearest,
          limit: (ulong)limit,
          scoreThreshold: scoreThreshold > 0
             ? scoreThreshold

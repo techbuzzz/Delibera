@@ -16,9 +16,15 @@ internal sealed class DebateResultBuilder(
    Operator? @operator = null)
 {
    private readonly List<DebateRound> _rounds = [];
+
+   // Captured when the builder is created, which is when the debate starts. DebateResult.StartedAt
+   // used to rely on its property initialiser, which runs inside Build() — after MarkCompleted() has
+   // already stamped CompletedAt — so TotalDuration came out negative ("-0.0s") on every debate.
+   private readonly DateTime _startedAt = DateTime.UtcNow;
    private DateTime? _completedAt;
    private string? _finalVerdict;
    private string? _openingStatement;
+   private IReadOnlyList<MemberFailure> _failures = [];
 
    public string StrategyName => strategy.StrategyName;
    public PromptContext Context => context;
@@ -39,6 +45,12 @@ internal sealed class DebateResultBuilder(
       _finalVerdict = verdict;
    }
 
+   /// <summary>Records members that failed during the debate so the result can report degradation.</summary>
+   public void WithFailures(IReadOnlyList<MemberFailure> failures)
+   {
+      _failures = failures;
+   }
+
    public void MarkCompleted()
    {
       _completedAt = DateTime.UtcNow;
@@ -57,7 +69,9 @@ internal sealed class DebateResultBuilder(
          OpeningStatement = _openingStatement,
          Rounds = _rounds,
          FinalVerdict = _finalVerdict,
-         CompletedAt = _completedAt
+         StartedAt = _startedAt,
+         CompletedAt = _completedAt,
+         FailedMembers = _failures
       };
    }
 }

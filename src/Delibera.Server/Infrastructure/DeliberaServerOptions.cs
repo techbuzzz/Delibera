@@ -2,7 +2,12 @@ namespace Delibera.Server.Infrastructure;
 
 public sealed class DeliberaServerOptions
 {
-   public const string SectionName = "DeliberaServer";
+   /// <summary>
+   ///    Configuration section. Must match the layout in appsettings.json
+   ///    (<c>"Delibera": { "Server": { … } }</c>) — a mismatch here silently leaves
+   ///    every option at its default, including the OTLP endpoint.
+   /// </summary>
+   public const string SectionName = "Delibera:Server";
 
    /// <summary>Default tenant id used when X-Tenant-Id header is absent.</summary>
    public string DefaultTenantId { get; init; } = "default";

@@ -24,7 +24,11 @@ public sealed class ValidationFilter(IServiceProvider sp) : IEndpointFilter
          if (!result.IsValid)
             return Results.ValidationProblem(
                result.ToDictionary(),
-               statusCode: StatusCodes.Status422UnprocessableEntity);
+               // 400, not 422: every endpoint in this API declares
+               // .ProducesValidationProblem(), which is documented as 400, so returning 422
+               // meant generated clients were built against a status the server never
+               // returns. 400 is also the ASP.NET Core convention.
+               statusCode: StatusCodes.Status400BadRequest);
       }
 
       return await next(ctx);

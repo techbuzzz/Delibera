@@ -18,7 +18,7 @@ namespace Delibera.Core.Providers.RAG;
 ///       Similarity search uses cosine distance (<c>&lt;=&gt;</c> operator).
 ///    </para>
 /// </remarks>
-public sealed class PgVectorStore : IVectorStore
+public sealed partial class PgVectorStore : IVectorStore
 {
    private readonly NpgsqlDataSource _dataSource;
    private readonly bool _ownsDataSource;
@@ -229,10 +229,17 @@ public sealed class PgVectorStore : IVectorStore
    ///    Sanitises a collection name for use as a PostgreSQL table name.
    ///    Replaces non-alphanumeric characters with underscores and adds a prefix.
    /// </summary>
+   /// <summary>
+   ///    Any character that is not valid in a PostgreSQL table name. Compile-time literal,
+   ///    so it is source-generated rather than built and cached on first use.
+   /// </summary>
+   [GeneratedRegex(@"[^a-z0-9_]")]
+   private static partial Regex NonIdentifierCharRegex();
+
    private static string SanitizeTableName(string collectionName)
    {
-      var safe = Regex.Replace(
-         collectionName.ToLowerInvariant(), @"[^a-z0-9_]", "_");
+      var safe = NonIdentifierCharRegex()
+         .Replace(collectionName.ToLowerInvariant(), "_");
       return $"vc_{safe}";
    }
 }

@@ -34,12 +34,17 @@ public sealed class StandardDebate : DebateScenario
       DebateExecutionOptions executionOptions,
       int maxRounds = 4,
       float temperature = 0.7f,
-      Action<DebateRound>? onRoundCompleted = null,
+      Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted = null,
       CancellationToken ct = default)
    {
       ArgumentNullException.ThrowIfNull(members);
       ArgumentNullException.ThrowIfNull(context);
       var builder = new DebateResultBuilder(this, members, context, chairman, knowledgeKeeper, @operator);
+      // Handed to the builder up front: it is the same list instance the rounds fill in, so
+      // DebateResult.FailedMembers is complete by the time Build() runs, whichever FinalizeAsync
+      // path the round count selects.
+      var failures = new List<MemberFailure>();
+      builder.WithFailures(failures);
       var totalRounds = Math.Min(maxRounds, 4);
 
       // Operator briefing is appended to participant system prompts so they know what tools exist.
@@ -68,13 +73,14 @@ public sealed class StandardDebate : DebateScenario
          : $"{r1BasePrompt}\n\n📚 Knowledge Keeper context:\n{knowledgeContext}";
 
       var round1StartedAt = DateTime.UtcNow;
-      var r1Responses = await CollectResponsesAsync(members, baseSystemPrompt, r1Prompt, temperature, ct).ConfigureAwait(false);
+      var r1Responses = await CollectResponsesAsync(members, baseSystemPrompt, r1Prompt, temperature, ct, executionOptions, failures, 1, "Initial Responses").ConfigureAwait(false);
       // Operator: fulfil any [[OPERATOR: ...]] requests raised in round 1 (parallel, bounded).
       var r1Op = await ProcessOperatorRequestsAsync(@operator, r1Responses, executionOptions, ct).ConfigureAwait(false);
       var round1 = CreateRound(1, "Initial Responses",
          "All models provide their initial answers.", r1Responses, r1Prompt, r1Ki, r1Op, round1StartedAt);
       builder.AddRound(round1);
-      onRoundCompleted?.Invoke(round1);
+      if (onRoundCompleted is not null)
+         await onRoundCompleted(round1, ct).ConfigureAwait(false);
 
       if (maxRounds < 2) return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct).ConfigureAwait(false);
 
@@ -108,12 +114,13 @@ public sealed class StandardDebate : DebateScenario
                       """;
 
       var round2StartedAt = DateTime.UtcNow;
-      var r2Responses = await CollectResponsesAsync(members, r2System, r2Prompt, temperature, ct).ConfigureAwait(false);
+      var r2Responses = await CollectResponsesAsync(members, r2System, r2Prompt, temperature, ct, executionOptions, failures, 2, "Critique").ConfigureAwait(false);
       var r2Op = await ProcessOperatorRequestsAsync(@operator, r2Responses, executionOptions, ct).ConfigureAwait(false);
       var round2 = CreateRound(2, "Critique",
          "Models critically analyse each other's responses.", r2Responses, r2Prompt, r2Ki, r2Op, round2StartedAt);
       builder.AddRound(round2);
-      onRoundCompleted?.Invoke(round2);
+      if (onRoundCompleted is not null)
+         await onRoundCompleted(round2, ct).ConfigureAwait(false);
 
       if (maxRounds < 3) return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct).ConfigureAwait(false);
 
@@ -150,12 +157,13 @@ public sealed class StandardDebate : DebateScenario
                       """;
 
       var round3StartedAt = DateTime.UtcNow;
-      var r3Responses = await CollectResponsesAsync(members, r3System, r3Prompt, temperature, ct).ConfigureAwait(false);
+      var r3Responses = await CollectResponsesAsync(members, r3System, r3Prompt, temperature, ct, executionOptions, failures, 3, "Final Improved Responses").ConfigureAwait(false);
       var r3Op = await ProcessOperatorRequestsAsync(@operator, r3Responses, executionOptions, ct).ConfigureAwait(false);
       var round3 = CreateRound(3, "Final Improved Responses",
          "Models provide refined answers incorporating critiques.", r3Responses, r3Prompt, r3Ki, r3Op, round3StartedAt);
       builder.AddRound(round3);
-      onRoundCompleted?.Invoke(round3);
+      if (onRoundCompleted is not null)
+         await onRoundCompleted(round3, ct).ConfigureAwait(false);
 
       return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct).ConfigureAwait(false);
    }
@@ -165,7 +173,7 @@ public sealed class StandardDebate : DebateScenario
       CouncilMember? chairman,
       KnowledgeKeeper? knowledgeKeeper,
       float temperature,
-      Action<DebateRound>? onRoundCompleted,
+      Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted,
       CancellationToken ct)
    {
       if (chairman is not null)
@@ -191,7 +199,8 @@ public sealed class StandardDebate : DebateScenario
                new Dictionary<string, string> { [chairman.DisplayName] = finalVerdict },
                startedAt: round4StartedAt);
             builder.AddRound(round4);
-            onRoundCompleted?.Invoke(round4);
+            if (onRoundCompleted is not null)
+               await onRoundCompleted(round4, ct).ConfigureAwait(false);
          }
          catch (OperationCanceledException) when (ct.IsCancellationRequested)
          {

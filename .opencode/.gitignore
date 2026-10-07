@@ -1,0 +1,13 @@
+node_modules
+package.json
+package-lock.json
+bun.lock
+.gitignore
+
+# Also ignore in case root .gitignore is missing
+agents/
+instructions/
+prompts/
+skills/
+opencode.jsonc
+expert-dotnet.md

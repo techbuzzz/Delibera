@@ -7,9 +7,10 @@ public static class TemplateEndpoints
 {
    public static IEndpointRouteBuilder MapTemplateEndpoints(this IEndpointRouteBuilder routes)
    {
+      // No WithOpenApi(): deprecated in .NET 10 (ASPDEPR002); the built-in OpenAPI
+      // pipeline covers this group already.
       var group = routes.MapGroup("/templates")
-         .WithTags("Templates")
-         .WithOpenApi();
+         .WithTags("Templates");
 
       group.MapGet("/", ListTemplates)
          .WithName("ListTemplates")

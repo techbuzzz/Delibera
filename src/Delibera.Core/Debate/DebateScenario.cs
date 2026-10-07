@@ -1,4 +1,6 @@
+using System.Text;
 using System.Text.RegularExpressions;
+using Delibera.Core.Compression;
 using Delibera.Core.Council;
 
 namespace Delibera.Core.Debate;
@@ -8,21 +10,23 @@ namespace Delibera.Core.Debate;
 ///    Provides shared utilities for collecting responses, formatting rounds,
 ///    querying the Knowledge Keeper, and compressing context.
 /// </summary>
-public abstract class DebateScenario : IDebateStrategy
+public abstract partial class DebateScenario : IDebateStrategy
 {
    // ──────────────────────────────────────────────
    // Operator helpers
    // ──────────────────────────────────────────────
 
    /// <summary>
-   ///    Marker participants use to delegate a task to the Operator, e.g.:
-   ///    <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
+   ///    Matches the marker participants use to delegate a task to the Operator,
+   ///    e.g.: <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
+   ///    <para>
+   ///    Source-generated rather than <c>RegexOptions.Compiled</c>: the pattern is a
+   ///    compile-time literal, so the generator emits it at build time — no runtime JIT,
+   ///    no static-initialisation cost, and it keeps the pattern AOT/trim-safe.
+   ///    </para>
    /// </summary>
-   private static readonly Regex OperatorRequestRegex =
-      new(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]",
-         RegexOptions.Singleline |
-         RegexOptions.IgnoreCase |
-         RegexOptions.Compiled);
+   [GeneratedRegex(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+   private static partial Regex OperatorRequestRegex();
 
    /// <inheritdoc />
    public abstract string StrategyName { get; }
@@ -40,40 +44,72 @@ public abstract class DebateScenario : IDebateStrategy
       DebateExecutionOptions executionOptions,
       int maxRounds = 4,
       float temperature = 0.7f,
-      Action<DebateRound>? onRoundCompleted = null,
+      Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted = null,
       CancellationToken ct = default);
 
    // ──────────────────────────────────────────────
    // Shared helpers
    // ──────────────────────────────────────────────
 
-   /// <summary>Collects responses from all members in parallel.</summary>
+   /// <summary>
+   ///    Collects responses from all members in parallel.
+   ///    <para>
+   ///    When <paramref name="executionOptions" /> carries a positive
+   ///    <c>MaxDegreeOfParallelism</c> it also bounds the fan-out; the operator and
+   ///    knowledge-keeper paths already honoured it, this one did not.
+   ///    </para>
+   /// </summary>
    protected static async Task<Dictionary<string, string>> CollectResponsesAsync(
       IReadOnlyList<CouncilMember> members,
       string systemPrompt,
       string userPrompt,
       float temperature,
-      CancellationToken ct)
+      CancellationToken ct,
+      DebateExecutionOptions? executionOptions = null,
+      List<MemberFailure>? failures = null,
+      int roundNumber = 0,
+      string roundName = "")
    {
+      // Bounding the fan-out keeps a large council from exhausting the HttpClient socket
+      // pool or tripping provider rate limits. A semaphore is used rather than
+      // Parallel.ForEachAsync because the results must keep member order: the disambiguation
+      // below appends "#2", "#3" in the order results arrive.
+      var maxParallelism = executionOptions?.MaxDegreeOfParallelism ?? 0;
+      var gates = maxParallelism > 0 ? new SemaphoreSlim(maxParallelism, maxParallelism) : null;
+
+      // Context compression. Historically the compressor was configured on the council but
+      // never invoked: CompressTextAsync is public API that nothing in the pipeline called, so
+      // every debate paid the full, growing transcript cost and DebateResult.TokenStats stayed
+      // null. The prompt that is about to be sent to every member is the thing compression
+      // exists to shrink, and in later rounds the accumulated transcript dominates it.
+      var effectivePrompt = await CompressPromptAsync(
+         userPrompt, roundNumber, roundName, executionOptions, ct).ConfigureAwait(false);
+
       var tasks = members.Select(async member =>
       {
+         if (gates is not null) await gates.WaitAsync(ct).ConfigureAwait(false);
          try
          {
-            var response = await member.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false);
-            return (member.Role, member.DisplayName, Response: response);
+            var response = await member.AskAsync(systemPrompt, effectivePrompt, temperature, ct).ConfigureAwait(false);
+            return (member.Role, member.DisplayName, Response: response, Failed: false, Error: (string?)null);
          }
          catch (Exception ex)
          {
-            return (member.Role, member.DisplayName, Response: $"[ERROR: {ex.Message}]");
+            return (member.Role, member.DisplayName, Response: (string?)null, Failed: true, Error: (string?)ex.Message);
+         }
+         finally
+         {
+            gates?.Release();
          }
       });
 
       var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+      gates?.Dispose();
       //return results.ToDictionary(r => r.DisplayName, r => r.Response);
       // Disambiguate by appending a counter while preserving the original label for unique names.
       var seen = new HashSet<string>();
       var responses = new Dictionary<string, string>(results.Length);
-      foreach (var (role, displayName, response) in results)
+      foreach (var (role, displayName, response, failed, error) in results)
       {
          var key = $"{role}: {displayName}";
          if (!seen.Add(key))
@@ -85,10 +121,111 @@ public abstract class DebateScenario : IDebateStrategy
             key = $"{key} #{index}";
          }
 
-         responses[key] = response;
+         if (failed)
+         {
+            // A failed member is omitted from the round entirely. Substituting an "[ERROR: ...]"
+            // string here used to put an error into the transcript where the Chairman read it as
+            // an opinion, producing a verdict that looked complete but was not.
+            failures?.Add(new MemberFailure(
+               roundNumber, roundName, role, displayName, ResolveModel(members, displayName),
+               error ?? "unknown error"));
+            continue;
+         }
+
+         if (response is not null)
+            responses[key] = response;
       }
 
       return responses;
+   }
+
+   /// <summary>Resolves a member's model name for failure reporting, tolerating duplicate display names.</summary>
+   private static string ResolveModel(IReadOnlyList<CouncilMember> members, string displayName)
+   {
+      foreach (var m in members)
+         if (string.Equals(m.DisplayName, displayName, StringComparison.Ordinal))
+            return m.ModelName;
+
+      return "unknown";
+   }
+
+   /// <summary>
+   ///   Compresses a round prompt when the configured compressor would actually save something.
+   /// </summary>
+   /// <remarks>
+   ///   Compression is best-effort: a compressor that throws or returns nothing leaves the prompt
+   ///   untouched, because a debate is more valuable than a few saved tokens. Each attempt appends a
+   ///   <see cref="CompressionLog" /> so the saving is observable afterwards - which is how the
+   ///   long-standing "compression silently does nothing" defect became visible in the first place.
+   /// </remarks>
+   protected static async Task<string> CompressPromptAsync(
+      string prompt,
+      int roundNumber,
+      string roundName,
+      DebateExecutionOptions? executionOptions,
+      CancellationToken ct)
+   {
+      ArgumentNullException.ThrowIfNull(prompt);
+
+      var compressor = executionOptions?.ContextCompressor;
+      var logs = executionOptions?.CompressionLogs;
+      if (compressor is null)
+         return prompt;
+
+      var counter = TokenCounter.Default;
+      var originalTokens = counter.EstimateTokens(prompt);
+      if (originalTokens < executionOptions!.CompressionThresholdTokens)
+         return prompt;
+
+      var sw = System.Diagnostics.Stopwatch.StartNew();
+      try
+      {
+         var result = await compressor
+            .CompressAsync(prompt, executionOptions.ContextCompressionOptions, ct)
+            .ConfigureAwait(false);
+         sw.Stop();
+
+         // A compressor that returns more text than it started with is not helping; keep the original.
+         if (string.IsNullOrWhiteSpace(result.Text) || result.OriginalTokens <= result.CompressedTokens)
+         {
+            logs?.Add(new CompressionLog
+            {
+               RoundNumber = roundNumber,
+               Description = $"Round {roundNumber} prompt ({roundName})",
+               StrategyName = result.StrategyUsed ?? compressor.StrategyName,
+               OriginalTokens = result.OriginalTokens,
+               CompressedTokens = result.OriginalTokens,
+               Duration = sw.Elapsed
+            });
+            return prompt;
+         }
+
+         logs?.Add(new CompressionLog
+         {
+            RoundNumber = roundNumber,
+            Description = $"Round {roundNumber} prompt ({roundName})",
+            StrategyName = result.StrategyUsed ?? compressor.StrategyName,
+            OriginalTokens = result.OriginalTokens,
+            CompressedTokens = result.CompressedTokens,
+            Duration = sw.Elapsed
+         });
+
+         return result.Text;
+      }
+      catch (Exception ex) when (ex is not OperationCanceledException)
+      {
+         sw.Stop();
+         logs?.Add(new CompressionLog
+         {
+            RoundNumber = roundNumber,
+            Description = $"Round {roundNumber} prompt ({roundName})",
+            StrategyName = compressor.StrategyName,
+            OriginalTokens = originalTokens,
+            CompressedTokens = originalTokens,
+            Duration = sw.Elapsed
+         });
+         return prompt;
+      }
    }
 
    /// <summary>Formats a single round's responses into readable text.</summary>
@@ -182,12 +319,33 @@ public abstract class DebateScenario : IDebateStrategy
 
       try
       {
-         var previousSummary = previousRounds is { Count: > 0 }
-            ? string.Join("\n", previousRounds.Select(r =>
-               $"Round {r.RoundNumber}: " +
-               string.Join("; ",
-                  r.Responses.Select(kv => $"{kv.Key}: {kv.Value[..Math.Min(200, kv.Value.Length)]}"))))
-            : null;
+         // One buffer for the whole summary. The nested Join/Select/interpolation form allocated
+         // an interpolated string plus a joined string per response, then joined those again —
+         // six or more allocations per response, on a per-round path.
+         string? previousSummary = null;
+         if (previousRounds is { Count: > 0 })
+         {
+            var summary = new StringBuilder();
+            foreach (var r in previousRounds)
+            {
+               if (summary.Length > 0)
+                  summary.Append('\n');
+
+               summary.Append("Round ").Append(r.RoundNumber).Append(": ");
+               var firstResponse = true;
+               foreach (var kv in r.Responses)
+               {
+                  if (!firstResponse)
+                     summary.Append("; ");
+
+                  firstResponse = false;
+                  summary.Append(kv.Key).Append(": ");
+                  summary.Append(kv.Value.AsSpan(0, Math.Min(200, kv.Value.Length)));
+               }
+            }
+
+            previousSummary = summary.ToString();
+         }
 
          var roundCtx = await keeper.ProvideContextForRoundAsync(
             topic, roundNumber, previousSummary, ct: ct).ConfigureAwait(false);
@@ -259,7 +417,12 @@ public abstract class DebateScenario : IDebateStrategy
       {
          if (string.IsNullOrWhiteSpace(response)) continue;
 
-         foreach (Match match in OperatorRequestRegex.Matches(response))
+         // The marker is a literal "[["; without it the regex engine has nothing to
+         // anchor on, and a lazy `(.+?)` with Singleline walks the whole response. The
+         // cheapest possible pre-check skips that for every response that never delegates.
+         if (!response.Contains("[[", StringComparison.Ordinal)) continue;
+
+         foreach (Match match in OperatorRequestRegex().Matches(response))
          {
             var task = match.Groups["task"].Value.Trim();
             if (string.IsNullOrWhiteSpace(task)) continue;

@@ -44,6 +44,11 @@ public sealed class RedisDebateCache : IDebateCache
 
    public async ValueTask<DebateResult?> GetAsync(string cacheKey, CancellationToken ct = default)
    {
+      // StackExchange.Redis exposes no CancellationToken overloads on IDatabase, so the
+      // token cannot be forwarded into the command itself. It is honoured on both edges of
+      // the I/O instead: do not start work for an already-cancelled caller, and stop
+      // waiting for a result the caller no longer wants.
+      ct.ThrowIfCancellationRequested();
       try
       {
          var redisKey = CacheKeyPrefix + cacheKey;
@@ -55,12 +60,21 @@ public sealed class RedisDebateCache : IDebateCache
             return null;
          }
 
-         var redisResult = JsonSerializer.Deserialize<RedisDebateResult>((string)value, _json);
+         ct.ThrowIfCancellationRequested();
+
+         // value.ToString() rather than (string)value: the explicit conversion is annotated
+         // as possibly-null, which is true in general but not here (HasValue was checked).
+         var redisResult = JsonSerializer.Deserialize<RedisDebateResult>(value.ToString(), _json);
          if (redisResult is null)
             return null;
 
          _logger.LogDebug("Cache HIT for key {CacheKey} in Redis.", cacheKey);
          return MapFromRedis(redisResult);
+      }
+      catch (OperationCanceledException)
+      {
+         // A cancelled caller is not a cache failure.
+         throw;
       }
       catch (Exception ex)
       {
@@ -71,6 +85,7 @@ public sealed class RedisDebateCache : IDebateCache
 
    public async ValueTask SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
    {
+      ct.ThrowIfCancellationRequested();
       try
       {
          var redisKey = CacheKeyPrefix + cacheKey;
@@ -81,6 +96,10 @@ public sealed class RedisDebateCache : IDebateCache
          await _db.StringSetAsync(redisKey, json, effectiveTtl).ConfigureAwait(false);
          _logger.LogDebug("Cache SET for key {CacheKey} in Redis with TTL {TTL}.", cacheKey, effectiveTtl);
       }
+      catch (OperationCanceledException)
+      {
+         throw;
+      }
       catch (Exception ex)
       {
          _logger.LogWarning(ex, "Failed to set cache key {CacheKey} in Redis.", cacheKey);
@@ -89,11 +108,16 @@ public sealed class RedisDebateCache : IDebateCache
 
    public async ValueTask InvalidateAsync(string cacheKey, CancellationToken ct = default)
    {
+      ct.ThrowIfCancellationRequested();
       try
       {
          var redisKey = CacheKeyPrefix + cacheKey;
          await _db.KeyDeleteAsync(redisKey).ConfigureAwait(false);
          _logger.LogDebug("Cache INVALIDATE for key {CacheKey} in Redis.", cacheKey);
+      }
+      catch (OperationCanceledException)
+      {
+         throw;
       }
       catch (Exception ex)
       {
@@ -103,10 +127,17 @@ public sealed class RedisDebateCache : IDebateCache
 
    public async ValueTask<bool> ExistsAsync(string cacheKey, CancellationToken ct = default)
    {
+      ct.ThrowIfCancellationRequested();
       try
       {
          var redisKey = CacheKeyPrefix + cacheKey;
-         return await _db.KeyExistsAsync(redisKey).ConfigureAwait(false);
+         var exists = await _db.KeyExistsAsync(redisKey).ConfigureAwait(false);
+         ct.ThrowIfCancellationRequested();
+         return exists;
+      }
+      catch (OperationCanceledException)
+      {
+         throw;
       }
       catch (Exception ex)
       {

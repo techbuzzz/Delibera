@@ -37,6 +37,6 @@ public interface IDebateStrategy
       DebateExecutionOptions executionOptions,
       int maxRounds = 4,
       float temperature = 0.7f,
-      Action<DebateRound>? onRoundCompleted = null,
+      Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted = null,
       CancellationToken ct = default);
 }

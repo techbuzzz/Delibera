@@ -62,7 +62,7 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
       record.Result = result;
       record.Status = DebateStatus.Completed;
       record.CompletedAt = DateTimeOffset.UtcNow;
-      record.Rounds.AddRange(result.Rounds);
+      record.AddRounds(result.Rounds);
       return record;
    }
 
@@ -89,7 +89,7 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
       record.Result = result;
       record.Status = DebateStatus.Completed;
       record.CompletedAt = DateTimeOffset.UtcNow;
-      record.Rounds.AddRange(result.Rounds);
+      record.AddRounds(result.Rounds);
       return record;
    }
 
@@ -108,14 +108,21 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
 
    // ── Common ────────────────────────────────────────────────────────────────
 
-   public DebateRecord? Find(string debateId)
-      => _records.TryGetValue(debateId, out var r)
-         ? r
-         : null;
-
-   public DebateRecord[] List(string? templateId, string? status, int page, int pageSize)
+   public DebateRecord? Find(string debateId, string tenantId)
    {
-      IEnumerable<DebateRecord> query = _records.Values;
+      if (!_records.TryGetValue(debateId, out var r)) return null;
+
+      // Tenant isolation: an unknown id and another tenant's id are indistinguishable
+      // on purpose, so a caller cannot probe for the existence of a foreign debate.
+      return string.Equals(r.TenantId, tenantId, StringComparison.Ordinal) ? r : null;
+   }
+
+   public DebateRecord[] List(string tenantId, string? templateId, string? status, int page, int pageSize)
+   {
+      // Filter by tenant BEFORE paginating: filtering afterwards would leak other
+      // tenants' records through empty pages and shifting offsets.
+      IEnumerable<DebateRecord> query = _records.Values
+         .Where(r => string.Equals(r.TenantId, tenantId, StringComparison.Ordinal));
 
       if (!string.IsNullOrEmpty(templateId))
          query = query.Where(r =>
@@ -132,9 +139,9 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
          .ToArray();
    }
 
-   public bool Cancel(string debateId)
+   public bool Cancel(string debateId, string tenantId)
    {
-      if (!_records.TryGetValue(debateId, out var record)) return false;
+      if (Find(debateId, tenantId) is not { } record) return false;
       if (record.Status is DebateStatus.Completed or DebateStatus.Failed or DebateStatus.Cancelled) return false;
 
       record.Status = DebateStatus.Cancelled;
@@ -216,7 +223,7 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
             switch (evt)
             {
                case DebateRoundEvent.RoundCompleted rc:
-                  record.Rounds.Add(rc.Round);
+                  record.Rounds.Enqueue(rc.Round);
                   break;
                case DebateRoundEvent.DebateCompleted dc:
                   record.Result = dc.Result;
