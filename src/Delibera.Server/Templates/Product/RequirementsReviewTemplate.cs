@@ -1,4 +1,4 @@
-using Delibera.Core.Council;
+﻿using Delibera.Core.Council;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
 using Delibera.Core.Providers;
@@ -10,16 +10,16 @@ using Delibera.Server.Templates.Registry;
 namespace Delibera.Server.Templates.Product;
 
 /// <summary>
-/// Requirements Review Council — Vertical 3: Requirements Engineering &amp; Product Discovery.
+/// Requirements Review Council â€” Vertical 3: Requirements Engineering &amp; Product Discovery.
 ///
 /// Members:
-///   ProductManager  — user value, business goals, prioritisation
-///   Architect       — technical feasibility, constraints, dependencies
-///   UXDesigner      — usability, accessibility, user journey
-///   QA              — testability, acceptance criteria, edge cases
-///   SecurityOfficer — data privacy, compliance, threat model
+///   ProductManager  â€” user value, business goals, prioritisation
+///   Architect       â€” technical feasibility, constraints, dependencies
+///   UXDesigner      â€” usability, accessibility, user journey
+///   QA              â€” testability, acceptance criteria, edge cases
+///   SecurityOfficer â€” data privacy, compliance, threat model
 ///
-/// Strategy : ConsensusDebate → MajorityVoting → Chairman produces RequirementsVerdict.
+/// Strategy : ConsensusDebate â†’ MajorityVoting â†’ Chairman produces RequirementsVerdict.
 /// Output   : RequirementsVerdict (Assessment, Summary, Gaps[], Risks[], Recommendations[])
 /// </summary>
 public sealed class RequirementsReviewTemplate : IServerTemplate
@@ -51,7 +51,7 @@ public sealed class RequirementsReviewTemplate : IServerTemplate
       var maxRounds = request.Options?.MaxRounds ?? DefaultMaxRounds;
       var temp = request.Options?.Temperature ?? 0.6f;
 
-      return new CouncilBuilder()
+      var builder = new CouncilBuilder()
          .AddMember(strongModel, llm, "ProductManager",
             persona: "Experienced product manager. Champion of user value and business outcomes. " +
                      "Identify missing acceptance criteria, unclear scope and priority conflicts. " +
@@ -92,5 +92,7 @@ public sealed class RequirementsReviewTemplate : IServerTemplate
          .WithMaxRounds(maxRounds)
          .WithTemperature(temp)
          .WithStructuredOutput<RequirementsVerdict>();
+
+      return TemplateKnowledge.Attach(builder, request, services);
    }
 }

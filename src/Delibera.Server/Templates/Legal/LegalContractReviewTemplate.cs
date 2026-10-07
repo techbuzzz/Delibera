@@ -1,4 +1,4 @@
-using Delibera.Core.Council;
+﻿using Delibera.Core.Council;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
 using Delibera.Core.Providers;
@@ -9,15 +9,15 @@ using Delibera.Server.Templates.Registry;
 namespace Delibera.Server.Templates.Legal;
 
 /// <summary>
-/// Legal Contract Review Council — Vertical 4: Legal / Policy / Compliance Analysis.
+/// Legal Contract Review Council â€” Vertical 4: Legal / Policy / Compliance Analysis.
 ///
 /// Members:
-///   ContractLawyer   (weight 2.0) — clause-by-clause legal risk analysis
-///   BusinessCounsel  (weight 2.0) — commercial terms, liability, SLA
-///   PrivacyOfficer   (weight 1.5) — GDPR/CCPA, data processing, DPA clauses
-///   RiskManager      (weight 1.0) — operational and financial risk
+///   ContractLawyer   (weight 2.0) â€” clause-by-clause legal risk analysis
+///   BusinessCounsel  (weight 2.0) â€” commercial terms, liability, SLA
+///   PrivacyOfficer   (weight 1.5) â€” GDPR/CCPA, data processing, DPA clauses
+///   RiskManager      (weight 1.0) â€” operational and financial risk
 ///
-/// Strategy : CritiqueDebate → WeightedVoting → Chairman produces LegalContractVerdict.
+/// Strategy : CritiqueDebate â†’ WeightedVoting â†’ Chairman produces LegalContractVerdict.
 /// Output   : LegalContractVerdict (Recommendation, RiskLevel, Issues[], PrivacyFlags[], Confidence)
 /// </summary>
 public sealed class LegalContractReviewTemplate : IServerTemplate
@@ -58,7 +58,7 @@ public sealed class LegalContractReviewTemplate : IServerTemplate
                        ["RiskManager"] = 1.0f,
                     };
 
-      return new CouncilBuilder()
+      var builder = new CouncilBuilder()
          .AddMember(strongModel, llm, "ContractLawyer",
             persona: "Experienced contract lawyer specialising in commercial and technology law. " +
                      "Analyse each clause for enforceability, ambiguity, unfair terms and legal risk. " +
@@ -97,5 +97,7 @@ public sealed class LegalContractReviewTemplate : IServerTemplate
          .WithMaxRounds(maxRounds)
          .WithTemperature(temp)
          .WithStructuredOutput<LegalContractVerdict>();
+
+      return TemplateKnowledge.Attach(builder, request, services);
    }
 }

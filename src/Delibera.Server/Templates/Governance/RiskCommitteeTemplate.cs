@@ -1,4 +1,4 @@
-using Delibera.Core.Council;
+﻿using Delibera.Core.Council;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
 using Delibera.Core.Providers;
@@ -10,15 +10,15 @@ using Delibera.Server.Templates.Registry;
 namespace Delibera.Server.Templates.Governance;
 
 /// <summary>
-/// Enterprise Risk Committee Council — Vertical 1: Enterprise Decision Support &amp; Governance.
+/// Enterprise Risk Committee Council â€” Vertical 1: Enterprise Decision Support &amp; Governance.
 ///
 /// Members:
-///   RiskManager (weight 2.0)  — conservative, data-driven risk analysis
-///   ComplianceOfficer (2.0)   — regulatory &amp; policy expert
-///   Architect (1.5)           — technical feasibility
-///   BusinessOwner (1.0)       — business value and velocity
+///   RiskManager (weight 2.0)  â€” conservative, data-driven risk analysis
+///   ComplianceOfficer (2.0)   â€” regulatory &amp; policy expert
+///   Architect (1.5)           â€” technical feasibility
+///   BusinessOwner (1.0)       â€” business value and velocity
 ///
-/// Strategy : ConsensusDebate → WeightedVoting → Chairman synthesises verdict.
+/// Strategy : ConsensusDebate â†’ WeightedVoting â†’ Chairman synthesises verdict.
 /// Output   : RiskVerdict (Recommendation, RiskLevel, Risks[], Rationale, Confidence)
 /// </summary>
 public sealed class RiskCommitteeTemplate : IServerTemplate
@@ -110,6 +110,6 @@ public sealed class RiskCommitteeTemplate : IServerTemplate
             llm, fastModel, embeddings);
       }
 
-      return builder;
+      return TemplateKnowledge.Attach(builder, request, services);
    }
 }

@@ -7,14 +7,49 @@ namespace Delibera.Core.Council;
 ///    Connects to a RAG provider and uses a dedicated LLM model to answer
 ///    fact-based queries during debate rounds.
 /// </summary>
-public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember model, string collectionName)
+public sealed class KnowledgeKeeper
 {
    private readonly List<KnowledgeInteraction> _interactions = [];
-   private readonly CouncilMember _model = model ?? throw new ArgumentNullException(nameof(model));
-   private readonly IRagProvider _ragProvider = ragProvider ?? throw new ArgumentNullException(nameof(ragProvider));
+   private readonly CouncilMember _model;
+   private readonly IRagProvider _ragProvider;
+   private readonly IReadOnlyList<string> _collections;
 
-   /// <summary>RAG collection used for searching.</summary>
-   public string CollectionName { get; } = collectionName ?? throw new ArgumentNullException(nameof(collectionName));
+   /// <summary>
+   ///    Creates a keeper over a single collection.
+   /// </summary>
+   public KnowledgeKeeper(IRagProvider ragProvider, CouncilMember model, string collectionName)
+      : this(ragProvider, model, [collectionName])
+   {
+   }
+
+   /// <summary>
+   ///    Creates a keeper spanning several collections — one per requested corpus.
+   /// </summary>
+   /// <remarks>
+   ///    A debate may be grounded in several corpora, but a vector store search takes one
+   ///    collection at a time, so this searches them all and merges by score. Without it the only
+   ///    correct behaviour would be to silently ground the debate in the first corpus and ignore
+   ///    the rest.
+   /// </remarks>
+   public KnowledgeKeeper(IRagProvider ragProvider, CouncilMember model, IEnumerable<string> collectionNames)
+   {
+      ArgumentNullException.ThrowIfNull(collectionNames);
+      _model = model ?? throw new ArgumentNullException(nameof(model));
+      _ragProvider = ragProvider ?? throw new ArgumentNullException(nameof(ragProvider));
+
+      _collections = [.. collectionNames.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.Ordinal)];
+      if (_collections.Count == 0)
+         throw new ArgumentException("At least one collection name is required.", nameof(collectionNames));
+   }
+
+   /// <summary>
+   ///    Primary collection. Kept for compatibility; a multi-corpus keeper has no single one, so
+   ///    prefer <see cref="Collections" />.
+   /// </summary>
+   public string CollectionName => _collections[0];
+
+   /// <summary>All collections this keeper searches, in request order.</summary>
+   public IReadOnlyList<string> Collections => _collections;
 
    /// <summary>Display name shown in debate logs.</summary>
    public string DisplayName => $"📚 Knowledge Keeper ({_model.ModelName})";
@@ -29,10 +64,33 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
    /// <param name="limit">Maximum number of chunks to retrieve.</param>
    /// <param name="ct">Cancellation token.</param>
    /// <returns>Scored search results from the vector store.</returns>
-   public Task<IReadOnlyList<VectorSearchResult>> SearchKnowledgeAsync(
+   public async Task<IReadOnlyList<VectorSearchResult>> SearchKnowledgeAsync(
       string query, int limit = 5, CancellationToken ct = default)
+      => await SearchAllAsync(query, limit, ct).ConfigureAwait(false);
+
+   /// <summary>
+   ///    Searches every collection and merges the hits by score, keeping the best <paramref name="limit" />.
+   /// </summary>
+   private async Task<IReadOnlyList<VectorSearchResult>> SearchAllAsync(
+      string query, int limit, CancellationToken ct)
    {
-      return _ragProvider.SearchAsync(CollectionName, query, limit, ct: ct);
+      if (_collections.Count == 1)
+         return await _ragProvider.SearchAsync(_collections[0], query, limit, ct: ct).ConfigureAwait(false);
+
+      // Fetch a wider slice from each corpus, then let the scores decide which survive: asking a
+      // corpus for exactly `limit` and merging afterwards would let the largest corpus fill the
+      // whole budget before a smaller one contributed anything.
+      var perCollection = Math.Max(limit, limit * 2);
+      var merged = new List<VectorSearchResult>();
+
+      foreach (var collection in _collections)
+      {
+         var hits = await _ragProvider.SearchAsync(collection, query, perCollection, ct: ct).ConfigureAwait(false);
+         merged.AddRange(hits);
+      }
+
+      merged.Sort(static (a, b) => b.Score.CompareTo(a.Score));
+      return merged.Count <= limit ? merged : merged.GetRange(0, limit);
    }
 
    /// <summary>
@@ -51,7 +109,7 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
       CancellationToken ct = default)
    {
       // 1. Retrieve context from RAG
-      var context = await _ragProvider.GetContextAsync(CollectionName, question, limit, ct).ConfigureAwait(false);
+      var context = await GetMergedContextAsync(question, limit, ct).ConfigureAwait(false);
 
       const string systemPrompt = """
                                   You are the Knowledge Keeper — a librarian and fact-checker for an AI council debate.
@@ -166,7 +224,7 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
       // Search for relevant chunks. One shared empty dictionary per call rather than one per
       // result — and a plain loop instead of Select/ToList, which allocated an iterator and
       // an intermediate list on every round.
-      var searchResults = await _ragProvider.SearchAsync(CollectionName, query, limit, ct: ct).ConfigureAwait(false);
+      var searchResults = await SearchAllAsync(query, limit, ct).ConfigureAwait(false);
       Dictionary<string, string>? emptyMetadata = null;
       var sources = new List<KnowledgeSource>(searchResults.Count);
       foreach (var r in searchResults)
@@ -249,6 +307,22 @@ public sealed class KnowledgeKeeper(IRagProvider ragProvider, CouncilMember mode
       CancellationToken ct = default)
    {
       return _ragProvider.IndexFileAsync(CollectionName, filePath, chunkSize, chunkOverlap, ct);
+   }
+
+   /// <summary>
+   ///    Searches every collection, merges by score, and renders the result the way
+   ///    <see cref="IRagProvider.GetContextAsync" /> would for a single one.
+   /// </summary>
+   private async Task<string> GetMergedContextAsync(string query, int limit, CancellationToken ct)
+   {
+      if (_collections.Count == 1)
+         return await _ragProvider.GetContextAsync(_collections[0], query, limit, ct).ConfigureAwait(false);
+
+      var hits = await SearchAllAsync(query, limit, ct).ConfigureAwait(false);
+      if (hits.Count == 0)
+         return string.Empty;
+
+      return RagContextFormatter.Format(hits);
    }
 
    /// <summary>

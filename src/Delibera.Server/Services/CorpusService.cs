@@ -4,13 +4,23 @@ using Delibera.Server.Api.Contracts;
 namespace Delibera.Server.Services;
 
 /// <summary>
-///    In-memory corpus registry. Stores corpus and document metadata;
-///    actual vector indexing is delegated to the RAG provider configured
-///    in appsettings (Qdrant / pgvector) — wired up when RAG is enabled.
+///    In-memory corpus registry that indexes documents into the configured vector store.
 /// </summary>
+/// <remarks>
+///    <para>
+///       The previous version only counted estimated chunks and kept the DTO in memory, so
+///       <c>POST /corpora/{id}/documents</c> answered <c>{ chunks: 1 }</c> while Qdrant stayed
+///       empty — indexing was reported but never performed.
+///    </para>
+///    <para>
+///       When RAG is disabled the service degrades to the old behaviour (metadata only) rather
+///       than failing, so the corpus API stays usable without a vector store.
+///    </para>
+/// </remarks>
 public sealed class CorpusService : ICorpusService
 {
    private readonly ILogger<CorpusService> _logger;
+   private readonly ServerRagProviderFactory? _rag;
 
    /// <summary>
    ///    corpusId → (meta, documents).
@@ -32,8 +42,11 @@ public sealed class CorpusService : ICorpusService
    /// </summary>
    private readonly ConcurrentDictionary<string, string> _namesByLowerCase = new(StringComparer.Ordinal);
 
-   public CorpusService(ILogger<CorpusService> logger)
-      => _logger = logger;
+   public CorpusService(ILogger<CorpusService> logger, ServerRagProviderFactory? rag = null)
+   {
+      _logger = logger;
+      _rag = rag;
+   }
 
    // ── ICorpusService ────────────────────────────────────────────────────────
 
@@ -63,21 +76,62 @@ public sealed class CorpusService : ICorpusService
       return dto;
    }
 
-   public Task<DocumentDto?> IndexDocumentAsync(
+   public async Task<DocumentDto?> IndexDocumentAsync(
       string corpusId,
       IndexDocumentRequest request,
       CancellationToken ct)
    {
-      if (!_store.ContainsKey(corpusId))
-         return Task.FromResult<DocumentDto?>(null);
+      if (!_store.TryGetValue(corpusId, out var existing))
+         return null;
 
       var doc = new DocumentDto
       {
          DocumentId = Guid.NewGuid().ToString("N")[..12],
          Title = request.Title ?? "(untitled)",
-         Chunks = EstimateChunks(request.Content),
+         Chunks = 0,
          IndexedAt = DateTimeOffset.UtcNow,
       };
+
+      // Real indexing: chunk, embed and store. The chunk count reported on the way out is what the
+      // vector store actually holds, not an estimate of what it might hold.
+      var rag = _rag?.Get();
+      if (rag is not null)
+      {
+         var collection = ServerRagProviderFactory.CollectionForCorpus(corpusId);
+         var metadata = new Dictionary<string, string>
+         {
+            ["corpusId"] = corpusId,
+            ["documentId"] = doc.DocumentId,
+            ["title"] = doc.Title,
+         };
+
+         if (request.Source is { Length: > 0 } source)
+            metadata["source"] = source;
+
+         try
+         {
+            doc = doc with
+            {
+               Chunks = await rag.IndexDocumentAsync(collection, request.Content, metadata, ct: ct)
+                  .ConfigureAwait(false)
+            };
+         }
+         catch (Exception ex)
+         {
+            // Report the failure rather than a phantom success: a document the caller believes is
+            // indexed but that no debate can retrieve is worse than an explicit error.
+            _logger.LogError(ex, "Indexing document '{Title}' into corpus '{CorpusId}' failed.", doc.Title, corpusId);
+            throw new InvalidOperationException(
+               $"Indexing '{doc.Title}' into corpus '{corpusId}' failed: {ex.Message}", ex);
+         }
+      }
+      else
+      {
+         doc = doc with { Chunks = EstimateChunks(request.Content) };
+         _logger.LogWarning(
+            "RAG is disabled; document '{DocumentId}' was recorded as metadata only and is not retrievable.",
+            doc.DocumentId);
+      }
 
       // Compare-and-swap rather than "read, append, write back": the previous version lost
       // a document whenever two requests indexed at the same moment, because both read the
@@ -98,10 +152,10 @@ public sealed class CorpusService : ICorpusService
       }
 
       _logger.LogInformation(
-         "Document '{DocumentId}' indexed into corpus '{CorpusId}'.",
-         doc.DocumentId, corpusId);
+         "Document '{DocumentId}' indexed into corpus '{CorpusId}' as {Chunks} chunk(s){Note}.",
+         doc.DocumentId, corpusId, doc.Chunks, rag is null ? " (metadata only, RAG disabled)" : string.Empty);
 
-      return Task.FromResult<DocumentDto?>(doc);
+      return doc;
    }
 
    public DocumentDto[]? ListDocuments(string corpusId)
