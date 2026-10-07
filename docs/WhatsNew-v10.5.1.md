@@ -12,6 +12,7 @@ were tracked only in `docs/TASKS/`. One of them was a real bug with measurable c
 ## Table of contents
 
 - [The bug that mattered](#the-bug-that-mattered)
+- [pgvector was broken, and this release is what fixes it](#pgvector-was-broken-and-this-release-is-what-fixes-it)
 - [Tool use](#tool-use)
 - [Cost gates and rate limits](#cost-gates-and-rate-limits)
 - [Debate diff](#debate-diff)
@@ -57,6 +58,30 @@ overwrites its own point instead of orphaning the previous one.
 >
 > `IndexFileAsync` logs a warning when the pre-existing point count exceeds what the current document
 > contributes — that is the signature of a collection that predates the fix.
+
+---
+
+## pgvector was broken, and this release is what fixes it
+
+If you configure `Delibera:Rag:ProviderType = PgVector`, **this release is the one that makes it work.**
+
+`PgVectorStore` bound the embedding as `AddWithValue(new Vector(...))`. That overload takes `object`, so
+the `Vector` was boxed, Npgsql had no type to map, and the very first upsert threw:
+
+```
+InvalidCastException: Writing values of 'Pgvector.Vector' is not supported for parameters having no
+NpgsqlDbType or DataTypeName
+```
+
+Search failed the same way. The embedding now travels as pgvector's own text form (`[0.5,1,-2]`) with an
+explicit `NpgsqlDbType.Text` and a `::vector` cast applied by PostgreSQL — understood by any pgvector
+release, so the store no longer depends on the `Pgvector`/Npgsql version pairing.
+
+The unit tests covered this store through fakes, so it only surfaced when it was run against a real
+database. **No migration is needed**: nothing previously written through `PgVectorStore` could have
+succeeded, so there is no data to rescue.
+
+Qdrant was never affected and is unchanged.
 
 ---
 

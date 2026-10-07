@@ -1,6 +1,4 @@
-using System.Diagnostics;
-using System.Text;
-using System.Text.Json;
+using Delibera.Core.Extensions;
 using Delibera.Core.Models;
 using Delibera.Core.Providers.LLM;
 using Microsoft.Extensions.AI;
@@ -12,20 +10,21 @@ namespace Delibera.Core.Tools;
 /// </summary>
 /// <remarks>
 ///    <para>
-///    <b>Two transports, one log type.</b> The obvious implementation — wrap any
-///    <see cref="ILLMProvider" /> with <c>AsChatClient()</c> and add
-///    <c>UseFunctionInvocation()</c> — does not work for most providers. The adapter returned by
-///    <c>AsChatClient</c> calls <c>ChatAsync</c>, ignores <c>ChatOptions.Tools</c>, and rebuilds
-///    the reply as a single assistant text message; it also flattens every inbound message
-///    through <c>message.Text</c>, and function-call content has no text. The middleware
-///    therefore never sees a tool request and never delivers a tool result: function invocation
-///    on top of that adapter is inert.
+///    There is deliberately no loop here. <c>FunctionInvokingChatClient</c> owns the
+///    invoke-resume cycle, its iteration bound and its concurrency handling, and this library used
+///    to carry a second copy of that loop — which is how the two drifted.
 ///    </para>
 ///    <para>
-///    So a provider that genuinely wraps an <see cref="IChatClient" />
-///    (<see cref="ChatClientLLMProvider" />) uses native function calling, and everything else
-///    uses the marker protocol that already exists for the Operator. Both paths populate the same
-///    <see cref="ToolCallLog" />, so a consumer does not care which one ran.
+///    The member's provider is exposed through <c>AsChatClient()</c>. For a provider that already
+///    wraps a real <see cref="IChatClient" /> that returns the underlying client untouched, so tool
+///    requests travel as genuine structured function-call traffic. For a string-only provider the
+///    adapter translates them into the <c>[[TOOL: …]]</c> text protocol and back, so the same
+///    middleware drives the loop either way.
+///    </para>
+///    <para>
+///    What this class still owns is the audit trail: <c>FunctionInvokingChatClient</c> invokes the
+///    tools itself and does not report what it ran, and a debate result whose tool usage rests on
+///    the model's own account is not evidence of anything.
 ///    </para>
 /// </remarks>
 public static class ToolCallingMemberExecutor
@@ -58,210 +57,214 @@ public static class ToolCallingMemberExecutor
       if (tools.Count == 0)
          return (await member.AskAsync(systemPrompt, userPrompt, temperature, ct).ConfigureAwait(false), calls);
 
-      return member.Provider is ChatClientLLMProvider chatProvider
-         ? await AskNativeAsync(
-               chatProvider, member, tools, systemPrompt, userPrompt, temperature, maxIterations, roundNumber, calls, ct)
-            .ConfigureAwait(false)
-         : await AskWithMarkersAsync(
-               member, tools, systemPrompt, userPrompt, temperature, maxIterations, roundNumber, calls, ct)
-            .ConfigureAwait(false);
-   }
+      var inner = member.Provider.AsChatClient(member.ModelName);
 
-   /// <summary>
-   ///    Native function calling: <c>FunctionInvokingChatClient</c> drives the loop, so tool
-   ///    requests and results travel as real message content rather than as text.
-   /// </summary>
-   private static async Task<(string Response, IReadOnlyList<ToolCallLog> Calls)> AskNativeAsync(
-      ChatClientLLMProvider provider,
-      CouncilMember member,
-      IReadOnlyList<AIFunction> tools,
-      string systemPrompt,
-      string userPrompt,
-      float temperature,
-      int maxIterations,
-      int roundNumber,
-      List<ToolCallLog> calls,
-      CancellationToken ct)
-   {
-      var client = provider.ChatClient
+      // Order matters. The builder applies factories in reverse, so the first one added becomes the
+      // OUTERMOST layer. The recorder therefore goes last: it sits directly around the provider, so
+      // it observes every round-trip the middleware makes. Placed outside, it would only ever see
+      // the final answer and the audit trail would silently lose all but the last iteration — which
+      // is exactly the gap a tool log exists to close.
+      var recorder = new RecordingChatClient(inner, calls, member, roundNumber, tools);
+
+      var client = inner
          .AsBuilder()
-         .UseFunctionInvocation()
+         .UseFunctionInvocation(
+            loggerFactory: null,
+            configure: options =>
+            {
+               // A model that keeps requesting tools must not keep the debate alive.
+               options.MaximumIterationsPerRequest = Math.Max(1, maxIterations);
+            })
+         .Use(innerClient => recorder.Wrap(innerClient))
          .Build();
 
-      var messages = new List<ChatMessage>
-      {
-         new(ChatRole.System, systemPrompt + ToolCallParser.BuildBriefing(tools)),
-         new(ChatRole.User, userPrompt)
-      };
-
-      // Bounded so a model that keeps requesting tools cannot spin. The middleware has its own
-      // iteration cap, but this loop re-asks after each completed exchange, so it needs one too.
-      var iterations = Math.Max(1, maxIterations);
-
-      // ChatOptions.Tools is IList<AITool>, and IList is invariant, so the AIFunction list has
-      // to be copied element-by-element rather than cast.
       var aiTools = new List<AITool>(tools.Count);
       foreach (var tool in tools) aiTools.Add(tool);
 
-      var options = new ChatOptions
+      var messages = new List<ChatMessage>
       {
-         Tools = aiTools,
-         Temperature = (float?)temperature
+         new(ChatRole.System, systemPrompt),
+         new(ChatRole.User, userPrompt)
       };
 
-      string responseText = string.Empty;
-      var callCountBefore = calls.Count;
-
-      for (var i = 0; i < iterations; i++)
+      var options2 = new ChatOptions
       {
-         var response = await client.GetResponseAsync(messages, options, ct).ConfigureAwait(false);
-         responseText = response.Text ?? string.Empty;
+         Tools = aiTools,
+         Temperature = temperature,
+         ModelId = member.ModelName
+      };
 
-         // The function-invocation middleware has already run the tools by the time the
-         // response comes back, so the audit trail is read off the message contents rather
-         // than produced by invoking them again here.
-         var contents = response.Messages.SelectMany(m => m.Contents).ToList();
-         var resultsByCallId = contents
+      var response = await client.GetResponseAsync(messages, options2, ct).ConfigureAwait(false);
+
+      // Anything the loop never came back for is reported rather than dropped.
+      recorder.FlushPending();
+
+      // Whether the request reached the model as structured function-call content or as the
+      // [[TOOL: …]] text protocol depends on the provider underneath. Both end up here, and a
+      // reader comparing two runs needs to know which one was in play.
+      NormaliseTransport(calls, member);
+
+      return (response.Text ?? string.Empty, calls);
+   }
+
+   private static void NormaliseTransport(List<ToolCallLog> calls, CouncilMember member)
+   {
+      if (member.Provider is ChatClientLLMProvider) return;
+
+      for (var i = 0; i < calls.Count; i++)
+         calls[i] = calls[i] with { Transport = ToolCallTransport.Marker };
+   }
+
+   /// <summary>
+   ///    Sits between the function-invocation middleware and the provider, recording every tool
+   ///    call the model makes across every iteration of the loop.
+   /// </summary>
+   /// <remarks>
+   ///    <para>
+   ///    The middleware invokes the functions itself and does not report what it ran, so the audit
+   ///    trail has to be observed from the transport side. Reading it off the middleware's final
+   ///    response instead would report only the last iteration.
+   ///    </para>
+   /// <para>
+   ///    Results are paired by <c>CallId</c>, never by position: one turn can make several calls,
+   ///    and positional pairing would attribute a result to whichever call happened to be listed
+   ///    first.
+   /// </para>
+   ///    <para>
+   ///    The call and its result arrive in <em>different</em> round-trips. The request leaves here
+   ///    as a <c>FunctionCallContent</c>; the tool is invoked afterwards, by the middleware, and the
+   ///    result only comes back on the <em>next</em> request this client receives. So a call is
+   ///    held pending until a matching result shows up in an inbound conversation, and anything
+   ///    still pending when the loop ends is reported as having produced nothing. Reading the pair
+   ///    out of a single response instead reports every call as failed — which is precisely the
+   ///    wrong answer for the only case worth auditing.
+   ///    </para>
+   /// </remarks>
+   private sealed class RecordingChatClient(
+      IChatClient inner,
+      List<ToolCallLog> sink,
+      CouncilMember member,
+      int roundNumber,
+      IReadOnlyList<AIFunction> catalogue) : IChatClient
+   {
+      private readonly Dictionary<string, PendingCall> _pending = new(StringComparer.Ordinal);
+
+      /// <summary>Hands the builder's inner client to the recording layer.</summary>
+      /// <param name="client">The client the middleware wraps.</param>
+      public IChatClient Wrap(IChatClient client)
+      {
+         inner = client;
+         return this;
+      }
+
+      /// <summary>
+      ///   Emits a log entry for every call that never received a result. Called once the
+      ///   middleware has returned, so a call the loop abandoned is not silently missing.
+      /// </summary>
+      public void FlushPending()
+      {
+         foreach (var pending in _pending.Values)
+         {
+            sink.Add(Build(pending, result: null));
+         }
+
+         _pending.Clear();
+      }
+
+      public async Task<ChatResponse> GetResponseAsync(
+         IEnumerable<ChatMessage> messages,
+         ChatOptions? options = null,
+         CancellationToken cancellationToken = default)
+      {
+         // Settle first: this request carries the results of the previous round's calls.
+         Settle(messages);
+
+         var response = await inner.GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+         if (response.Messages is not null)
+            Track(response.Messages.SelectMany(m => m.Contents));
+         return response;
+      }
+
+      public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+         IEnumerable<ChatMessage> messages,
+         ChatOptions? options = null,
+         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+      {
+         Settle(messages);
+
+         await foreach (var update in inner
+            .GetStreamingResponseAsync(messages, options, cancellationToken)
+            .ConfigureAwait(false))
+         {
+            Track(update.Contents);
+            yield return update;
+         }
+      }
+
+      public object? GetService(Type serviceType, object? serviceKey = null)
+         => inner.GetService(serviceType, serviceKey);
+
+      public void Dispose() => inner.Dispose();
+
+      /// <summary>Matches results in this request against calls still awaiting one.</summary>
+      private void Settle(IEnumerable<ChatMessage> messages)
+      {
+         var results = messages
+            .SelectMany(m => m.Contents)
             .OfType<FunctionResultContent>()
             .Where(r => r.CallId is not null)
-            .ToDictionary(r => r.CallId!, r => r, StringComparer.Ordinal);
+            .GroupBy(r => r.CallId!, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
+         if (results.Count == 0) return;
+
+         foreach (var (callId, result) in results)
+         {
+            if (!_pending.Remove(callId, out var pending)) continue;
+            sink.Add(Build(pending, result));
+         }
+      }
+
+      /// <summary>Holds new calls until their results arrive on a later round-trip.</summary>
+      private void Track(IEnumerable<AIContent> contents)
+      {
          foreach (var call in contents.OfType<FunctionCallContent>())
          {
-            var result = call.CallId is not null && resultsByCallId.TryGetValue(call.CallId, out var r) ? r : null;
+            // Informational-only calls are annotations on the model output, not invocations.
+            if (call.InformationalOnly) continue;
+            if (call.CallId is not { Length: > 0 } callId) continue;
+            if (_pending.ContainsKey(callId)) continue;
 
-            calls.Add(new ToolCallLog(
-               member.DisplayName,
-               call.Name,
-               call.Arguments is null ? "{}" : JsonSerializer.Serialize(call.Arguments, ToolJson.Options),
-               result?.Result?.ToString() ?? string.Empty,
-               result?.Exception is null,
-               result?.Exception?.Message,
-               ToolCallTransport.Native,
-               TimeSpan.Zero,
-               roundNumber));
+            _pending[callId] = new PendingCall(call.Name, ToolCallParser.SerializeArguments(call.Arguments));
          }
-
-         if (calls.Count == callCountBefore)
-            break;
-
-         callCountBefore = calls.Count;
-         messages.AddRange(response.Messages);
       }
 
-      return (responseText, calls);
-   }
-
-   /// <summary>
-   ///    Marker protocol for providers that only return plain strings.
-   /// </summary>
-   private static async Task<(string Response, IReadOnlyList<ToolCallLog> Calls)> AskWithMarkersAsync(
-      CouncilMember member,
-      IReadOnlyList<AIFunction> tools,
-      string systemPrompt,
-      string userPrompt,
-      float temperature,
-      int maxIterations,
-      int roundNumber,
-      List<ToolCallLog> calls,
-      CancellationToken ct)
-   {
-      var briefing = ToolCallParser.BuildBriefing(tools);
-      var response = await member.AskAsync(systemPrompt + briefing, userPrompt, temperature, ct)
-         .ConfigureAwait(false);
-
-      var iterations = Math.Max(1, maxIterations);
-      var madeCalls = 0;
-
-      while (madeCalls < iterations)
+      private ToolCallLog Build(PendingCall pending, FunctionResultContent? result)
       {
-         var requests = ToolCallParser.Parse(response);
-         if (requests.Count == 0) break;
+         // The middleware ignores a call it cannot resolve, and it may report that back either as an
+         // exception or as an error value in the payload. Relying on the exception alone therefore
+         // reports an unknown tool as a success. What is unambiguous is the catalogue: a name that
+         // was never offered cannot have run, whatever came back.
+         var known = catalogue.Any(t => string.Equals(t.Name, pending.Name, StringComparison.OrdinalIgnoreCase));
+         var succeeded = result is not null && result.Exception is null && known;
 
-         var sb = new StringBuilder();
-         sb.AppendLine("Tool results:");
-         foreach (var request in requests)
-         {
-            var log = await InvokeMarkerAsync(request, member, tools, roundNumber, ct).ConfigureAwait(false);
-            calls.Add(log);
-            madeCalls++;
-
-            sb.AppendLine($"- `{log.ToolName}` → {(log.Succeeded ? log.Result : $"[error] {log.ErrorMessage}")}");
-
-            // The marker is stripped so the next answer is not an echo of the request.
-            response = response.Replace(request.Marker, string.Empty, StringComparison.Ordinal);
-         }
-
-         sb.AppendLine();
-         sb.AppendLine("Using those results, give your final position. Do not repeat the tool markers.");
-
-         response = await member.AskAsync(
-            systemPrompt + briefing,
-            userPrompt + "\n\n" + sb,
-            temperature,
-            ct).ConfigureAwait(false);
-      }
-
-      return (response, calls);
-   }
-
-   private static async Task<ToolCallLog> InvokeMarkerAsync(
-      ToolCallParser.Request request,
-      CouncilMember member,
-      IReadOnlyList<AIFunction> tools,
-      int roundNumber,
-      CancellationToken ct)
-   {
-      var tool = tools.FirstOrDefault(t =>
-         string.Equals(t.Name, request.ToolName, StringComparison.OrdinalIgnoreCase));
-
-      if (tool is null)
-      {
-         return new ToolCallLog(
-            member.DisplayName, request.ToolName, request.ArgumentsJson, string.Empty, false,
-            $"No tool named '{request.ToolName}' is available.", ToolCallTransport.Marker, TimeSpan.Zero, roundNumber);
-      }
-
-      var sw = Stopwatch.StartNew();
-      try
-      {
-         var arguments = new AIFunctionArguments(ParseArguments(request.ArgumentsJson));
-         var result = await tool.InvokeAsync(arguments, ct).ConfigureAwait(false);
-         sw.Stop();
+         var failure = result?.Exception?.Message
+            ?? (known
+               ? "The tool produced no result."
+               : $"No tool named '{pending.Name}' is available.");
 
          return new ToolCallLog(
-            member.DisplayName, tool.Name, request.ArgumentsJson, result?.ToString() ?? string.Empty,
-            true, null, ToolCallTransport.Marker, sw.Elapsed, roundNumber);
+            member.DisplayName,
+            pending.Name,
+            pending.Arguments,
+            result?.Result?.ToString() ?? string.Empty,
+            succeeded,
+            succeeded ? null : failure,
+            ToolCallTransport.Native,
+            TimeSpan.Zero,
+            roundNumber);
       }
-      catch (OperationCanceledException)
-      {
-         throw;
-      }
-      catch (Exception ex)
-      {
-         sw.Stop();
-         return new ToolCallLog(
-            member.DisplayName, tool.Name, request.ArgumentsJson, string.Empty, false,
-            ex.Message, ToolCallTransport.Marker, sw.Elapsed, roundNumber);
-      }
-   }
 
-   /// <summary>
-   ///    Parses a raw JSON argument object, tolerating the malformed payloads models routinely
-   ///    emit. A bad payload produces an empty argument set rather than an exception, because a
-   ///    member emitting nonsense is not a fault in the host.
-   /// </summary>
-   private static Dictionary<string, object?> ParseArguments(string? argumentsJson)
-   {
-      if (string.IsNullOrWhiteSpace(argumentsJson)) return [];
-
-      try
-      {
-         return JsonSerializer.Deserialize<Dictionary<string, object?>>(argumentsJson, ToolJson.Options) ?? [];
-      }
-      catch (JsonException)
-      {
-         return [];
-      }
+      private readonly record struct PendingCall(string Name, string Arguments);
    }
 }

@@ -735,6 +735,20 @@ public sealed class CouncilBuilder : ICouncilBuilder
          throw new InvalidOperationException("Council must have at least one member. Use AddMember().");
       if (string.IsNullOrWhiteSpace(_userPrompt))
          throw new InvalidOperationException("User prompt is required. Use WithUserPrompt().");
+
+      // A money ceiling is enforced against observed spend, and spend only exists once tokens are
+      // priced. Without a registry every call bills zero, the gate compares zero against the limit
+      // and never denies — a ceiling that is configured, logged and completely inert. Failing here
+      // turns a silent misconfiguration into a startup error the caller can act on. A token budget
+      // has no such dependency, so it is exempt.
+      if (_costGate is BudgetCostGate && _pricingRegistry is null)
+      {
+         throw new InvalidOperationException(
+            "A cost limit was configured without a pricing registry. Tokens are only priced when a "
+            + "registry supplies rates, so the limit would never be enforced. Call "
+            + "WithPricingRegistry(...) alongside WithCostLimit(...), or use WithTokenBudget(...) "
+            + "for a bound that needs no prices.");
+      }
       if (_maxParticipants is { } limit && _members.Count > limit)
          throw new InvalidOperationException(
             $"Participant limit exceeded: {_members.Count} members added, but limit is {limit}. " +
@@ -825,6 +839,12 @@ public sealed class CouncilBuilder : ICouncilBuilder
    ///    member calls are skipped, the debate returns a degraded result carrying the spend so
    ///    far, and <see cref="CostEstimate.WasTruncated" /> is set.
    /// </summary>
+   /// <remarks>
+   ///    <b>Requires a price list.</b> This gate is enforced against observed spend, and spend only
+   ///    exists once tokens are priced. Configure <see cref="WithPricingRegistry(IModelPricingRegistry)" />
+   ///    too, or <see cref="Build()" /> throws rather than leaving a ceiling that can never fire.
+   ///    If you want a bound without prices, use <see cref="WithTokenBudget(long, CostLimitBehavior)" />.
+   /// </remarks>
    /// <param name="limit">Maximum total spend; must be positive.</param>
    /// <param name="behavior">
    ///    What to do at the ceiling. Defaults to <see cref="CostLimitBehavior.Abort" />, which
@@ -836,6 +856,27 @@ public sealed class CouncilBuilder : ICouncilBuilder
    {
       ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
       _costGate = new BudgetCostGate(limit, behavior);
+      return this;
+   }
+
+   /// <summary>
+   ///    Caps the tokens a debate may spend, whether or not a price list is configured.
+   /// </summary>
+   /// <remarks>
+   ///    The token count is computed by the framework, so this ceiling is enforceable with no
+   ///    external configuration at all — unlike <see cref="WithCostLimit(decimal, CostLimitBehavior)" />,
+   ///    which needs prices to have anything to compare against.
+   /// </remarks>
+   /// <param name="limit">Maximum combined prompt + completion tokens; must be positive.</param>
+   /// <param name="behavior">What to do at the ceiling.</param>
+   /// <returns>The same builder.</returns>
+   /// <exception cref="ArgumentOutOfRangeException">The limit is not positive.</exception>
+   public CouncilBuilder WithTokenBudget(long limit, CostLimitBehavior behavior = CostLimitBehavior.Abort)
+   {
+      if (limit <= 0)
+         throw new ArgumentOutOfRangeException(nameof(limit), limit, "Token limit must be positive.");
+
+      _costGate = new TokenBudgetCostGate(limit, behavior);
       return this;
    }
 

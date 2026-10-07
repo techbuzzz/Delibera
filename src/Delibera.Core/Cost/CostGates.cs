@@ -140,6 +140,68 @@ public sealed class TokenBucketRateLimiter : IRateLimiter
 }
 
 /// <summary>
+///    A ceiling expressed in tokens rather than money.
+/// </summary>
+/// <remarks>
+///    <para>
+///    This exists because a money ceiling needs a price list, and a price list is configuration the
+///    caller may not have. With <see cref="BudgetCostGate" /> and no registry, every call bills
+///    zero, the gate compares zero against the limit and never denies — a ceiling that is set,
+///    logged and completely inert.
+///    </para>
+///    <para>
+///    Tokens are countable by the framework itself, so this gate works with no external input at
+///    all. Use it when you want a bound rather than a budget.
+///    </para>
+/// </remarks>
+public sealed class TokenBudgetCostGate : ICostGate
+{
+   private readonly long _limit;
+   private readonly CostLimitBehavior _behavior;
+   private int _warned;
+
+   /// <summary>Creates a gate with the given token ceiling.</summary>
+   /// <param name="limit">Maximum combined prompt + completion tokens. Must be positive.</param>
+   /// <param name="behavior">What to do once the ceiling would be crossed.</param>
+   public TokenBudgetCostGate(long limit, CostLimitBehavior behavior = CostLimitBehavior.Abort)
+   {
+      if (limit <= 0)
+         throw new ArgumentOutOfRangeException(nameof(limit), limit, "Token limit must be positive.");
+
+      _limit = limit;
+      _behavior = behavior;
+   }
+
+   /// <summary>The configured token ceiling.</summary>
+   public long Limit => _limit;
+
+   /// <inheritdoc />
+   public ValueTask<CostGateDecision> CheckAsync(CostEstimate current, CancellationToken ct = default)
+   {
+      ct.ThrowIfCancellationRequested();
+
+      var spent = (long)current.TotalPromptTokens + current.TotalCompletionTokens;
+
+      if (spent < _limit)
+         return ValueTask.FromResult(CostGateDecision.Allow(current.TotalCost));
+
+      var reason =
+         $"Token ceiling reached: {spent:N0} tokens spent against a limit of {_limit:N0}.";
+
+      return ValueTask.FromResult(_behavior switch
+      {
+         CostLimitBehavior.WarnAndContinue when Interlocked.Exchange(ref _warned, 1) == 0
+            => CostGateDecision.Allow(current.TotalCost),
+
+         CostLimitBehavior.Ignore or CostLimitBehavior.WarnAndContinue
+            => CostGateDecision.Allow(current.TotalCost),
+
+         _ => CostGateDecision.Deny(current.TotalCost, null, reason)
+      });
+   }
+}
+
+/// <summary>
 ///    A cost ceiling expressed as a hard limit on total spend.
 /// </summary>
 public sealed class BudgetCostGate : ICostGate

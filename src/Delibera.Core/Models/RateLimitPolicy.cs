@@ -20,7 +20,12 @@ public sealed record CostGateDecision(
    ///    Denies the call. The caller keeps a degraded result rather than throwing, because a
    ///    cost ceiling that throws leaves the operator with no report of what was already spent.
    /// </summary>
-   public static CostGateDecision Deny(decimal spentSoFar, decimal limit, string reason)
+   /// <param name="spentSoFar">Spend accumulated at the moment of the decision.</param>
+   /// <param name="limit">
+   ///   The ceiling that was crossed, or <c>null</c> for a token gate, which has no money figure.
+   /// </param>
+   /// <param name="reason">Operator-facing explanation.</param>
+   public static CostGateDecision Deny(decimal spentSoFar, decimal? limit, string reason)
       => new(false, spentSoFar, limit, reason);
 }
 

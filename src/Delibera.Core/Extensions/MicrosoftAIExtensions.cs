@@ -89,8 +89,33 @@ public static class MicrosoftAIExtensions
    }
 
    /// <summary>
-   ///    Minimal <see cref="IChatClient" /> adapter over a Delibera <see cref="ILLMProvider" />.
+   ///    Minimal <see cref="IChatClient" /> adapter over a Delibera <see cref="ILLMProvider" />,
+   ///    including a text bridge for tool traffic.
    /// </summary>
+   /// <remarks>
+   ///    <para>
+   ///    A provider that returns plain strings cannot emit a
+   ///    <see cref="FunctionCallContent" />, and <c>FunctionInvokingChatClient</c> only reacts to
+   ///    one. So this adapter translates in both directions:
+   ///    </para>
+   ///    <list type="bullet">
+   ///       <item>
+   ///          <b>Outbound.</b> The tools on <c>ChatOptions.Tools</c> are rendered into the system
+   ///          prompt as the <c>[[TOOL: name {json}]]</c> protocol, and
+   ///          <see cref="FunctionCallContent" /> / <see cref="FunctionResultContent" /> already in
+   ///          the conversation are flattened into readable text so the model can see what it
+   ///          previously asked for and what came back.
+   ///       </item>
+   ///       <item>
+   ///          <b>Inbound.</b> A marker in the response is parsed back into a real
+   ///          <see cref="FunctionCallContent" /> and stripped from the visible text.
+   ///       </item>
+   ///    </list>
+   ///    <para>
+   ///    Without this the middleware was silently inert: it saw no tool request, so it never
+   ///    invoked anything, and the caller got an ordinary text answer with no error to explain why.
+   ///    </para>
+   /// </remarks>
    private sealed class LLMProviderChatClient(ILLMProvider provider, string? defaultModel) : IChatClient
    {
       private readonly ChatClientMetadata _metadata = new(provider.ProviderName, defaultModelId: defaultModel);
@@ -100,7 +125,9 @@ public static class MicrosoftAIExtensions
          ChatOptions? options = null,
          CancellationToken cancellationToken = default)
       {
-         var (system, user) = SplitMessages(messages);
+         var tools = MaterializeTools(options);
+         var (system, user) = FlattenMessages(messages, tools);
+
          var text = await provider.ChatAsync(
             ResolveModel(options),
             system,
@@ -108,7 +135,20 @@ public static class MicrosoftAIExtensions
             options?.Temperature ?? 0.7f,
             cancellationToken).ConfigureAwait(false);
 
-         return new ChatResponse(new ChatMessage(ChatRole.Assistant, text)) { ModelId = ResolveModel(options) };
+         var contents = new List<AIContent>();
+         var markerStream = new Tools.ToolMarkerStream();
+
+         var visible = markerStream.Append(text ?? string.Empty, out var request);
+         if (visible.Length > 0)
+            contents.Add(new TextContent(visible));
+
+         if (request is not null)
+            contents.Add(ToFunctionCall(request));
+
+         return new ChatResponse(new ChatMessage(ChatRole.Assistant, contents))
+         {
+            ModelId = ResolveModel(options)
+         };
       }
 
       public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
@@ -116,10 +156,32 @@ public static class MicrosoftAIExtensions
          ChatOptions? options = null,
          [EnumeratorCancellation] CancellationToken cancellationToken = default)
       {
-         var (system, user) = SplitMessages(messages);
+         var tools = MaterializeTools(options);
+         var (system, user) = FlattenMessages(messages, tools);
+
+         // One marker stream for the whole call: a marker may straddle any chunk boundary, so the
+         // parser has to hold the tail across chunks rather than resetting per chunk.
+         var markerStream = new Tools.ToolMarkerStream();
+
          await foreach (var chunk in provider.ChatStreamAsync(
-                           ResolveModel(options), system, user, options?.Temperature ?? 0.7f, cancellationToken).ConfigureAwait(false))
-            yield return new ChatResponseUpdate(ChatRole.Assistant, chunk);
+                           ResolveModel(options), system, user, options?.Temperature ?? 0.7f, cancellationToken)
+                           .ConfigureAwait(false))
+         {
+            var visible = markerStream.Append(chunk ?? string.Empty, out var request);
+
+            if (visible.Length > 0)
+               yield return new ChatResponseUpdate(ChatRole.Assistant, visible);
+
+            if (request is not null)
+            {
+               yield return new ChatResponseUpdate(ChatRole.Assistant, [ToFunctionCall(request)]);
+            }
+         }
+
+         // A response that ends mid-marker still has to deliver its text rather than swallow it.
+         var tail = markerStream.Flush();
+         if (tail.Length > 0)
+            yield return new ChatResponseUpdate(ChatRole.Assistant, tail);
       }
 
       public object? GetService(Type serviceType, object? serviceKey = null)
@@ -135,6 +197,24 @@ public static class MicrosoftAIExtensions
          provider.Dispose();
       }
 
+      private static FunctionCallContent ToFunctionCall(Tools.ToolCallParser.Request request)
+      {
+         // A call id is what pairs a request with its result. It is generated here because a
+         // text-protocol provider has no wire-level id to reuse.
+         var arguments = Tools.ToolCallParser.TryParseArguments(request.ArgumentsJson);
+         return new FunctionCallContent(Guid.NewGuid().ToString("N"), request.ToolName, arguments);
+      }
+
+      private static IReadOnlyList<AITool> MaterializeTools(ChatOptions? options)
+      {
+         if (options?.Tools is not { Count: > 0 } configured) return [];
+
+         var tools = new List<AITool>(configured.Count);
+         foreach (var tool in configured) tools.Add(tool);
+
+         return tools;
+      }
+
       private string ResolveModel(ChatOptions? options)
       {
          return options?.ModelId is { Length: > 0 } m
@@ -142,20 +222,56 @@ public static class MicrosoftAIExtensions
             : defaultModel ?? string.Empty;
       }
 
-      private static (string System, string User) SplitMessages(IEnumerable<ChatMessage> messages)
+      /// <summary>
+      ///   Flattens the conversation into the (system, user) pair the string-only provider accepts,
+      ///   carrying tool traffic across instead of dropping it.
+      /// </summary>
+      /// <remarks>
+      ///   Function-call and function-result content have no <c>Text</c>, so reading
+      ///   <c>message.Text</c> alone silently discarded every tool exchange. They are rendered
+      ///   explicitly here.
+      /// </remarks>
+      private static (string System, string User) FlattenMessages(
+         IEnumerable<ChatMessage> messages,
+         IReadOnlyList<AITool> tools)
       {
          var system = new StringBuilder();
          var user = new StringBuilder();
+
+         if (tools.Count > 0)
+            system.Append(Tools.ToolCallParser.BuildBriefing(tools));
+
          foreach (var message in messages)
          {
-            var target = message.Role == ChatRole.System
-               ? system
-               : user;
-            if (target.Length > 0) target.Append('\n');
-            target.Append(message.Text);
+            var target = message.Role == ChatRole.System ? system : user;
+
+            foreach (var content in message.Contents)
+            {
+               switch (content)
+               {
+                  case FunctionCallContent call:
+                     AppendLine(target, $"[tool call] {call.Name}({Tools.ToolCallParser.SerializeArguments(call.Arguments)})");
+                     break;
+
+                  case FunctionResultContent result:
+                     AppendLine(target, $"[tool result] {result.Result}");
+                     break;
+
+                  case TextContent text:
+                     if (!string.IsNullOrEmpty(text.Text))
+                        AppendLine(target, text.Text);
+                     break;
+               }
+            }
          }
 
          return (system.ToString(), user.ToString());
+      }
+
+      private static void AppendLine(StringBuilder target, string value)
+      {
+         if (target.Length > 0) target.Append('\n');
+         target.Append(value);
       }
    }
 }

@@ -8,6 +8,7 @@ using Delibera.Core.Attachments;
 using Delibera.Core.Caching;
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
+using Delibera.Core.Cost;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Memory;
@@ -91,16 +92,16 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
       };
       CompressionLogs = ExecutionOptions.CompressionLogs;
 
-      // A cost ceiling is enforced against observed spend, which only exists once a price list
-      // is supplied. Without one every member call bills zero, the gate compares zero against the
-      // limit and never denies, and the caller is left with a ceiling that is configured, logged
-      // and completely inert. Say so once, at construction, where it can still be acted on.
-      if (ExecutionOptions.CostGate is not null && ExecutionOptions.PricingRegistry is null)
+      // Backstop for the DI path: CouncilBuilder.Build() already rejects a money ceiling with no
+      // pricing registry, but DebateExecutionOptions can be assembled directly, and there a
+      // silently inert ceiling is still reachable. Tokens are only priced when a registry supplies
+      // rates, so the gate would compare zero against the limit forever.
+      if (ExecutionOptions.CostGate is BudgetCostGate && ExecutionOptions.PricingRegistry is null)
       {
          ExecutionOptions.Logger?.LogWarning(
-            "A cost limit is configured but no pricing registry is, so member calls cannot be priced "
-            + "and the ceiling cannot be enforced — every call bills zero against it. Call "
-            + "WithPricingRegistry(...) to make the limit effective.");
+            "A cost limit is configured without a pricing registry, so member calls cannot be priced "
+            + "and the ceiling cannot be enforced — every call bills zero against it. Supply "
+            + "Delibera:Pricing, or use a token budget, which needs no prices.");
       }
       _autoChunkingOptions = autoChunkingOptions;
       _telemetryOptions = telemetryOptions;

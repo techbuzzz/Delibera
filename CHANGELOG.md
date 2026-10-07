@@ -11,6 +11,48 @@ Closes all six open GitHub issues (#11, #13, #14, #15, #16, #18) and the two fin
 tracked only in `docs/TASKS/`. **No breaking changes** — every addition is opt-in, and no member
 was added to an existing public interface.
 
+### Fixed — the pgvector backend could not write or search
+
+`PgVectorStore` bound the embedding with `AddWithValue(new Vector(v))`. That overload takes `object`, so
+the `Vector` was boxed and Npgsql had no type to map; the first upsert threw
+
+```
+InvalidCastException: Writing values of 'Pgvector.Vector' is not supported for parameters having no
+NpgsqlDbType or DataTypeName
+```
+
+Declaring `NpgsqlDbType.Unknown` fails the same way — `UseVector()` registers a mapping only for the
+Npgsql version the `Pgvector` package was built against, and this project pairs `Pgvector` 0.3.2 with
+Npgsql 10. The embedding now travels as pgvector's own text form (`[0.5,1,-2]`) with an explicit
+`NpgsqlDbType.Text` and a `::vector` cast applied by PostgreSQL, which any pgvector release understands.
+Formatting is culture-invariant: a decimal comma would render `[0,5]`, which parses as two zeros and
+corrupts the vector silently instead of failing.
+
+Found by running the store against a real `pgvector/pgvector:pg16` — the unit tests covered it through
+fakes. `PgVectorStore` is advertised as a supported vector store and **had never been exercised against
+a real database**; anything configured with `Delibera:Rag:ProviderType = PgVector` could not have
+worked. Both write and search were affected and both are fixed. No migration is required, because no row
+could previously have been written.
+
+### Fixed — the tool audit trail reported every call as failed
+
+A live run reported `1 tool call(s) observed, 0 succeeded … error="The tool produced no result."` even
+though the tool had demonstrably run.
+
+The call and its result arrive in *different* round-trips: the request leaves the provider as a
+`FunctionCallContent`, the middleware invokes the tool afterwards, and the result only comes back on the
+**next** request. The recorder looked for the pair inside a single response, so a result could never be
+found and every call looked dropped. Calls are now held pending by `CallId` and settled when a matching
+result appears in an inbound conversation; anything still pending when the loop ends is flushed as having
+produced nothing. Two regression tests in `ToolBridgeTests` pin both halves.
+
+### Fixed — an unknown tool name was reported as a success
+
+The middleware reports an unresolvable function as an error *value*, not an exception, so testing
+`Exception is null` passed. What is unambiguous is the catalogue: a name that was never offered cannot
+have run, whatever came back. Success now requires the result, no exception, **and** the tool being in
+the catalogue.
+
 ### Fixed — vector-store indexing was not idempotent (W2-15)
 
 `BaseRagProvider` assigned `Guid.NewGuid()` as every point id. Both concrete stores treat the id as

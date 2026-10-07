@@ -39,7 +39,17 @@ public static class CostControlExtensions
       return AsConcrete(builder).WithCostLimit(limit, behavior);
    }
 
-   /// <inheritdoc cref="Council.CouncilBuilder.WithCostGate(ICostGate)" />
+   /// <inheritdoc cref="Council.CouncilBuilder.WithTokenBudget(long, CostLimitBehavior)" />
+   public static ICouncilBuilder WithTokenBudget(
+      this ICouncilBuilder builder,
+      long limit,
+      CostLimitBehavior behavior = CostLimitBehavior.Abort)
+   {
+      ArgumentNullException.ThrowIfNull(builder);
+      return AsConcrete(builder).WithTokenBudget(limit, behavior);
+   }
+
+/// <inheritdoc cref="Council.CouncilBuilder.WithCostGate(ICostGate)" />
    public static ICouncilBuilder WithCostGate(this ICouncilBuilder builder, ICostGate gate)
    {
       ArgumentNullException.ThrowIfNull(builder);

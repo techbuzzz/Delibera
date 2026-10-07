@@ -305,10 +305,19 @@ internal static class ToolJson
 /// </remarks>
 public static partial class ToolCallParser
 {
-   /// <summary>Builds the instructions appended to a member's system prompt when tools are available.</summary>
+   /// <summary>
+   ///   Builds the instructions appended to a system prompt when tools are available.
+   /// </summary>
+   /// <remarks>
+   ///   This is the tool wire format for providers that return plain strings: the model is told
+   ///   the marker, and <c>LLMProviderChatClient</c> parses the marker back out of the response
+   ///   into a real <see cref="FunctionCallContent" />. That translation is what lets the standard
+   ///   <c>FunctionInvokingChatClient</c> middleware drive the loop for every provider, instead of
+   ///   this library maintaining a second copy of it.
+   /// </remarks>
    /// <param name="tools">The tools the member may call.</param>
    /// <returns>A directive block, or an empty string when there are no tools.</returns>
-   public static string BuildBriefing(IReadOnlyList<AIFunction> tools)
+   public static string BuildBriefing(IReadOnlyList<AITool> tools)
    {
       if (tools.Count == 0) return string.Empty;
 
@@ -317,7 +326,10 @@ public static partial class ToolCallParser
       sb.AppendLine("── TOOLS (available) ──");
       sb.AppendLine("You may call these tools while forming your answer:");
       foreach (var tool in tools)
-         sb.AppendLine($"- `{tool.Name}` — {tool.Description}");
+      {
+         var name = tool is AIFunction function ? function.Name : tool.Name;
+         sb.AppendLine($"- `{name}` — {tool.Description}");
+      }
 
       sb.AppendLine();
       sb.AppendLine("To call a tool, include a line with this exact marker:");
@@ -326,6 +338,91 @@ public static partial class ToolCallParser
       sb.AppendLine("The result is given back to you before the next round. Call a tool only when you");
       sb.AppendLine("genuinely need external information; state your reasoning alongside the call.");
       return sb.ToString();
+   }
+
+   /// <summary>Overload for a caller that already has function-typed tools.</summary>
+   /// <param name="tools">The tools the member may call.</param>
+   /// <returns>A directive block, or an empty string when there are no tools.</returns>
+   public static string BuildBriefing(IReadOnlyList<AIFunction> tools)
+   {
+      var asTools = new List<AITool>(tools.Count);
+      foreach (var tool in tools) asTools.Add(tool);
+
+      return BuildBriefing(asTools);
+   }
+
+   /// <summary>Parses exactly one marker, or returns <c>null</c> when the text is not one.</summary>
+   /// <param name="markerText">Candidate marker text, including the brackets.</param>
+   public static Request? TryParseSingle(string? markerText)
+   {
+      if (string.IsNullOrWhiteSpace(markerText)) return null;
+
+      foreach (Match match in ToolRequestRegex().Matches(markerText))
+      {
+         var name = match.Groups["name"].Value.Trim();
+         if (name.Length == 0) continue;
+
+         return new Request(name, match.Groups["args"].Value.Trim(), match.Value);
+      }
+
+      return null;
+   }
+
+   /// <summary>Removes every tool marker from the text, keeping the surrounding prose.</summary>
+   /// <param name="text">Text possibly containing markers.</param>
+   /// <returns>The text with markers removed.</returns>
+   public static string StripMarkers(string? text)
+   {
+      if (string.IsNullOrEmpty(text)) return string.Empty;
+      if (!text.Contains("[[", StringComparison.Ordinal)) return text;
+
+      return ToolRequestRegex().Replace(text, string.Empty);
+   }
+
+   /// <summary>
+   ///    Parses a raw JSON argument object into the dictionary the tool binder expects.
+   /// </summary>
+   /// <remarks>
+   ///    Malformed payloads yield an empty argument set rather than an exception. A model emitting
+   ///    bad JSON is a routine event; taking the host down over it is not an acceptable trade.
+   /// </remarks>
+   /// <param name="argumentsJson">Raw JSON, possibly absent or malformed.</param>
+   public static Dictionary<string, object?> TryParseArguments(string? argumentsJson)
+   {
+      if (string.IsNullOrWhiteSpace(argumentsJson)) return [];
+
+      try
+      {
+         return JsonSerializer.Deserialize<Dictionary<string, object?>>(argumentsJson, ToolJson.Options) ?? [];
+      }
+      catch (JsonException)
+      {
+         return [];
+      }
+   }
+
+   /// <summary>
+   ///   Renders an already-bound argument dictionary as JSON, for putting a tool call back into a
+   ///   text prompt.
+   /// </summary>
+   /// <remarks>
+   ///   The result is never null and never throws: this runs while flattening a conversation, and a
+   ///   model-supplied payload that cannot be serialized must not cost the whole turn its tool
+   ///   history.
+   /// </remarks>
+   /// <param name="arguments">The bound arguments, possibly null or empty.</param>
+   public static string SerializeArguments(IDictionary<string, object?>? arguments)
+   {
+      if (arguments is null || arguments.Count == 0) return "{}";
+
+      try
+      {
+         return JsonSerializer.Serialize(arguments, ToolJson.Options);
+      }
+      catch (JsonException)
+      {
+         return $"<{arguments.Count} argument(s), unserializable>";
+      }
    }
 
    /// <summary>A tool request parsed out of a response.</summary>

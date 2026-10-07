@@ -16,7 +16,11 @@ public sealed class CostGateIntegrationTests
    [Fact]
    public async Task A_Debate_Under_Its_Ceiling_Reports_Its_Spend_And_Is_Not_Degraded()
    {
-      var executor = BuildCouncil(costLimit: 100m);
+      var registry = new ModelPricingRegistry();
+      registry.Register(new ModelPricing("model-a", 1m, 2m));
+      registry.Register(new ModelPricing("model-b", 1m, 2m));
+
+      var executor = BuildCouncil(costLimit: 100m, registry: registry);
 
       var result = await executor.ExecuteAsync();
 
@@ -24,9 +28,7 @@ public sealed class CostGateIntegrationTests
       result.CostEstimate!.WasTruncated.Should().BeFalse();
       result.CostEstimate.Members.Should().NotBeEmpty();
       result.CostEstimate.TotalPromptTokens.Should().BeGreaterThan(0);
-      // No price list was configured, so the money figure is an estimate at zero rather than a
-      // bill. Reporting it as an exact cost would be the more dangerous lie.
-      result.CostEstimate.IsEstimate.Should().BeTrue();
+      result.CostEstimate.IsEstimate.Should().BeFalse("both models had exact registered prices");
       result.IsDegraded.Should().BeFalse();
    }
 

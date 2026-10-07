@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Npgsql;
+using NpgsqlTypes;
 using Pgvector;
 
 namespace Delibera.Core.Providers.RAG;
@@ -119,7 +121,7 @@ public sealed partial class PgVectorStore : IVectorStore
 
          var cmd = new NpgsqlBatchCommand($"""
                                            INSERT INTO {tableName} (id, text, metadata, embedding)
-                                           VALUES ($1, $2, $3::jsonb, $4)
+                                           VALUES ($1, $2, $3::jsonb, $4::vector)
                                            ON CONFLICT (id) DO UPDATE SET
                                                text = EXCLUDED.text,
                                                metadata = EXCLUDED.metadata,
@@ -128,7 +130,15 @@ public sealed partial class PgVectorStore : IVectorStore
          cmd.Parameters.AddWithValue(id);
          cmd.Parameters.AddWithValue(p.Text);
          cmd.Parameters.AddWithValue(metadataJson ?? (object)DBNull.Value);
-         cmd.Parameters.AddWithValue(new Vector(p.Vector));
+
+         // The embedding travels as pgvector's own text form and is cast by PostgreSQL, rather
+         // than being bound as Pgvector.Vector. Binding the CLR type fails at execute time with
+         // "Writing values of 'Pgvector.Vector' is not supported for parameters having no
+         // NpgsqlDbType or DataTypeName" — and also with NpgsqlDbType.Unknown, because
+         // UseVector() only registers a mapping for the Npgsql version the Pgvector package was
+         // built against. A text literal plus ::vector is understood by any pgvector release, so
+         // the store no longer depends on that pairing.
+         cmd.Parameters.Add(new NpgsqlParameter { Value = FormatVector(p.Vector), NpgsqlDbType = NpgsqlDbType.Text });
 
          batch.BatchCommands.Add(cmd);
       }
@@ -151,13 +161,14 @@ public sealed partial class PgVectorStore : IVectorStore
       // Cosine distance: <=> returns distance [0..2], convert to similarity [0..1]
       // similarity = 1 - distance
       cmd.CommandText = $"""
-                         SELECT id, text, metadata::text, 1 - (embedding <=> $1) AS score
+                         SELECT id, text, metadata::text, 1 - (embedding <=> $1::vector) AS score
                          FROM {tableName}
-                         WHERE 1 - (embedding <=> $1) >= $3
-                         ORDER BY embedding <=> $1
+                         WHERE 1 - (embedding <=> $1::vector) >= $3
+                         ORDER BY embedding <=> $1::vector
                          LIMIT $2
                          """;
-      cmd.Parameters.AddWithValue(new Vector(queryVector));
+      // Text literal plus ::vector, for the same reason as in UpsertAsync.
+      cmd.Parameters.Add(new NpgsqlParameter { Value = FormatVector(queryVector), NpgsqlDbType = NpgsqlDbType.Text });
       cmd.Parameters.AddWithValue(limit);
       cmd.Parameters.AddWithValue((double)scoreThreshold);
 
@@ -235,6 +246,29 @@ public sealed partial class PgVectorStore : IVectorStore
    /// </summary>
    [GeneratedRegex(@"[^a-z0-9_]")]
    private static partial Regex NonIdentifierCharRegex();
+
+   /// <summary>
+   ///    Renders a vector in pgvector's text form, e.g. <c>[0.5,1,-2]</c>, for PostgreSQL to cast.
+   /// </summary>
+   /// <remarks>
+   ///    Culture-invariant on purpose: a decimal comma would produce <c>[0,5]</c> under some
+   ///    locales, which parses as two zeros and silently corrupts the stored vector rather than
+   ///    failing. <c>R</c> is used instead of the general format so whole numbers keep no trailing
+   ///    separator.
+   /// </remarks>
+   private static string FormatVector(IReadOnlyList<float> vector)
+   {
+      var sb = new StringBuilder(vector.Count * 8 + 2);
+      sb.Append('[');
+      for (var i = 0; i < vector.Count; i++)
+      {
+         if (i > 0) sb.Append(',');
+         sb.Append(vector[i].ToString("R", CultureInfo.InvariantCulture));
+      }
+
+      sb.Append(']');
+      return sb.ToString();
+   }
 
    private static string SanitizeTableName(string collectionName)
    {
