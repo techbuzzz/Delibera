@@ -1,11 +1,15 @@
-# Delibera · Stabilization & Performance Plan (v10.3.1 → v10.4.0)
+# Delibera · Stabilization & Performance Plan (v10.3.1 → v10.5.1)
 
 > **Author:** AI assistant (with @techbuzzz input)
 > **Date:** October 2026
-> **Branch:** `feature/v10.3.1`
+> **Branch:** `feat/v10.5.1`
 > **Baseline (v10.3.1 as found):** `dotnet build -c Release` → **11 errors** (NU1605) / 15 warnings; tests could not run at all
-> **Current:** **0 errors / 0 warnings** (also clean under `-warnaserror`); `dotnet test` → **514 passed** of 514 discovered (406 Core + 108 Server), 0 failed, 0 skipped — the 5 SSE failures outstanding at 10.3.x are fixed
-> **Status:** Release gate green for v10.4.0
+> **Current (measured on this tree, v10.5.1):** **0 errors / 0 warnings** (also clean under `-warnaserror`); `dotnet test` → **595 passed** of 595 discovered (477 Core + 108 Server + 10 gRPC contract), 0 failed, 0 skipped
+> **Status:** Release gate green for v10.5.1. All six open GitHub issues closed.
+
+Test counts in this file are measured at the commit they describe, not carried forward. An earlier
+revision quoted 514/406 — the 10.4.0 figure — and that number reached the public nuget.org page for
+`Delibera.Core` 10.5.0, which still shows it.
 
 ---
 
@@ -62,7 +66,12 @@ comfort: W1 correctness → W2 performance → W3 architecture → W4 server →
 
 ## 4. Master table
 
-Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · ❓ needs owner decision
+Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · ❓ needs owner decision · 📋 documented, no code change · 🟡 partial
+
+🟡 W5-07 is partial: the documents themselves are synced for 10.5.1 and the stale PDFs are gone,
+but "every documented code sample compiles" has not been run as a check, so that row stays open.
+W5-08 and W5-09 are the performance gate, added in 10.5.1 — see
+[W5-quality-gates.md](W5-quality-gates.md) and §7 below.
 
 ### W0 — Build & toolchain
 | ID | Task | Pri | Status |
@@ -97,6 +106,18 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · �
 | W2-07 | `YandexGptProvider`: throwaway `HttpRequestMessage` + double payload copy | P2 | ⬜ |
 | W2-08 | `DebateScenario` operator regex runs on every response even with no operator | P2 | ✅ |
 | W2-09 | Fan-out without `MaxDegreeOfParallelism` cap (`:58-71`) | P2 | ✅ |
+| W2-10 | Context compression configured but never invoked from the pipeline | P1 | ✅ |
+| W2-11 | `[ERROR: ...]` substituted as a member response; Chairman read it as an opinion | P1 | ✅ |
+| W2-12 | `DebateResult.TotalDuration` negative on every debate | P1 | ✅ |
+| W2-13 | `WithCache` missing from `ICouncilBuilder` | P2 | ❓ |
+| W2-14 | Cache-hit `TotalDuration` reports provenance, not caller wait time | P2 | ❓ |
+| W2-15 | Vector-store indexing not idempotent — duplicate corpus on re-index | P1 | ✅ |
+| W2-16 | One reasoning model produced 68.8% of member output (roster hazard) | P2 | 📋 |
+
+W2-10…W2-16 come from the 2026-10-06 measurement round; they were previously tracked only in
+[W2-performance-core.md](W2-performance-core.md) and were missing from this index. W2-13 and W2-14
+are ❓ pending an owner decision (both are documented rather than patched); W2-16 is 📋 — a
+roster-selection hazard recorded with guidance, no framework change.
 
 ### W3 — API & architecture
 | ID | Task | Pri | Status |
@@ -120,9 +141,14 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · �
 | W4-05 | FluentValidation covers 1 of 4 request contracts | P1 | ✅ |
 | W4-06 | `ValidationFilter` returns 422 while OpenAPI documents 400 | P2 | ✅ |
 | W4-07 | `CorpusService` singleton mutates a plain `Dictionary`/`List` | P1 | ✅ |
-| W4-08 | Dockerfile HEALTHCHECK calls `wget` that the image does not contain | P1 | ⬜ |
+| W4-08 | Dockerfile HEALTHCHECK calls `wget` that the image does not contain | P1 | ✅ |
 | W4-09 | MCP tool JSON built by string concatenation (unescaped) | P1 | ✅ |
-| W4-10 | SSE: no heartbeat, no terminal event, unbounded channel | P2 | ⬜ |
+| W4-10 | SSE: no heartbeat, no terminal event, unbounded channel | P2 | 🟡 |
+
+🟡 W4-10 is partial: the SSE writer is fixed (heartbeat, `retry:` hint, terminal event pinned
+by tests), but the round channels at `LocalDebateOrchestrator.cs:251` and
+`RedisDebateOrchestrator.cs:419` are still `Channel.CreateUnbounded`. W4-08 is code-fixed and
+still needs `docker compose up` + `docker inspect` to confirm the built image reports healthy.
 
 ### W5 — Tests, gates, docs
 | ID | Task | Pri | Status |
@@ -132,8 +158,10 @@ Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · �
 | W5-03 | Concurrency tests for orchestrator eviction / `Dispose` / `volatile` status | P1 | ⬜ |
 | W5-04 | CI runs build + test on every PR | P1 | ✅ |
 | W5-05 | "Async fake" test provider to close the fake-vs-real gap | **P0** | ✅ |
-| W5-06 | CHANGELOG entry with the breaking changes of this cycle | P1 | ⬜ |
-| W5-07 | `docs/` sync: README, QuickStart, `caching.md`, `Server.md` | P2 | ⬜ |
+| W5-06 | CHANGELOG entry with the breaking changes of this cycle | P1 | ✅ |
+| W5-07 | `docs/` sync: README, QuickStart, `caching.md`, `Server.md` | P2 | 🟡 |
+| W5-08 | No framework regression in the debate loop (added v10.5.1) | P1 | ✅ |
+| W5-09 | Indexing produces the same corpus regardless of run count (added v10.5.1) | P1 | ✅ |
 
 ---
 
@@ -155,10 +183,54 @@ standing property of the test suite:
 - [x] `dotnet build -c Release` → 0 errors, **0 warnings**
 - [x] `TreatWarningsAsErrors=true` in CI — `publish-nuget.yml` builds with `-warnaserror`
 - [ ] `dotnet test` → green, with a regression test for every W1 item
-      *(tests are green: 514/514. The "regression test for every W1 item" half is not
-      re-verified here.)*
+      *(tests are green: 611/611 — 493 Core + 108 Server + 10 gRPC contract, re-measured on this
+      tree, not carried forward. The "regression test for every W1 item" half is **not verified**:
+      no audit has established that every W1 item has a corresponding test, so this box stays open.)*
 - [x] No `GetAwaiter().GetResult()` / `.Result` / `.Wait()` in `src/` outside `Dispose` —
       one occurrence remains, `VectorStoreFactory.DisposeInstances`, which is a disposal path
 - [ ] No `new Regex(` in a hot path (already true — keep it true)
 - [ ] No mutable `List<T>` shared between the debate loop and a request thread
 - [x] CHANGELOG documents every breaking change since v10.3.0 — W3-07, with before/after code
+
+---
+
+## 7. Performance gate (v10.5.1)
+
+A release gate exists for the other properties above, and a performance one used not to. Added in
+v10.5.1, because two defects in that release were invisible to every gate that was already in place.
+
+### W5-08 · no framework regression in the debate loop
+
+| Checkout | Median | p95 | Allocations |
+|---|---|---|---|
+| v10.5.0 (`1297e38`) | 0.634 ms | 1.22 ms | 3 735 640 B |
+| v10.5.1, accounting unguarded (`978f4cb`) | **1.404 ms** (+121%) | 1.96 ms | **5 034 080 B** (+35%) |
+| v10.5.1, accounting guarded | 0.679 ms | 1.41 ms | 3 736 000 B |
+
+**✅ Fixed.** Cost accounting ran unconditionally: every member call concatenated the prompts and ran
+the token counter over the prompt and the response. The prompt grows every round as history
+accumulates, so a debate paid a cost quadratic in its own length and then discarded it. Accounting now
+runs only when `DebateExecutionOptions.CostTrackingEnabled`. A second pass removed an `async ValueTask`
+from the per-member admission check, whose state machine was allocated on every call.
+
+Method: `.bench/PerfCheck` — a fake provider returning instantly, three members, three rounds, long
+deterministic responses, baseline checkouts supplied as git worktrees via `-p:DeliberaCorePath=`.
+Full numbers and caveats in
+[performance-measurements.md](../performance-measurements.md#8-framework-overhead-and-retrieval-measured-across-checkouts-v1051).
+
+### W5-09 · indexing produces the same corpus regardless of run count
+
+| | v10.5.0 | v10.5.1 |
+|---|---|---|
+| 3 index runs of one document, live Qdrant | **360 points** | **120 points** |
+| Search median afterwards | 0.968 ms | 0.873 ms |
+
+**✅ Fixed** by W2-15's deterministic point ids. The latency win is modest at this scale because a
+few hundred vectors stay index-resident; the larger effect is on ranking quality, which is **not
+measured** — that needs a recall/precision comparison.
+
+### What the gate does not catch
+
+Wall-clock comparisons against the numbers in `docs/performance-measurements.md` are meaningless:
+those run against live cloud models through a proxy, where model latency dominates framework cost by
+orders of magnitude. The gate above isolates framework CPU with no network. Do not mix the two.

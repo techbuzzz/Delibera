@@ -1,10 +1,8 @@
-using FluentValidation;
-
 namespace Delibera.Server.Api.Filters;
 
 /// <summary>
-/// Endpoint filter that runs FluentValidation on the first argument of any
-/// endpoint handler that accepts a validatable request type.
+///    Endpoint filter that runs FluentValidation on the first argument of any
+///    endpoint handler that accepts a validatable request type.
 /// </summary>
 public sealed class ValidationFilter(IServiceProvider sp) : IEndpointFilter
 {

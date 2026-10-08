@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>preview</LangVersion>
+    <RootNamespace>Delibera.Grpc</RootNamespace>
+    <AssemblyName>Delibera.Grpc</AssemblyName>
+
+    <!-- Packaged and ready, but deliberately NOT in the GA matrix yet: the first
+         published release carries Core, Server and Redis. Adding this project to
+         .github/workflows/publish-nuget.yml is a one-line change once the service
+         implementations ship. -->
+    <PackageId>Delibera.Grpc</PackageId>
+    <IsPackable>true</IsPackable>
+    <Version>10.5.1</Version>
+    <Title>Delibera gRPC</Title>
+    <Description>gRPC transport for the Delibera multi-model AI council framework: protobuf service definitions, server-streaming debate events, and bi-directional debate control. Sits on top of IDebateOrchestrator so distributed execution and result caching work identically over gRPC. Depends on Delibera.Core.</Description>
+    <Authors>Victor Buzin</Authors>
+    <PackageTags>llm;ai;debate;council;deliberation;grpc;protobuf;streaming;rpc;multi-model</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageProjectUrl>https://github.com/techbuzzz/Delibera</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/techbuzzz/Delibera</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReleaseNotes>Pre-release gRPC transport for Delibera. Not yet in the NuGet GA matrix.</PackageReleaseNotes>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="icon.png" Pack="true" PackagePath="\" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Delibera.Core\Delibera.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.31.0" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.72.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Protos\delibera.proto" GrpcServices="Both" ProtoRoot="Protos" />
+  </ItemGroup>
+
+</Project>

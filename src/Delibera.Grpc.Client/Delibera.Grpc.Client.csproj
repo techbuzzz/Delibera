@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>preview</LangVersion>
+    <RootNamespace>Delibera.Grpc.Client</RootNamespace>
+    <AssemblyName>Delibera.Grpc.Client</AssemblyName>
+
+    <!-- Packaged and ready, but NOT in the GA matrix yet. -->
+    <PackageId>Delibera.Grpc.Client</PackageId>
+    <IsPackable>true</IsPackable>
+    <Version>10.5.1</Version>
+    <Title>Delibera gRPC Client</Title>
+    <Description>Generated gRPC client for the Delibera multi-model AI council framework: typed stubs for DebateService, ScenarioService and CorpusService, including the server-streaming debate event channel. Depends on Delibera.Grpc.</Description>
+    <Authors>Victor Buzin</Authors>
+    <PackageTags>llm;ai;debate;council;deliberation;grpc;protobuf;client;rpc;multi-model</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageProjectUrl>https://github.com/techbuzzz/Delibera</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/techbuzzz/Delibera</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReleaseNotes>Pre-release gRPC client for Delibera. Not yet in the NuGet GA matrix.</PackageReleaseNotes>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="icon.png" Pack="true" PackagePath="\" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!-- Deliberately NO reference to Delibera.Grpc. Both sides compile the same .proto
+       independently: the server project generates messages + server stubs, this one
+       generates messages + client stubs. Referencing the server project and generating
+       here as well produces two copies of every message type (CS0436) and the caller ends
+       up with two structurally identical but nominally different DebateResponse types.
+       Compiling the shared proto on both sides keeps them in step at build time instead. -->
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.31.0" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.72.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Client-side generation only. The same proto the server compiles is consumed here, so the
+       two cannot drift: a message added to one side without the other fails the build rather
+       than at runtime. -->
+  <ItemGroup>
+    <Protobuf Include="..\Delibera.Grpc\Protos\delibera.proto"
+              GrpcServices="Client"
+              ProtoRoot="..\Delibera.Grpc\Protos"
+              Link="Protos\delibera.proto" />
+  </ItemGroup>
+
+</Project>

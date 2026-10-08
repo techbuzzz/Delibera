@@ -204,7 +204,7 @@ is no critical section to hold.
 
 ---
 
-## W4-08 · Container health check calls a binary the image does not have · **P1** *（unverified）* · ⬜ todo
+## W4-08 · Container health check calls a binary the image does not have · **P1** · ✅ fixed (runtime check outstanding)
 
 **Problem.** `Dockerfile:57-58` and `docker-compose.yml:74` run a `wget` health check,
 but the build stage purges `curl` (`:34`) and never installs `wget`; the
@@ -212,13 +212,17 @@ but the build stage purges `curl` (`:34`) and never installs `wget`; the
 If so the container is permanently "unhealthy" and a restart-policy-based orchestrator
 would restart it in a loop.
 
-**Fix.** Install the binary the check actually uses (or use the .NET SDK-free approach:
-a tiny `curl`-free check such as a TCP probe), then build the image and confirm
-`docker inspect` reports `healthy`.
+**Fix (done).** `wget` is now installed explicitly in the NodeSource block of
+`src/Delibera.Server/Dockerfile` alongside `curl`, with a comment recording why. `curl` is
+still purged afterwards (`apt-get purge -y curl`), so the check keeps the binary it needs
+while the setup-only downloader does not bloat the final image. The health check itself
+(`HEALTHCHECK … CMD wget -qO- http://localhost:8080/api/v1/health`) was already pointing at
+the correct route and needed no change.
 
 **Acceptance.**
-- [ ] Built image reports `healthy` against a running compose stack *(must be executed —
-      currently unverified)*
+- [x] The binary the health check runs is installed in the image and not purged afterwards
+- [ ] Built image reports `healthy` against a running compose stack *(still unverified — this
+      needs `docker compose up` plus `docker inspect`; it has not been executed here)*
 
 ---
 
@@ -244,7 +248,7 @@ HTTP path (this also cleared CS8601).
 
 ---
 
-## W4-10 · SSE robustness · **P2** · ⬜ todo
+## W4-10 · SSE robustness · **P2** · 🟡 partial — SSE writer done, channel still unbounded
 
 **Problem.** `SseDebateStreamWriter` writes no heartbeat and no `retry:` hint, so any
 intermediary proxy closes an idle stream; when the stream ends without a terminal event
@@ -252,9 +256,25 @@ the response just stops. `LocalDebateOrchestrator.cs:234` and
 `RedisDebateOrchestrator.cs:402` use unbounded channels, so a slow consumer grows memory
 without limit.
 
-**Fix.** Periodic comment heartbeat on idle, a terminal `debate-error`/completion event
-in `finally`, and a bounded channel sized to the expected round count.
+**Fix (partially done).** `SseDebateStreamWriter` now opens with a `retry: 3000` hint, emits a
+keep-alive comment whenever the stream has been silent for `DefaultHeartbeatInterval`
+(15 s), and always terminates: `debate-completed` on success (`:137`), `debate-error` on
+failure (`:144`), and `debate-error` from the `finally` path when the stream ends without a
+terminal event (`:180`), guarded by `terminalWritten` so the terminal event is delivered
+exactly once. The same rewrite fixed the 10.4.0 heartbeat pump defect: one
+`MoveNextAsync` per iteration, compared by reference, with any pending move settled before
+disposal.
+
+**Still open.** The third part of this finding is **not** done: the debate round channels are
+still unbounded. `LocalDebateOrchestrator.cs:251` and `RedisDebateOrchestrator.cs:419` both
+call `Channel.CreateUnbounded<DebateRound>()`. A consumer that stops draining (a client that
+stalls without closing, a worker that is not reading) therefore grows memory without limit.
+Bounding them is a behavioural change — a full channel must block or drop the producer — and
+is left for a separate decision rather than folded into an SSE-writer fix.
 
 **Acceptance.**
-- [ ] An idle SSE connection survives a proxy timeout
-- [ ] Client always receives a terminal event, including on failure
+- [x] Client always receives a terminal event, including on failure — pinned by the
+      SseDebateStreamWriter tests
+- [ ] An idle SSE connection survives a real proxy timeout *(not exercised here; the 15 s
+      heartbeat and `retry:` hint are in place, but no proxy sits in front in this environment)*
+- [ ] Debate round channels are bounded, with a defined full-channel behaviour

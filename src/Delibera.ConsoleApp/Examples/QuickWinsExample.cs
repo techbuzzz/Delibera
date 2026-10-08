@@ -94,13 +94,15 @@ public static class QuickWinsExample
       var sw = Stopwatch.StartNew();
       var result = await personaExecutor.ExecuteAsync(ct);
       sw.Stop();
-      Console.WriteLine($"  🏆 Persona debate completed in {sw.Elapsed.TotalSeconds:F1}s ({result.Rounds.Count} rounds)");
+      Console.WriteLine(
+         $"  🏆 Persona debate completed in {sw.Elapsed.TotalSeconds:F1}s ({result.Rounds.Count} rounds)");
 
       // ══════════ F-10a: HTML export ══════════
       Console.WriteLine();
       Console.WriteLine("  ── F-10a: HTML export ──");
       var htmlPath = "./debate_results/quickwins/result.html";
-      await result.SaveToHtmlAsync(htmlPath, new HtmlExportOptions { Theme = HtmlTheme.Dark, CollapsibleRounds = true }, ct);
+      await result.SaveToHtmlAsync(htmlPath, new HtmlExportOptions { Theme = HtmlTheme.Dark, CollapsibleRounds = true },
+         ct);
       Console.WriteLine($"  Saved self-contained HTML: {htmlPath}");
       var htmlSize = new FileInfo(htmlPath).Length;
       Console.WriteLine($"  File size: {htmlSize / 1024.0:F1} KB (inline CSS, collapsible <details>)");
@@ -134,7 +136,8 @@ public static class QuickWinsExample
          if (e.Error is not null)
             Console.WriteLine($"    ❌ {e.Name}: {e.Error}");
          else
-            Console.WriteLine($"    ✅ {e.Name}: {e.Result!.Rounds.Count} rounds, {e.Result.TotalDuration.TotalSeconds:F1}s, verdict {e.Result.FinalVerdict?.Length ?? 0} chars");
+            Console.WriteLine(
+               $"    ✅ {e.Name}: {e.Result!.Rounds.Count} rounds, {e.Result.TotalDuration.TotalSeconds:F1}s, verdict {e.Result.FinalVerdict?.Length ?? 0} chars");
 
       Console.WriteLine();
       Console.WriteLine("  ✨ Quick Wins demo complete. Files in ./debate_results/quickwins/");

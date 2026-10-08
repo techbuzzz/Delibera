@@ -66,7 +66,8 @@ public sealed class BenchmarkReport
          var ts = e.Result?.TokenStats;
          var total = ts?.GrandTotal ?? 0;
          var dur = e.Result?.TotalDuration.TotalSeconds ?? 0;
-         sb.AppendLine($"| {e.Name} | {ts?.TotalOriginalTokens ?? 0:N0} | {ts?.TotalCompressedTokens ?? 0:N0} | {ts?.TotalResponseTokens ?? 0:N0} | {total:N0} | {dur:F1}s |");
+         sb.AppendLine(
+            $"| {e.Name} | {ts?.TotalOriginalTokens ?? 0:N0} | {ts?.TotalCompressedTokens ?? 0:N0} | {ts?.TotalResponseTokens ?? 0:N0} | {total:N0} | {dur:F1}s |");
       }
 
       sb.AppendLine();
@@ -106,7 +107,8 @@ public sealed class BenchmarkReport
          sb.AppendLine("|-------|------|--------------|-----------|");
          if (e.Result is { Rounds: { } rounds })
             foreach (var r in rounds)
-               sb.AppendLine($"| {r.RoundNumber} | {r.RoundName} | {r.Duration.TotalSeconds:F1} | {r.Responses.Count} |");
+               sb.AppendLine(
+                  $"| {r.RoundNumber} | {r.RoundName} | {r.Duration.TotalSeconds:F1} | {r.Responses.Count} |");
          sb.AppendLine();
       }
 

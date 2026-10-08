@@ -1,7 +1,7 @@
 using Delibera.Core.Attachments;
-using Delibera.Core.Caching;
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
+using Delibera.Core.Cost;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Memory;
@@ -22,13 +22,19 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private const int DefaultMaxRounds = 4;
    private const float DefaultTemperature = 0.7f;
    private const string DefaultSystemPrompt = "You are a helpful AI assistant participating in a council debate.";
+   private readonly List<FileAttachment> _attachments = [];
+   private readonly FileContentReaderRegistry _fileReaders = new();
    private readonly List<CouncilMember> _members = [];
    private IAgentMemory? _agentMemory;
    private AutoChunkingOptions? _autoChunkingOptions;
+   private IDebateCache? _cache;
+   private CacheBehavior _cacheBehavior;
    private CouncilMember? _chairman;
    private CompressionCache? _compressionCache;
    private CompressionOptions? _compressionOptions;
+   private int _compressionThresholdTokens = 1_200;
    private IContextCompressor? _compressor;
+   private ICostGate? _costGate;
    private IDebateStore? _debateStore;
    private TimeSpan? _debateTimeout;
    private IKnowledgeBase? _knowledgeBase;
@@ -37,11 +43,16 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private int _maxDegreeOfParallelism;
    private int? _maxParticipants;
    private int _maxRounds = 4;
+   private int _maxToolIterations = 3;
+   private IReadOnlyList<AIFunction>? _memberTools;
    private Operator? _operator;
    private CouncilMember? _operatorModel;
    private bool _operatorReuseCompression;
    private IReadOnlyList<McpServerConfig>? _operatorServers;
    private string? _outputPath;
+   private IModelPricingRegistry? _pricingRegistry;
+   private IRateLimiter? _rateLimiter;
+   private RateLimitPolicy? _rateLimitPolicy;
    private string? _responseLanguage;
    private string? _resumeFromDebateId;
    private IDebateStrategy _strategy = new StandardDebate();
@@ -51,12 +62,9 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private string _systemPrompt = "You are a helpful AI assistant participating in a council debate.";
    private TelemetryOptions? _telemetryOptions;
    private float _temperature = 0.7f;
+   private IToolProvider? _toolProvider;
    private string _userPrompt = string.Empty;
    private IVotingStrategy? _votingStrategy;
-   private CacheBehavior _cacheBehavior;
-   private IDebateCache? _cache;
-   private readonly List<FileAttachment> _attachments = [];
-   private readonly FileContentReaderRegistry _fileReaders = new();
 
    /// <summary>
    ///    Creates an empty builder. Use <see cref="WithOptions(CouncilOptions)" /> or
@@ -88,7 +96,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
    }
 
    /// <inheritdoc />
-   public ICouncilBuilder AddMember(string modelName, ILLMProvider provider, string? role = null, string? persona = null)
+   public ICouncilBuilder AddMember(string modelName, ILLMProvider provider, string? role = null,
+      string? persona = null)
    {
       var member = new CouncilMember(modelName, provider, role, persona);
       // Auto-detect capabilities from model name.
@@ -101,8 +110,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
    // ── Members with capabilities (F-06 Multi-Modal) ──
 
    /// <summary>
-   ///    Adds a participant with explicit <see cref="MemberCapabilities"/>. When
-   ///    <see cref="MemberCapabilities.Vision"/> is set, the member receives image
+   ///    Adds a participant with explicit <see cref="MemberCapabilities" />. When
+   ///    <see cref="MemberCapabilities.Vision" /> is set, the member receives image
    ///    attachments as <c>ImageContent</c> via Microsoft.Extensions.AI; text-only
    ///    members receive a textual placeholder for binary attachments.
    /// </summary>
@@ -110,8 +119,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
    /// <param name="provider">LLM provider instance.</param>
    /// <param name="role">Role label.</param>
    /// <param name="capabilities">
-   ///    Member capabilities. Pass <see cref="MemberCapabilities.Vision"/> |
-   ///    <see cref="MemberCapabilities.Text"/> for a vision-capable member.
+   ///    Member capabilities. Pass <see cref="MemberCapabilities.Vision" /> |
+   ///    <see cref="MemberCapabilities.Text" /> for a vision-capable member.
    ///    Vision is auto-detected from the model name when not set here.
    /// </param>
    /// <param name="persona">Optional persona prompt.</param>
@@ -375,7 +384,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
    public ICouncilBuilder WithTimeout(TimeSpan timeout)
    {
       if (timeout == TimeSpan.Zero)
-         throw new ArgumentOutOfRangeException(nameof(timeout), "Use Timeout.InfiniteTimeSpan to disable the timeout, not TimeSpan.Zero.");
+         throw new ArgumentOutOfRangeException(nameof(timeout),
+            "Use Timeout.InfiniteTimeSpan to disable the timeout, not TimeSpan.Zero.");
       _debateTimeout = timeout;
       return this;
    }
@@ -473,7 +483,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
    ///    with default options.
    /// </param>
    /// <returns>This builder for fluent chaining.</returns>
-   public ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null) where TVerdict : class
+   public ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null)
+      where TVerdict : class
    {
       _structuredOutputSerializer = serializer ?? new JsonSchemaOutputSerializer();
       _structuredOutputType = typeof(TVerdict);
@@ -518,16 +529,6 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
-   /// <summary>
-   ///    Sets the caching behavior and cache backend for this debate.
-   /// </summary>
-   public ICouncilBuilder WithCache(CacheBehavior behavior, IDebateCache cache)
-   {
-      _cacheBehavior = behavior;
-      _cache = cache;
-      return this;
-   }
-
    // ── Agent memory (F-04) ──
 
    /// <summary>
@@ -548,7 +549,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
 
    /// <summary>
    ///    Attaches a file to the debate. The file is read lazily by the
-   ///    <see cref="FileContentReaderRegistry"/> when the debate starts.
+   ///    <see cref="FileContentReaderRegistry" /> when the debate starts.
    ///    Vision-capable members receive image attachments as
    ///    <c>ImageContent</c>; text-only members receive a textual placeholder.
    /// </summary>
@@ -577,7 +578,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
    }
 
    /// <summary>
-   ///    Registers a custom <see cref="IFileContentReader"/> for a specific file
+   ///    Registers a custom <see cref="IFileContentReader" /> for a specific file
    ///    extension (e.g. <c>.pdf</c>). Overwrites any existing reader for the extension.
    /// </summary>
    /// <param name="extension">File extension including the leading dot (e.g. ".pdf").</param>
@@ -597,9 +598,10 @@ public sealed class CouncilBuilder : ICouncilBuilder
    ///    class needed.
    /// </summary>
    /// <param name="extension">File extension including the leading dot.</param>
-   /// <param name="handler">Delegate that reads the file and returns a <see cref="FileReadResult"/>.</param>
+   /// <param name="handler">Delegate that reads the file and returns a <see cref="FileReadResult" />.</param>
    /// <returns>This builder for fluent chaining.</returns>
-   public ICouncilBuilder WithFileReader(string extension, Func<string, CancellationToken, Task<FileReadResult>> handler)
+   public ICouncilBuilder WithFileReader(string extension,
+      Func<string, CancellationToken, Task<FileReadResult>> handler)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(extension);
       ArgumentNullException.ThrowIfNull(handler);
@@ -643,6 +645,16 @@ public sealed class CouncilBuilder : ICouncilBuilder
    }
 
    /// <summary>
+   ///    Sets the caching behavior and cache backend for this debate.
+   /// </summary>
+   public ICouncilBuilder WithCache(CacheBehavior behavior, IDebateCache cache)
+   {
+      _cacheBehavior = behavior;
+      _cache = cache;
+      return this;
+   }
+
+   /// <summary>
    ///    Applies a <see cref="CouncilOptions" /> snapshot to the builder.
    ///    Only sets fields that have non-default values — explicit builder calls
    ///    made before or after <c>WithOptions</c> take precedence.
@@ -673,10 +685,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
       {
          if (_compressor is null)
             _compressor = CompressionFactory.Create(
-               options.Compression.Strategy,
-               null,
-               null,
-               null);
+               options.Compression.Strategy);
 
          _compressionOptions ??= new CompressionOptions
          {
@@ -726,6 +735,18 @@ public sealed class CouncilBuilder : ICouncilBuilder
          throw new InvalidOperationException("Council must have at least one member. Use AddMember().");
       if (string.IsNullOrWhiteSpace(_userPrompt))
          throw new InvalidOperationException("User prompt is required. Use WithUserPrompt().");
+
+      // A money ceiling is enforced against observed spend, and spend only exists once tokens are
+      // priced. Without a registry every call bills zero, the gate compares zero against the limit
+      // and never denies — a ceiling that is configured, logged and completely inert. Failing here
+      // turns a silent misconfiguration into a startup error the caller can act on. A token budget
+      // has no such dependency, so it is exempt.
+      if (_costGate is BudgetCostGate && _pricingRegistry is null)
+         throw new InvalidOperationException(
+            "A cost limit was configured without a pricing registry. Tokens are only priced when a "
+            + "registry supplies rates, so the limit would never be enforced. Call "
+            + "WithPricingRegistry(...) alongside WithCostLimit(...), or use WithTokenBudget(...) "
+            + "for a bound that needs no prices.");
       if (_maxParticipants is { } limit && _members.Count > limit)
          throw new InvalidOperationException(
             $"Participant limit exceeded: {_members.Count} members added, but limit is {limit}. " +
@@ -759,7 +780,18 @@ public sealed class CouncilBuilder : ICouncilBuilder
       var executionOptions = new DebateExecutionOptions(
          _responseLanguage,
          _maxDegreeOfParallelism,
-         _logger);
+         _logger)
+      {
+         CompressionThresholdTokens = _compressionThresholdTokens,
+         CostGate = _costGate,
+         RateLimiter = _rateLimiter,
+         PricingRegistry = _pricingRegistry,
+         RateLimitPolicy = _rateLimitPolicy,
+         ToolProvider = _toolProvider,
+         MemberTools = _memberTools,
+         MaxToolIterations = _maxToolIterations,
+         ToolCallLog = []
+      };
 
       return new CouncilExecutor(
          _members.AsReadOnly(),
@@ -789,5 +821,179 @@ public sealed class CouncilBuilder : ICouncilBuilder
          _fileReaders,
          _cacheBehavior,
          _cache);
+   }
+
+   // ──────────────────────────────────────────────
+   // Cost control and rate limiting
+   //
+   // Deliberately on the concrete class only. These set builder state, so an abstract member on
+   // ICouncilBuilder would be a source-breaking change for anyone who implemented that
+   // interface — the cost of which the 10.5.x releases explicitly avoid. A caller holding an
+   // ICouncilBuilder can still pass these through DebateExecutionOptions.
+   // ──────────────────────────────────────────────
+
+   /// <summary>
+   ///    Caps the total spend of a debate. Once the ceiling would be crossed the remaining
+   ///    member calls are skipped, the debate returns a degraded result carrying the spend so
+   ///    far, and <see cref="CostEstimate.WasTruncated" /> is set.
+   /// </summary>
+   /// <remarks>
+   ///    <b>Requires a price list.</b> This gate is enforced against observed spend, and spend only
+   ///    exists once tokens are priced. Configure <see cref="WithPricingRegistry(IModelPricingRegistry)" />
+   ///    too, or <see cref="Build()" /> throws rather than leaving a ceiling that can never fire.
+   ///    If you want a bound without prices, use <see cref="WithTokenBudget(long, CostLimitBehavior)" />.
+   /// </remarks>
+   /// <param name="limit">Maximum total spend; must be positive.</param>
+   /// <param name="behavior">
+   ///    What to do at the ceiling. Defaults to <see cref="CostLimitBehavior.Abort" />, which
+   ///    stops calling models and still reports the money already spent.
+   /// </param>
+   /// <returns>The same builder.</returns>
+   /// <exception cref="ArgumentOutOfRangeException">The limit is not positive.</exception>
+   public CouncilBuilder WithCostLimit(decimal limit, CostLimitBehavior behavior = CostLimitBehavior.Abort)
+   {
+      ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+      _costGate = new BudgetCostGate(limit, behavior);
+      return this;
+   }
+
+   /// <summary>
+   ///    Caps the tokens a debate may spend, whether or not a price list is configured.
+   /// </summary>
+   /// <remarks>
+   ///    The token count is computed by the framework, so this ceiling is enforceable with no
+   ///    external configuration at all — unlike <see cref="WithCostLimit(decimal, CostLimitBehavior)" />,
+   ///    which needs prices to have anything to compare against.
+   /// </remarks>
+   /// <param name="limit">Maximum combined prompt + completion tokens; must be positive.</param>
+   /// <param name="behavior">What to do at the ceiling.</param>
+   /// <returns>The same builder.</returns>
+   /// <exception cref="ArgumentOutOfRangeException">The limit is not positive.</exception>
+   public CouncilBuilder WithTokenBudget(long limit, CostLimitBehavior behavior = CostLimitBehavior.Abort)
+   {
+      if (limit <= 0)
+         throw new ArgumentOutOfRangeException(nameof(limit), limit, "Token limit must be positive.");
+
+      _costGate = new TokenBudgetCostGate(limit, behavior);
+      return this;
+   }
+
+   /// <summary>
+   ///    Uses a caller-supplied cost gate, for ceilings this builder does not model.
+   /// </summary>
+   /// <param name="gate">The gate to consult before each member call.</param>
+   /// <returns>The same builder.</returns>
+   public CouncilBuilder WithCostGate(ICostGate gate)
+   {
+      _costGate = gate ?? throw new ArgumentNullException(nameof(gate));
+      return this;
+   }
+
+   /// <summary>
+   ///    Allows at most <paramref name="callsPerWindow" /> model calls inside
+   ///    <paramref name="window" />. Excess calls wait asynchronously rather than failing, so a
+   ///    throttled debate is slower, not wrong.
+   /// </summary>
+   /// <param name="callsPerWindow">Permit count; must be positive.</param>
+   /// <param name="window">Rolling window length; must be positive.</param>
+   /// <param name="behavior">What to do when the window is exhausted.</param>
+   /// <param name="scope">What the limit applies to.</param>
+   /// <returns>The same builder.</returns>
+   public CouncilBuilder WithRateLimit(
+      int callsPerWindow,
+      TimeSpan window,
+      RateLimitBehavior behavior = RateLimitBehavior.Queue,
+      RateLimitScope scope = RateLimitScope.PerModel)
+   {
+      _rateLimitPolicy = RateLimitPolicy.PerMinute(callsPerWindow, window, behavior, scope);
+      _rateLimiter = new TokenBucketRateLimiter(_rateLimitPolicy);
+      return this;
+   }
+
+   /// <summary>
+   ///    Uses a caller-supplied rate limiter, replacing any limit set previously.
+   /// </summary>
+   /// <param name="limiter">The limiter to consult before each member call.</param>
+   /// <returns>The same builder.</returns>
+   public CouncilBuilder WithRateLimiter(IRateLimiter limiter)
+   {
+      _rateLimiter = limiter ?? throw new ArgumentNullException(nameof(limiter));
+      return this;
+   }
+
+   /// <summary>
+   ///    Supplies the price list used to turn token counts into money. Without one, costs are
+   ///    reported as estimates at zero — a model with no price must not read as a free model.
+   /// </summary>
+   /// <param name="registry">The price list to consult per model.</param>
+   /// <returns>The same builder.</returns>
+   public CouncilBuilder WithPricingRegistry(IModelPricingRegistry registry)
+   {
+      _pricingRegistry = registry ?? throw new ArgumentNullException(nameof(registry));
+      return this;
+   }
+
+   /// <summary>
+   ///    Lowers or raises the prompt size, in tokens, at which compression is attempted.
+   /// </summary>
+   /// <param name="tokens">Threshold in tokens; must be positive.</param>
+   /// <returns>The same builder.</returns>
+   /// <exception cref="ArgumentOutOfRangeException">The threshold is not positive.</exception>
+   public CouncilBuilder WithCompressionThreshold(int tokens)
+   {
+      ArgumentOutOfRangeException.ThrowIfNegativeOrZero(tokens);
+      _compressionThresholdTokens = tokens;
+      return this;
+   }
+
+   /// <summary>
+   ///    Lets members call tools while forming their response.
+   /// </summary>
+   /// <remarks>
+   ///    <para>
+   ///       A provider whose members run on <c>ChatClientLLMProvider</c> gets native function
+   ///       calling. Any other provider gets the <c>[[TOOL: name {json}]]</c> marker protocol,
+   ///       because the string-only adapter cannot carry structured tool traffic. Both write the
+   ///       same <see cref="ToolCallLog" />, so the audit trail is identical either way.
+   ///    </para>
+   ///    <para>
+   ///       Granting members tools grants them the tool's authority. A filesystem provider is
+   ///       rooted at one directory; an HTTP provider is limited to an allow-list and refuses
+   ///       plain HTTP. Neither is safe by accident.
+   ///    </para>
+   /// </remarks>
+   /// <param name="provider">Supplies the tools members may call.</param>
+   /// <returns>The same builder.</returns>
+   public CouncilBuilder WithTools(IToolProvider provider)
+   {
+      _toolProvider = provider ?? throw new ArgumentNullException(nameof(provider));
+      return this;
+   }
+
+   /// <summary>
+   ///    Hands specific tools to every member, for callers that already have
+   ///    <see cref="AIFunction" /> instances and need no provider abstraction.
+   /// </summary>
+   /// <param name="tools">Tools every member may call.</param>
+   /// <returns>The same builder.</returns>
+   public CouncilBuilder WithTools(params AIFunction[] tools)
+   {
+      ArgumentNullException.ThrowIfNull(tools);
+      _memberTools = tools;
+      return this;
+   }
+
+   /// <summary>
+   ///    Bounds how many tool round-trips one member turn may make. A model that keeps asking
+   ///    for tools would otherwise keep the debate alive indefinitely.
+   /// </summary>
+   /// <param name="iterations">Maximum round-trips; must be positive.</param>
+   /// <returns>The same builder.</returns>
+   /// <exception cref="ArgumentOutOfRangeException">The bound is not positive.</exception>
+   public CouncilBuilder WithMaxToolIterations(int iterations)
+   {
+      ArgumentOutOfRangeException.ThrowIfNegativeOrZero(iterations);
+      _maxToolIterations = iterations;
+      return this;
    }
 }

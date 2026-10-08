@@ -83,7 +83,8 @@ public static class StreamingCouncilExample
          var finalTag = round.IsFinal
             ? " [FINAL]"
             : "";
-         Console.WriteLine($"  ┌─ Round {round.RoundNumber}/{total}: {round.RoundName}{finalTag} ({round.Duration.TotalSeconds:F1}s)");
+         Console.WriteLine(
+            $"  ┌─ Round {round.RoundNumber}/{total}: {round.RoundName}{finalTag} ({round.Duration.TotalSeconds:F1}s)");
          Console.WriteLine($"  │  Participants: {round.Responses.Count}");
          foreach (var (member, response) in round.Responses)
          {

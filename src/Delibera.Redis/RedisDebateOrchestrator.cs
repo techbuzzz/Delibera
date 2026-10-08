@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
@@ -25,19 +26,19 @@ namespace Delibera.Redis;
 /// </summary>
 public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposable
 {
-   private readonly RedisOrchestratorOptions _options;
-   private readonly IServiceProvider _services;
-   private readonly ILogger<RedisDebateOrchestrator> _logger;
-   private readonly ConnectionMultiplexer _redis;
-   private readonly IDatabase _db;
-   private readonly ConcurrentDictionary<string, DebateEntry> _entries = new();
-
    /// <summary>
    ///    Completed entries are evicted after this timeout to prevent unbounded memory growth.
    /// </summary>
    private static readonly TimeSpan CompletedEntryLifetime = TimeSpan.FromMinutes(30);
 
+   private readonly IDatabase _db;
+   private readonly ConcurrentDictionary<string, DebateEntry> _entries = new();
+
    private readonly Timer _evictionTimer;
+   private readonly ILogger<RedisDebateOrchestrator> _logger;
+   private readonly RedisOrchestratorOptions _options;
+   private readonly ConnectionMultiplexer _redis;
+   private readonly IServiceProvider _services;
    private bool _disposed;
 
    public RedisDebateOrchestrator(
@@ -51,9 +52,27 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
       _redis = ConnectionMultiplexer.Connect(_options.ConnectionString);
       _db = _redis.GetDatabase();
 
-      _evictionTimer = new(EvictCompletedEntries, null, CompletedEntryLifetime, CompletedEntryLifetime);
+      _evictionTimer = new Timer(EvictCompletedEntries, null, CompletedEntryLifetime, CompletedEntryLifetime);
 
       _ = EnsureConsumerGroupsAsync();
+   }
+
+   // ── IAsyncDisposable ───────────────────────────────────────────────────────
+
+   public async ValueTask DisposeAsync()
+   {
+      if (_disposed) return;
+      _disposed = true;
+
+      _evictionTimer.Dispose();
+
+      foreach (var entry in _entries.Values)
+      {
+         entry.Cts.Cancel();
+         entry.Channel.Writer.TryComplete();
+      }
+
+      await _redis.DisposeAsync().ConfigureAwait(false);
    }
 
    /// <inheritdoc />
@@ -64,7 +83,8 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
    }
 
    /// <inheritdoc />
-   public async Task<DebateHandle> EnqueueAsync(string debateId, ICouncilBuilder builder, CancellationToken ct = default)
+   public async Task<DebateHandle> EnqueueAsync(string debateId, ICouncilBuilder builder,
+      CancellationToken ct = default)
    {
       var entry = new DebateEntry(builder);
       if (!_entries.TryAdd(debateId, entry))
@@ -80,7 +100,7 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
       {
          DebateId = debateId,
          Status = DebateOrchestrationStatus.Running,
-         CreatedAt = DateTimeOffset.UtcNow,
+         CreatedAt = DateTimeOffset.UtcNow
       };
    }
 
@@ -101,15 +121,14 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
          DebateId = debateId,
          Status = status.Value.status,
          Result = status.Value.result,
-         ErrorMessage = status.Value.errorMessage,
+         ErrorMessage = status.Value.errorMessage
       };
    }
 
    /// <inheritdoc />
    public async IAsyncEnumerable<DebateRoundEvent> StreamAsync(
       string debateId,
-      [System.Runtime.CompilerServices.EnumeratorCancellation]
-      CancellationToken ct = default)
+      [EnumeratorCancellation] CancellationToken ct = default)
    {
       if (!_entries.TryGetValue(debateId, out var entry))
          yield break;
@@ -228,7 +247,7 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
          var hash = new List<HashEntry>
          {
             new("status", status.ToString()),
-            new("updatedAt", DateTimeOffset.UtcNow.ToString("O")),
+            new("updatedAt", DateTimeOffset.UtcNow.ToString("O"))
          };
 
          if (result is not null)
@@ -296,16 +315,16 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
 
          var maxLength = _options.StreamMaxLength > 0 ? _options.StreamMaxLength : (int?)null;
          await _db.StreamAddAsync(_options.EventStreamKey,
-         [
-            new NameValueEntry("debateId", debateId),
-            new NameValueEntry("eventType", "round-completed"),
-            new NameValueEntry("payload", json),
-         ],
-         // MAXLEN ~ N: approximate trimming is O(1) and may overshoot the cap slightly,
-         // which is the right trade for an event log — an unbounded stream would grow with
-         // every debate the deployment has ever run.
-         maxLength: maxLength,
-         useApproximateMaxLength: true).ConfigureAwait(false);
+            [
+               new NameValueEntry("debateId", debateId),
+               new NameValueEntry("eventType", "round-completed"),
+               new NameValueEntry("payload", json)
+            ],
+            // MAXLEN ~ N: approximate trimming is O(1) and may overshoot the cap slightly,
+            // which is the right trade for an event log — an unbounded stream would grow with
+            // every debate the deployment has ever run.
+            maxLength: maxLength,
+            useApproximateMaxLength: true).ConfigureAwait(false);
       }
       catch (Exception ex)
       {
@@ -337,68 +356,73 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
    {
       var cutoff = DateTimeOffset.UtcNow - CompletedEntryLifetime;
       foreach (var kvp in _entries)
-      {
          if (kvp.Value.Status is not DebateOrchestrationStatus.Running && kvp.Value.CompletedAt < cutoff)
-         {
             _entries.TryRemove(kvp.Key, out _);
-         }
-      }
    }
 
    // ── Private: mapping ────────────────────────────────────────────────────────
 
-   private static DebateHandle BuildHandle(string debateId, DebateEntry entry) => new()
+   private static DebateHandle BuildHandle(string debateId, DebateEntry entry)
    {
-      DebateId = debateId,
-      Status = entry.Status,
-      Result = entry.Result,
-      ErrorMessage = entry.ErrorMessage,
-      CreatedAt = entry.CreatedAt,
-      CompletedAt = entry.CompletedAt,
-   };
-
-   private static DebateResult MapFromRedis(RedisDebateResult? redis) => redis switch
-   {
-      null => throw new ArgumentNullException(nameof(redis)),
-      _ => new DebateResult
+      return new DebateHandle
       {
-         DebateId = redis.DebateId,
-         StrategyName = redis.StrategyName,
-         Context = new PromptContext(),
-         FinalVerdict = redis.FinalVerdict,
-         ChairmanName = redis.ChairmanName,
-         OpeningStatement = redis.OpeningStatement,
-         StartedAt = redis.StartedAt,
-         CompletedAt = redis.CompletedAt,
-         Participants = redis.Rounds?.SelectMany(r => (r.Responses ?? []).Keys).Distinct().ToList() ?? [],
-         Rounds = redis.Rounds?.Select(MapRound).ToList() ?? [],
-         VotingTally = redis.WinningOption is not null
-            ? new VotingResult(
-               redis.WinningOption,
-               redis.WinningScore ?? 0,
-               redis.VotingTally?.ToDictionary(kv => kv.Key, kv => kv.Value) ?? new Dictionary<string, double>(),
-               redis.VotingMethod ?? "unknown")
-            : null,
-      },
-   };
+         DebateId = debateId,
+         Status = entry.Status,
+         Result = entry.Result,
+         ErrorMessage = entry.ErrorMessage,
+         CreatedAt = entry.CreatedAt,
+         CompletedAt = entry.CompletedAt
+      };
+   }
 
-   private static DebateRound MapRound(RedisRoundEvent r) => new()
+   private static DebateResult MapFromRedis(RedisDebateResult? redis)
    {
-      RoundNumber = r.RoundNumber,
-      RoundName = r.RoundName ?? string.Empty,
-      Description = r.Description,
-      Responses = r.Responses ?? new Dictionary<string, string>(),
-      RoundPrompt = r.RoundPrompt,
-      StartedAt = r.StartedAt,
-      CompletedAt = r.CompletedAt,
-   };
+      return redis switch
+      {
+         null => throw new ArgumentNullException(nameof(redis)),
+         _ => new DebateResult
+         {
+            DebateId = redis.DebateId,
+            StrategyName = redis.StrategyName,
+            Context = new PromptContext(),
+            FinalVerdict = redis.FinalVerdict,
+            ChairmanName = redis.ChairmanName,
+            OpeningStatement = redis.OpeningStatement,
+            StartedAt = redis.StartedAt,
+            CompletedAt = redis.CompletedAt,
+            Participants = redis.Rounds?.SelectMany(r => (r.Responses ?? []).Keys).Distinct().ToList() ?? [],
+            Rounds = redis.Rounds?.Select(MapRound).ToList() ?? [],
+            VotingTally = redis.WinningOption is not null
+               ? new VotingResult(
+                  redis.WinningOption,
+                  redis.WinningScore ?? 0,
+                  redis.VotingTally?.ToDictionary(kv => kv.Key, kv => kv.Value) ?? new Dictionary<string, double>(),
+                  redis.VotingMethod ?? "unknown")
+               : null
+         }
+      };
+   }
+
+   private static DebateRound MapRound(RedisRoundEvent r)
+   {
+      return new DebateRound
+      {
+         RoundNumber = r.RoundNumber,
+         RoundName = r.RoundName ?? string.Empty,
+         Description = r.Description,
+         Responses = r.Responses ?? new Dictionary<string, string>(),
+         RoundPrompt = r.RoundPrompt,
+         StartedAt = r.StartedAt,
+         CompletedAt = r.CompletedAt
+      };
+   }
 
    // ── Private: entry ─────────────────────────────────────────────────────────
 
    private sealed class DebateEntry(ICouncilBuilder builder)
    {
-      public ICouncilBuilder Builder { get; } = builder;
       private volatile int _status = (int)DebateOrchestrationStatus.Running;
+      public ICouncilBuilder Builder { get; } = builder;
 
       public DebateOrchestrationStatus Status
       {
@@ -411,7 +435,9 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
       public DebateResult? Result { get; set; }
       public string? ErrorMessage { get; set; }
       public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
+
       public DateTimeOffset? CompletedAt { get; set; }
+
       // ConcurrentQueue, not List<T>: the round-completed handler appends from the debate
       // loop's thread while StreamAsync enumerates from a request thread. Enumerating a
       // List<T> under concurrent writes throws "Collection was modified".
@@ -424,23 +450,5 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
          Status = DebateOrchestrationStatus.Cancelled;
          Cts.Cancel();
       }
-   }
-
-   // ── IAsyncDisposable ───────────────────────────────────────────────────────
-
-   public async ValueTask DisposeAsync()
-   {
-      if (_disposed) return;
-      _disposed = true;
-
-      _evictionTimer.Dispose();
-
-      foreach (var entry in _entries.Values)
-      {
-         entry.Cts.Cancel();
-         entry.Channel.Writer.TryComplete();
-      }
-
-      await _redis.DisposeAsync().ConfigureAwait(false);
    }
 }

@@ -61,7 +61,8 @@ public sealed class StandardDebate : DebateScenario
       var knowledgeContext = "";
       if (knowledgeKeeper is not null)
       {
-         var (ctx, ki) = await QueryKnowledgeForRoundAsync(knowledgeKeeper, context.UserPrompt, 1, ct: ct).ConfigureAwait(false);
+         var (ctx, ki) = await QueryKnowledgeForRoundAsync(knowledgeKeeper, context.UserPrompt, 1, ct: ct)
+            .ConfigureAwait(false);
          knowledgeContext = ctx;
          if (ki is not null) r1Ki.Add(ki);
       }
@@ -73,7 +74,8 @@ public sealed class StandardDebate : DebateScenario
          : $"{r1BasePrompt}\n\n📚 Knowledge Keeper context:\n{knowledgeContext}";
 
       var round1StartedAt = DateTime.UtcNow;
-      var r1Responses = await CollectResponsesAsync(members, baseSystemPrompt, r1Prompt, temperature, ct, executionOptions, failures, 1, "Initial Responses").ConfigureAwait(false);
+      var r1Responses = await CollectResponsesAsync(members, baseSystemPrompt, r1Prompt, temperature, ct,
+         executionOptions, failures, 1, "Initial Responses").ConfigureAwait(false);
       // Operator: fulfil any [[OPERATOR: ...]] requests raised in round 1 (parallel, bounded).
       var r1Op = await ProcessOperatorRequestsAsync(@operator, r1Responses, executionOptions, ct).ConfigureAwait(false);
       var round1 = CreateRound(1, "Initial Responses",
@@ -82,7 +84,9 @@ public sealed class StandardDebate : DebateScenario
       if (onRoundCompleted is not null)
          await onRoundCompleted(round1, ct).ConfigureAwait(false);
 
-      if (maxRounds < 2) return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct).ConfigureAwait(false);
+      if (maxRounds < 2)
+         return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct)
+            .ConfigureAwait(false);
 
       // ── Round 2: Knowledge Keeper contextual update ──
       var r2Ki = new List<KnowledgeInteraction>();
@@ -114,7 +118,9 @@ public sealed class StandardDebate : DebateScenario
                       """;
 
       var round2StartedAt = DateTime.UtcNow;
-      var r2Responses = await CollectResponsesAsync(members, r2System, r2Prompt, temperature, ct, executionOptions, failures, 2, "Critique").ConfigureAwait(false);
+      var r2Responses =
+         await CollectResponsesAsync(members, r2System, r2Prompt, temperature, ct, executionOptions, failures, 2,
+            "Critique").ConfigureAwait(false);
       var r2Op = await ProcessOperatorRequestsAsync(@operator, r2Responses, executionOptions, ct).ConfigureAwait(false);
       var round2 = CreateRound(2, "Critique",
          "Models critically analyse each other's responses.", r2Responses, r2Prompt, r2Ki, r2Op, round2StartedAt);
@@ -122,7 +128,9 @@ public sealed class StandardDebate : DebateScenario
       if (onRoundCompleted is not null)
          await onRoundCompleted(round2, ct).ConfigureAwait(false);
 
-      if (maxRounds < 3) return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct).ConfigureAwait(false);
+      if (maxRounds < 3)
+         return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct)
+            .ConfigureAwait(false);
 
       // ── Round 3: Knowledge Keeper contextual update ──
       var r3Ki = new List<KnowledgeInteraction>();
@@ -157,7 +165,8 @@ public sealed class StandardDebate : DebateScenario
                       """;
 
       var round3StartedAt = DateTime.UtcNow;
-      var r3Responses = await CollectResponsesAsync(members, r3System, r3Prompt, temperature, ct, executionOptions, failures, 3, "Final Improved Responses").ConfigureAwait(false);
+      var r3Responses = await CollectResponsesAsync(members, r3System, r3Prompt, temperature, ct, executionOptions,
+         failures, 3, "Final Improved Responses").ConfigureAwait(false);
       var r3Op = await ProcessOperatorRequestsAsync(@operator, r3Responses, executionOptions, ct).ConfigureAwait(false);
       var round3 = CreateRound(3, "Final Improved Responses",
          "Models provide refined answers incorporating critiques.", r3Responses, r3Prompt, r3Ki, r3Op, round3StartedAt);
@@ -165,7 +174,8 @@ public sealed class StandardDebate : DebateScenario
       if (onRoundCompleted is not null)
          await onRoundCompleted(round3, ct).ConfigureAwait(false);
 
-      return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct).ConfigureAwait(false);
+      return await FinalizeAsync(builder, chairman, knowledgeKeeper, temperature, onRoundCompleted, ct)
+         .ConfigureAwait(false);
    }
 
    private static async Task<DebateResult> FinalizeAsync(
@@ -191,7 +201,8 @@ public sealed class StandardDebate : DebateScenario
                ? CancellationToken.None
                : ct;
             var finalVerdict = await Chairman.SynthesizeVerdictAsync(
-               chairman, builder.Context, builder.Rounds, knowledgeKeeper, temperature, verdictCt).ConfigureAwait(false);
+               chairman, builder.Context, builder.Rounds, knowledgeKeeper, temperature,
+               verdictCt).ConfigureAwait(false);
             builder.SetFinalVerdict(finalVerdict);
 
             var round4 = CreateRound(4, "Chairman Verdict",

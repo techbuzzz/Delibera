@@ -98,15 +98,16 @@ public static class Persona
    ///    Returns all built-in persona presets keyed by name. Useful for
    ///    dynamic UIs that enumerate available personas.
    /// </summary>
-   public static IReadOnlyDictionary<string, string> All { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-   {
-      [nameof(Expert)] = Expert,
-      [nameof(DevilsAdvocate)] = DevilsAdvocate,
-      [nameof(CautiousOptimist)] = CautiousOptimist,
-      [nameof(DataDrivenAnalyst)] = DataDrivenAnalyst,
-      [nameof(RiskManager)] = RiskManager,
-      [nameof(Pragmatist)] = Pragmatist
-   };
+   public static IReadOnlyDictionary<string, string> All { get; } =
+      new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+      {
+         [nameof(Expert)] = Expert,
+         [nameof(DevilsAdvocate)] = DevilsAdvocate,
+         [nameof(CautiousOptimist)] = CautiousOptimist,
+         [nameof(DataDrivenAnalyst)] = DataDrivenAnalyst,
+         [nameof(RiskManager)] = RiskManager,
+         [nameof(Pragmatist)] = Pragmatist
+      };
 
    /// <summary>
    ///    Resolves a persona preset by name (case-insensitive).

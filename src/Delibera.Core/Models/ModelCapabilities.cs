@@ -2,9 +2,9 @@ namespace Delibera.Core.Models;
 
 /// <summary>
 ///    Capabilities of a council member, used by F-06 Multi-Modal attachment routing.
-///    Auto-detected from the model name via <see cref="ModelContextWindowRegistry"/>
+///    Auto-detected from the model name via <see cref="ModelContextWindowRegistry" />
 ///    or set explicitly via the <c>AddMember</c> overload that accepts
-///    <see cref="MemberCapabilities"/>.
+///    <see cref="MemberCapabilities" />.
 /// </summary>
 [Flags]
 public enum MemberCapabilities
@@ -72,7 +72,8 @@ public sealed record ModelCapabilities
    ///    Callers should fall back to <see cref="ModelContextWindowRegistry" /> or
    ///    conservative defaults.
    /// </summary>
-   public bool IsUnknown => ContextWindowTokens is null && MaxOutputTokens is null && !SupportsVision && !SupportsTools && Family is null;
+   public bool IsUnknown => ContextWindowTokens is null && MaxOutputTokens is null && !SupportsVision &&
+                            !SupportsTools && Family is null;
 
    /// <summary>
    ///    Creates a placeholder instance for a model whose capabilities are unknown.

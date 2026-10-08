@@ -2,6 +2,28 @@
 
 Delibera can cache `DebateResult` to avoid re-running identical debates. The cache key is derived from a SHA-256 hash of the debate-defining inputs (question, members, strategy, knowledge, configuration).
 
+## Not the same thing: cost gating
+
+Caching and cost gating are both about money, but they sit on opposite sides of a debate.
+
+| | Result cache (`IDebateCache`) | Cost gate (`ICostGate`) |
+|---|---|---|
+| Question it answers | Has this exact debate already been run? | May this debate still spend? |
+| Consulted | Before execution | Before each member call |
+| Effect of a hit/denial | Returns the stored `DebateResult` | Skips the call; the debate returns a degraded result carrying the spend so far |
+| Requires prices | No | `WithCostLimit` does; `WithTokenBudget` does not |
+
+A cache hit avoids the spend entirely; a cost gate bounds the spend of a debate that actually runs.
+Both can be configured on the same council, and both leave the result cache untouched.
+
+```csharp
+.WithTokenBudget(200_000)                       // no price list needed
+.WithRateLimit(20, TimeSpan.FromMinutes(1))      // Queue / Throw / Drop, PerModel by default
+```
+
+Exceeding a ceiling never throws — see the cost-limit section of
+[QuickStart.md](QuickStart.md#cost-limits-and-rate-limits).
+
 ## Cache Behavior
 
 | Mode | Read | Write | Use Case |

@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 namespace Delibera.Server.Middleware;
 
 /// <summary>
-/// Resolves tenant from X-Tenant-Id header and stores it in HttpContext.Items.
+///    Resolves tenant from X-Tenant-Id header and stores it in HttpContext.Items.
 /// </summary>
 public sealed class TenantResolutionMiddleware(
    RequestDelegate next,
@@ -21,7 +21,9 @@ public sealed class TenantResolutionMiddleware(
    }
 
    public static string Resolve(HttpContext ctx)
-      => ctx.Items.TryGetValue(ItemKey, out var v) && v is string s
+   {
+      return ctx.Items.TryGetValue(ItemKey, out var v) && v is string s
          ? s
          : "default";
+   }
 }

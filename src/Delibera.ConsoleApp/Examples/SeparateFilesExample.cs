@@ -53,7 +53,8 @@ public static class SeparateFilesExample
                }
             }
          ],
-         FinalVerdict = "Both approaches have merits. Use microservices for large teams and scale; monoliths for simplicity.",
+         FinalVerdict =
+            "Both approaches have merits. Use microservices for large teams and scale; monoliths for simplicity.",
          CompletedAt = DateTime.UtcNow,
          TokenStats = new TokenStatistics
          {

@@ -6,7 +6,8 @@ namespace Delibera.Core.Providers.RAG;
 ///    Factory for creating <see cref="IRagProvider" /> instances from configuration.
 ///    Register custom builders to support additional vector databases.
 /// </summary>
-public sealed class VectorStoreFactory : CachingFactory<Func<IConfigurationSection, IEmbeddingProvider, IRagProvider>, IRagProvider>, IVectorStoreFactory
+public sealed class VectorStoreFactory :
+   CachingFactory<Func<IConfigurationSection, IEmbeddingProvider, IRagProvider>, IRagProvider>, IVectorStoreFactory
 {
    /// <summary>
    ///    Creates a new factory with the built-in Qdrant and PgVector builders registered.
@@ -27,7 +28,9 @@ public sealed class VectorStoreFactory : CachingFactory<Func<IConfigurationSecti
 
       RegisterBuilder("PgVector", (config, embeddings) =>
       {
-         var connectionString = config["ConnectionString"] ?? throw new InvalidOperationException("PgVector requires a 'ConnectionString' configuration key.");
+         var connectionString = config["ConnectionString"] ??
+                                throw new InvalidOperationException(
+                                   "PgVector requires a 'ConnectionString' configuration key.");
          return new PgVectorRagProvider(embeddings, connectionString);
       });
    }
@@ -44,7 +47,8 @@ public sealed class VectorStoreFactory : CachingFactory<Func<IConfigurationSecti
    /// <summary>
    ///    Creates (or returns cached) a RAG provider instance.
    /// </summary>
-   public IRagProvider Create(string name, string providerType, IConfigurationSection config, IEmbeddingProvider embeddingProvider)
+   public IRagProvider Create(string name, string providerType, IConfigurationSection config,
+      IEmbeddingProvider embeddingProvider)
    {
       return GetOrCreate(name, providerType, b => b(config, embeddingProvider));
    }
@@ -66,17 +70,27 @@ public sealed class VectorStoreFactory : CachingFactory<Func<IConfigurationSecti
    /// <summary>
    ///    Creates a Qdrant RAG provider with direct parameters.
    /// </summary>
+   /// <param name="embeddingProvider">Embedding provider for vectorisation.</param>
+   /// <param name="host">Qdrant host name.</param>
+   /// <param name="port">Qdrant gRPC port.</param>
+   /// <param name="https">Whether to connect over TLS.</param>
+   /// <param name="apiKey">Optional Qdrant API key.</param>
+   /// <param name="logger">
+   ///    Optional logger. Supplying one lets the provider report a collection that still holds
+   ///    legacy random-id points from Delibera 10.5.0 or earlier.
+   /// </param>
    public IRagProvider CreateQdrant(
       IEmbeddingProvider embeddingProvider,
       string host = "localhost",
       int port = 6334,
       bool https = false,
-      string? apiKey = null)
+      string? apiKey = null,
+      ILogger? logger = null)
    {
       var key = $"qdrant:{host}:{port}";
       if (GetInstance(key) is { } existing) return existing;
 
-      var provider = new QdrantRagProvider(embeddingProvider, host, port, https, apiKey);
+      var provider = new QdrantRagProvider(embeddingProvider, host, port, https, apiKey, logger);
       return CacheInstance(key, provider);
    }
 
@@ -85,12 +99,17 @@ public sealed class VectorStoreFactory : CachingFactory<Func<IConfigurationSecti
    /// </summary>
    /// <param name="embeddingProvider">Embedding provider for vectorisation.</param>
    /// <param name="connectionString">PostgreSQL connection string.</param>
-   public IRagProvider CreatePgVector(IEmbeddingProvider embeddingProvider, string connectionString)
+   /// <param name="logger">
+   ///    Optional logger. Supplying one lets the provider report a collection that still holds
+   ///    legacy random-id points from Delibera 10.5.0 or earlier.
+   /// </param>
+   public IRagProvider CreatePgVector(IEmbeddingProvider embeddingProvider, string connectionString,
+      ILogger? logger = null)
    {
       var key = $"pgvector:{connectionString.GetHashCode():X8}";
       if (GetInstance(key) is { } existing) return existing;
 
-      var provider = new PgVectorRagProvider(embeddingProvider, connectionString);
+      var provider = new PgVectorRagProvider(embeddingProvider, connectionString, logger);
       return CacheInstance(key, provider);
    }
 

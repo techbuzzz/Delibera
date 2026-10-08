@@ -3,9 +3,9 @@ using Delibera.Core.Attachments.Readers;
 namespace Delibera.Core.Attachments;
 
 /// <summary>
-///    Per-extension registry of <see cref="IFileContentReader"/> instances.
-///    Owned by <see cref="Council.CouncilBuilder"/> and consulted by
-///    <see cref="Council.CouncilExecutor"/> when attachments are processed.
+///    Per-extension registry of <see cref="IFileContentReader" /> instances.
+///    Owned by <see cref="Council.CouncilBuilder" /> and consulted by
+///    <see cref="Council.CouncilExecutor" /> when attachments are processed.
 /// </summary>
 /// <remarks>
 ///    <para>
@@ -13,14 +13,14 @@ namespace Delibera.Core.Attachments;
 ///       external dependencies:
 ///    </para>
 ///    <list type="bullet">
-///       <item><see cref="PlainTextFileReader"/> — <c>.txt .md .json .xml .cs .yml .csv .html</c></item>
-///       <item><see cref="ImageFileReader"/> — <c>.png .jpg .jpeg .webp .gif</c></item>
-///       <item><see cref="FallbackFileReader"/> — any unregistered extension (graceful placeholder)</item>
+///       <item><see cref="PlainTextFileReader" /> — <c>.txt .md .json .xml .cs .yml .csv .html</c></item>
+///       <item><see cref="ImageFileReader" /> — <c>.png .jpg .jpeg .webp .gif</c></item>
+///       <item><see cref="FallbackFileReader" /> — any unregistered extension (graceful placeholder)</item>
 ///    </list>
 ///    <para>
-///       Call <see cref="Register(string, IFileContentReader)"/> to add a custom reader
+///       Call <see cref="Register(string, IFileContentReader)" /> to add a custom reader
 ///       for a specific extension (e.g. <c>.pdf</c>). The registry always returns a
-///       reader — <see cref="FallbackFileReader"/> for unknown extensions — so callers
+///       reader — <see cref="FallbackFileReader" /> for unknown extensions — so callers
 ///       never need to null-check.
 ///    </para>
 /// </remarks>
@@ -30,7 +30,7 @@ public sealed class FileContentReaderRegistry
 
    /// <summary>
    ///    Creates a registry pre-populated with the built-in readers
-   ///    (<see cref="PlainTextFileReader"/>, <see cref="ImageFileReader"/>).
+   ///    (<see cref="PlainTextFileReader" />, <see cref="ImageFileReader" />).
    /// </summary>
    public FileContentReaderRegistry()
    {
@@ -39,11 +39,13 @@ public sealed class FileContentReaderRegistry
    }
 
    /// <summary>
-   ///    Registers a reader for all of its <see cref="IFileContentReader.SupportedExtensions"/>.
+   ///    Registers a reader for all of its <see cref="IFileContentReader.SupportedExtensions" />.
    ///    Overwrites any existing reader for the same extension.
    /// </summary>
-   /// <param name="reader">Reader instance whose <see cref="IFileContentReader.SupportedExtensions"/>
-   ///    determine which extensions it handles.</param>
+   /// <param name="reader">
+   ///    Reader instance whose <see cref="IFileContentReader.SupportedExtensions" />
+   ///    determine which extensions it handles.
+   /// </param>
    public void Register(IFileContentReader reader)
    {
       ArgumentNullException.ThrowIfNull(reader);
@@ -67,11 +69,11 @@ public sealed class FileContentReaderRegistry
 
    /// <summary>
    ///    Registers a delegate-based reader for a specific extension. The delegate is
-   ///    wrapped in a <see cref="DelegateFileContentReader"/> adapter.
+   ///    wrapped in a <see cref="DelegateFileContentReader" /> adapter.
    /// </summary>
    /// <param name="extension">File extension including the leading dot (e.g. <c>".pdf"</c>).</param>
    /// <param name="handler">
-   ///    Delegate that reads the file and returns a <see cref="FileReadResult"/>.
+   ///    Delegate that reads the file and returns a <see cref="FileReadResult" />.
    /// </param>
    public void Register(string extension, Func<string, CancellationToken, Task<FileReadResult>> handler)
    {
@@ -81,12 +83,12 @@ public sealed class FileContentReaderRegistry
    }
 
    /// <summary>
-   ///    Returns the reader for the file at <paramref name="filePath"/>.
-   ///    Always returns a reader — <see cref="FallbackFileReader"/> when the extension
+   ///    Returns the reader for the file at <paramref name="filePath" />.
+   ///    Always returns a reader — <see cref="FallbackFileReader" /> when the extension
    ///    is not registered. Never throws.
    /// </summary>
    /// <param name="filePath">File path — the extension is extracted from it.</param>
-   /// <returns>The reader for the file's extension, or <see cref="FallbackFileReader"/>.</returns>
+   /// <returns>The reader for the file's extension, or <see cref="FallbackFileReader" />.</returns>
    public IFileContentReader GetReader(string filePath)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(filePath);

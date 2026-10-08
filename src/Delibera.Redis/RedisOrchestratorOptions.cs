@@ -47,15 +47,15 @@ public sealed class RedisOrchestratorOptions
    /// <summary>
    ///    Approximate maximum length of the event stream.
    ///    <para>
-   ///    Streams are append-only, so without a cap a long-running deployment grows memory
-   ///    linearly with the number of debates ever run — completed ones included. Redis
-   ///    trims with <c>MAXLEN ~</c> (approximate), which is O(1) and may exceed the cap by a
-   ///    small margin rather than blocking the writer.
+   ///       Streams are append-only, so without a cap a long-running deployment grows memory
+   ///       linearly with the number of debates ever run — completed ones included. Redis
+   ///       trims with <c>MAXLEN ~</c> (approximate), which is O(1) and may exceed the cap by a
+   ///       small margin rather than blocking the writer.
    ///    </para>
    ///    <para>
-   ///    Applied by <c>RedisDebateOrchestrator</c> to the event stream. This repository only
-   ///    reads <see cref="JobStreamKey" />, so whoever publishes to it must pass the same
-   ///    cap. Set to 0 to disable trimming.
+   ///       Applied by <c>RedisDebateOrchestrator</c> to the event stream. This repository only
+   ///       reads <see cref="JobStreamKey" />, so whoever publishes to it must pass the same
+   ///       cap. Set to 0 to disable trimming.
    ///    </para>
    /// </summary>
    public int StreamMaxLength { get; set; } = 10_000;
@@ -63,9 +63,9 @@ public sealed class RedisOrchestratorOptions
    /// <summary>
    ///    Lifetime of a debate state key (<c>{StateKeyPrefix}{debateId}</c>).
    ///    <para>
-   ///    The TTL is refreshed on every state write, so a debate that is progressing stays
-   ///    alive; a debate that stalled for longer than this is forgotten, which is the
-   ///    intended behaviour rather than a leak.
+   ///       The TTL is refreshed on every state write, so a debate that is progressing stays
+   ///       alive; a debate that stalled for longer than this is forgotten, which is the
+   ///       intended behaviour rather than a leak.
    ///    </para>
    ///    <para>Set to <c>null</c> to keep state keys indefinitely.</para>
    /// </summary>

@@ -5,6 +5,236 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.5.1] - 2026-10-07
+
+Closes all six open GitHub issues (#11, #13, #14, #15, #16, #18) and the two findings that were
+tracked only in `docs/TASKS/`. **No breaking changes** — every addition is opt-in, and no member
+was added to an existing public interface.
+
+### Fixed — the CLI could not authenticate to Ollama Cloud
+
+`delibera run` built its Ollama provider as `new OllamaProvider(endpoint)`, with no API key, while
+the Yandex branch read one. Against a local daemon that is fine and invisible; against
+`api.ollama.com` every call returned **401 Unauthorized**. The key is now read from the model's
+`ApiKey` or from `Delibera:Ollama:ApiKey`, matching the Yandex branch.
+
+### Fixed — per-call cost accounting ran on every debate whether or not anyone wanted it
+
+Recording a member call was unconditional: each call concatenated the system and user prompt and
+ran the token counter over both the prompt and the response. The prompt grows every round as history
+accumulates, so a debate paid a scanning cost quadratic in its own length — and then threw the
+result away, because `CostEstimate` is published only when a gate, limiter or price registry is
+configured.
+
+Measured against v10.5.0 with the same harness and workload:
+
+| | Median | Allocations |
+|---|---|---|
+| v10.5.0 | 0.634 ms | 3 735 640 B |
+| v10.5.1 before this fix | **1.404 ms** (+121%) | **5 034 080 B** (+35%) |
+| v10.5.1 after | 0.679 ms | 3 736 000 B (+0.01%) |
+
+Two changes: accounting now runs only when `DebateExecutionOptions.CostTrackingEnabled`, and the
+per-member admission check stopped being an `async ValueTask` — its state machine was allocated on
+every call even when the method returned immediately, which is most of what remained.
+
+The improvement that survived: three index runs of the same document now leave the same points as one,
+instead of three times as many — 120 points rather than 360 against live Qdrant.
+
+### Fixed — the pgvector backend could not write or search
+
+`PgVectorStore` bound the embedding with `AddWithValue(new Vector(v))`. That overload takes `object`, so
+the `Vector` was boxed and Npgsql had no type to map; the first upsert threw
+
+```
+InvalidCastException: Writing values of 'Pgvector.Vector' is not supported for parameters having no
+NpgsqlDbType or DataTypeName
+```
+
+Declaring `NpgsqlDbType.Unknown` fails the same way — `UseVector()` registers a mapping only for the
+Npgsql version the `Pgvector` package was built against, and this project pairs `Pgvector` 0.3.2 with
+Npgsql 10. The embedding now travels as pgvector's own text form (`[0.5,1,-2]`) with an explicit
+`NpgsqlDbType.Text` and a `::vector` cast applied by PostgreSQL, which any pgvector release understands.
+Formatting is culture-invariant: a decimal comma would render `[0,5]`, which parses as two zeros and
+corrupts the vector silently instead of failing.
+
+Found by running the store against a real `pgvector/pgvector:pg16` — the unit tests covered it through
+fakes. `PgVectorStore` is advertised as a supported vector store and **had never been exercised against
+a real database**; anything configured with `Delibera:Rag:ProviderType = PgVector` could not have
+worked. Both write and search were affected and both are fixed. No migration is required, because no row
+could previously have been written.
+
+### Fixed — the tool audit trail reported every call as failed
+
+A live run reported `1 tool call(s) observed, 0 succeeded … error="The tool produced no result."` even
+though the tool had demonstrably run.
+
+The call and its result arrive in *different* round-trips: the request leaves the provider as a
+`FunctionCallContent`, the middleware invokes the tool afterwards, and the result only comes back on the
+**next** request. The recorder looked for the pair inside a single response, so a result could never be
+found and every call looked dropped. Calls are now held pending by `CallId` and settled when a matching
+result appears in an inbound conversation; anything still pending when the loop ends is flushed as having
+produced nothing. Two regression tests in `ToolBridgeTests` pin both halves.
+
+### Fixed — an unknown tool name was reported as a success
+
+The middleware reports an unresolvable function as an error *value*, not an exception, so testing
+`Exception is null` passed. What is unambiguous is the catalogue: a name that was never offered cannot
+have run, whatever came back. Success now requires the result, no exception, **and** the tool being in
+the catalogue.
+
+### Fixed — vector-store indexing was not idempotent (W2-15)
+
+`BaseRagProvider` assigned `Guid.NewGuid()` as every point id. Both concrete stores treat the id as
+an upsert key — Qdrant as the point id, pgvector as `INSERT … ON CONFLICT (id) DO UPDATE` — so a
+fresh id meant re-indexing never matched an existing row and appended a second copy of the corpus.
+Measured in 10.5.0: three runs over 24 unique chunks left 72 points, and every later search paid
+for the duplicates.
+
+The id is now derived from the chunk's identity:
+
+- with a stable source: `(collection, source_path, chunk_index)` — **position-derived**, so an
+  edited chunk overwrites its own point instead of orphaning the previous one, which is what
+  actually fixes the reported defect;
+- without one: `(collection, content hash)`, which at least makes re-indexing identical text a no-op.
+
+The result is a parseable GUID on purpose. Both stores silently substitute a random GUID when the
+supplied id fails to parse, which would reintroduce exactly the duplication this removes; a test
+asserts every emitted id parses.
+
+> ⚠️ **Migration.** Collections written by 10.5.0 or earlier hold random-id points that re-indexing
+> will never replace. Delete the collection through `IVectorStore.DeleteCollectionAsync` and
+> re-index once. `IndexFileAsync` logs a warning when the pre-existing point count exceeds what the
+> current document contributes — that is the signature of an unmigrated collection.
+
+### Added — function calling / tool use (#14)
+
+`IToolProvider` and `AIFunction` tools that members may call while forming a response.
+`DebateRound.ToolCalls` and `DebateResult.ToolCalls` record what was actually invoked.
+
+Two transports, one log type:
+
+- **Native**, when the member's provider wraps a real `IChatClient` — `FunctionInvokingChatClient`
+  drives the loop, so requests and results travel as real message content.
+- **Marker**, `[[TOOL: name {json}]]`, for every other provider. This is not a stylistic choice:
+  the adapter returned by `AsChatClient()` calls `ChatAsync`, ignores `ChatOptions.Tools`, and
+  flattens every inbound message through `message.Text` — and function-call content has no text. The
+  middleware never sees a request and never delivers a result, so function invocation on top of that
+  adapter is inert. The marker protocol mirrors the Operator's existing `[[OPERATOR: …]]` convention
+  and needs no provider changes.
+
+Loop bounded by `MaxToolIterations` (default 3) so a model that keeps requesting tools cannot spin.
+
+Ships `FileSystemToolProvider` (rooted to a configured directory, rejects traversal, size-capped),
+`HttpToolProvider` (host allow-list, refuses plain HTTP by default) and `McpToolProvider`. Granting
+members tools grants them the tool's authority; neither provider is safe by accident.
+
+### Added — cost gates and rate limiting (#18)
+
+`ICostGate`, `IRateLimiter`, `IModelPricingRegistry`, with `BudgetCostGate`,
+`TokenBucketRateLimiter`, `ModelPricingRegistry` and a thread-safe `CostLedger`.
+`DebateResult.CostEstimate` reports spend per member, flagged `IsEstimate` whenever a model had no
+registered price.
+
+A denial does **not** throw. The debate returns a degraded result carrying the spend so far, because
+a ceiling that throws takes the debate down and leaves the operator with no record of what was
+already spent. Configured through `WithCostLimit` / `WithRateLimit` / `WithPricingRegistry`, and
+through `CouncilOptions` for the DI path.
+
+Configuring a ceiling **without** a price list now logs a warning at construction: with no prices
+every call bills zero, the gate compares zero against the limit and never denies, and the caller is
+left with a ceiling that is configured, logged and completely inert.
+
+### Added — `DebateResult.Diff` (#15)
+
+`DebateResultExtensions.Diff(other)` compares two runs and reports how far apart they are: a
+word-level diff of every changed member response, a similarity score for the verdicts, and explicit
+lists of rounds or members present on only one side. Markdown and self-contained HTML export.
+
+Rounds match on `RoundNumber` and members on display name, never on list position — comparing a
+four-round run against a three-round run reports the missing round instead of silently shifting every
+later comparison onto the wrong response.
+
+`TextSimilarity` is now public and takes an explicit maximum length. The diff passes
+`int.MaxValue`: inheriting the 1024-character stalemate cap would report two long verdicts differing
+only in their final sentence as identical.
+
+### Added — `delibera` CLI (#16)
+
+`run`, `resume`, `compare` and `benchmark` on `System.CommandLine`.
+
+`compare` diffs two saved results; `benchmark` reports the distribution across runs, because wall
+time is dominated by how much the models choose to write and a single run says nothing.
+`resume` reconstructs a result from a checkpoint's completed rounds — it reports progress rather than
+continuing the debate, and is marked `IsCompleted = false` so it cannot be mistaken for a verdict.
+
+### Added — gRPC transport (#11)
+
+`Delibera.Grpc` and `Delibera.Grpc.Client`, generated from `Protos/delibera.proto`, which is derived
+from the contracts the server already validates. Both sides compile the same proto independently —
+referencing the server project *and* generating locally produces two copies of every message type and
+a caller holding two nominally different `DebateResponse` types.
+
+The service layer sits **on top of** `IDebateOrchestrator` rather than beside it, so distributed
+execution and result caching behave identically over gRPC. A parallel pipeline would silently ignore
+`WithOrchestrator` and `WithCache`.
+
+Server streaming delivers every round exactly once and then exactly one terminal event, guarded by
+`terminalWritten`. Iteration is a plain `await foreach` — one `MoveNextAsync` in flight at a time —
+because the SSE writer shipped a bug for precisely that reason: it compared a winner against a second
+`ValueTask.AsTask()` call, which returns a *different* `Task` instance, so every genuine event was
+misread as a heartbeat and a debate streamed zero rounds.
+
+Status ordinals are pinned explicitly in the proto and covered by a test: REST serialises the same
+states as strings, so nothing in either build would stop the two transports from disagreeing.
+
+### Changed — NuGet GA matrix (#13)
+
+`Delibera.Server` and `Delibera.Redis` are now publishable, so the GA matrix is `Delibera.Core`,
+`Delibera.Server` and `Delibera.Redis`. `publish-nuget.yml` packs all three and now **fails** if any
+package is missing its README or icon.
+
+`Delibera.Server` needed `<IsPackable>true</IsPackable>`: `Microsoft.NET.Sdk.Web` sets it false because
+the Web SDK's default output is an app, not a library. Both new packages carry their own `README.md`
+and `icon.png` — `PackageIcon` and `PackageReadmeFile` pointing at `..\..\` do not resolve during pack.
+
+`Delibera.Grpc` and `Delibera.Grpc.Client` carry identical metadata and are one workflow line away
+from publishing; they are deliberately **not** in the matrix yet.
+
+### Documentation
+
+- `docs/performance-measurements.md` labelled a row `GET /health`; the mapped route is
+  `/api/v1/health`.
+- `docs/TASKS/README.md` now carries the measured test count rather than one carried forward from a
+  previous release, and includes W2-10…W2-16, which were tracked only in `W2-performance-core.md`.
+- W4-08 and W4-10 were marked done. Verifying them first: W4-08 is genuinely fixed (`wget` is
+  installed explicitly and `curl` — not `wget` — is purged afterwards), but the acceptance criterion
+  "a built image reports healthy" still needs `docker compose up`, so it stays unchecked. W4-10 is
+  **partial**, not done: the SSE writer is fixed, but `Channel.CreateUnbounded` remains in
+  `LocalDebateOrchestrator.cs:251` and `RedisDebateOrchestrator.cs:419`.
+
+### Verification
+
+611 unit tests, **611 passing** (493 Core + 108 Server + 10 gRPC contract), 0 failed, 0 skipped.
+`dotnet build Delibera.slnx -c Release -warnaserror` is clean (0 warnings, 0 errors) across all eight
+projects.
+
+The 10.5.0 page for `Delibera.Core` states *514 unit tests (406 Core + 108 Server)*. That figure was
+measured at 10.4.0; 10.5.0 shipped with 10.4.0's release notes still on its page while the real count
+had moved on. It is corrected here, on the 10.5.1 page — the 10.5.0 page cannot be edited.
+
+### Still open, carried forward
+
+- **W2-13** — `WithCache` is missing from `ICouncilBuilder`. Adding it as an abstract member would be
+  a source break, which 10.5.x does not take; documented rather than patched.
+- **W2-14** — on a cache hit, `TotalDuration` reports the cached debate's duration, not the caller's
+  wait time (measured: 0.0 s actual vs 189.0 s reported). A product decision, not a patch.
+- **Vector pruning** — a document that *shrinks* leaves its tail chunks behind. Closing that needs a
+  filter-delete on `IVectorStore`, which is breaking under the no-breaking-change rule.
+- **W4-10 channels** — still unbounded, so a consumer that stops draining grows memory without limit.
+  Bounding them means a defined full-channel behaviour, which is a behavioural change left for a
+  separate decision.
+
 ## [10.5.0] - 2026-10-06
 
 Multi-model deliberations measured end-to-end against Ollama Cloud for the first time. That

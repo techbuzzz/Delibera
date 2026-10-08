@@ -7,7 +7,6 @@ using Delibera.Core.Output;
 using Delibera.Core.Persistence;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
-using System.Text.Json;
 
 namespace Delibera.Core.Interfaces;
 
@@ -91,7 +90,7 @@ public interface ICouncilExecutor
 
    /// <summary>
    ///    The agent memory backend, or <c>null</c> when agent memory is disabled.
-   ///    Set via <see cref="ICouncilBuilder.WithAgentMemory(IAgentMemory?)"/>.
+   ///    Set via <see cref="ICouncilBuilder.WithAgentMemory(IAgentMemory?)" />.
    /// </summary>
    IAgentMemory? AgentMemory { get; }
 

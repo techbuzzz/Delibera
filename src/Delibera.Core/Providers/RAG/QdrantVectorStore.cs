@@ -39,7 +39,8 @@ public sealed class QdrantVectorStore : IVectorStore
    }
 
    /// <inheritdoc />
-   public async Task UpsertAsync(string collectionName, IReadOnlyList<VectorPoint> points, CancellationToken ct = default)
+   public async Task UpsertAsync(string collectionName, IReadOnlyList<VectorPoint> points,
+      CancellationToken ct = default)
    {
       if (points.Count == 0) return;
 

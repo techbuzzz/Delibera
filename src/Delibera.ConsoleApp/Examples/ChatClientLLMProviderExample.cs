@@ -64,7 +64,8 @@ public static class ChatClientLLMProviderExample
          Console.WriteLine($"    IsAvailableAsync:  {available}");
 
          var models = await llmProvider.ListModelsAsync();
-         Console.WriteLine($"    ListModelsAsync:    {(models.Count > 0 ? string.Join(", ", models) : "(empty — M.E.AI has no enumeration contract)")}");
+         Console.WriteLine(
+            $"    ListModelsAsync:    {(models.Count > 0 ? string.Join(", ", models) : "(empty — M.E.AI has no enumeration contract)")}");
 
          var caps = await llmProvider.GetModelCapabilitiesAsync(model);
          Console.WriteLine(!caps.IsUnknown

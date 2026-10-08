@@ -1,8 +1,6 @@
+using System.Text;
 using Delibera.Core.Interfaces;
-using Delibera.Server.Api.Contracts;
-using Delibera.Server.Api.Mapping;
 using Delibera.Server.Middleware;
-using Delibera.Server.Services;
 using Delibera.Server.Sse;
 
 namespace Delibera.Server.Api.Endpoints;
@@ -76,7 +74,7 @@ public static class DebateEndpoints
          .WithName("ExportMarkdown")
          .WithSummary("Download the full debate transcript as Markdown.")
          .Produces<FileContentHttpResult>(StatusCodes.Status200OK,
-            contentType: "text/markdown");
+            "text/markdown");
 
       return routes;
    }
@@ -214,8 +212,8 @@ public static class DebateEndpoints
       if (record?.Result is null) return TypedResults.NotFound();
 
       var md = record.Result.ToMarkdown();
-      var bytes = System.Text.Encoding.UTF8.GetBytes(md);
+      var bytes = Encoding.UTF8.GetBytes(md);
       return TypedResults.File(bytes, "text/markdown",
-         fileDownloadName: $"debate_{id}_result.md");
+         $"debate_{id}_result.md");
    }
 }

@@ -3,7 +3,7 @@ using Delibera.Core.Interfaces;
 namespace Delibera.Server.Templates.Registry;
 
 /// <summary>
-/// Contract that every council template registered in the server must implement.
+///    Contract that every council template registered in the server must implement.
 /// </summary>
 public interface IServerTemplate
 {
@@ -18,8 +18,8 @@ public interface IServerTemplate
    bool OperatorEnabled { get; }
 
    /// <summary>
-   /// Configure and return a <see cref="ICouncilBuilder"/> ready to be built
-   /// for a specific debate request.
+   ///    Configure and return a <see cref="ICouncilBuilder" /> ready to be built
+   ///    for a specific debate request.
    /// </summary>
    ICouncilBuilder Configure(
       CreateDebateRequest request,

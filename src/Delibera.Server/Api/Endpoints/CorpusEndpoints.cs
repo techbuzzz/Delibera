@@ -1,6 +1,3 @@
-using Delibera.Server.Api.Contracts;
-using Delibera.Server.Services;
-
 namespace Delibera.Server.Api.Endpoints;
 
 public static class CorpusEndpoints
@@ -42,7 +39,9 @@ public static class CorpusEndpoints
    }
 
    private static Ok<CorpusDto[]> ListCorpora(ICorpusService svc)
-      => TypedResults.Ok(svc.ListCorpora().ToArray());
+   {
+      return TypedResults.Ok(svc.ListCorpora().ToArray());
+   }
 
    private static Created<CorpusDto> CreateCorpus(
       CreateCorpusRequest req, ICorpusService svc)

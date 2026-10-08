@@ -1,7 +1,9 @@
-using System.Text;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Delibera.Core.Compression;
+using Delibera.Core.Cost;
 using Delibera.Core.Council;
+using Delibera.Core.Tools;
 
 namespace Delibera.Core.Debate;
 
@@ -12,22 +14,6 @@ namespace Delibera.Core.Debate;
 /// </summary>
 public abstract partial class DebateScenario : IDebateStrategy
 {
-   // ──────────────────────────────────────────────
-   // Operator helpers
-   // ──────────────────────────────────────────────
-
-   /// <summary>
-   ///    Matches the marker participants use to delegate a task to the Operator,
-   ///    e.g.: <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
-   ///    <para>
-   ///    Source-generated rather than <c>RegexOptions.Compiled</c>: the pattern is a
-   ///    compile-time literal, so the generator emits it at build time — no runtime JIT,
-   ///    no static-initialisation cost, and it keeps the pattern AOT/trim-safe.
-   ///    </para>
-   /// </summary>
-   [GeneratedRegex(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
-   private static partial Regex OperatorRequestRegex();
-
    /// <inheritdoc />
    public abstract string StrategyName { get; }
 
@@ -46,6 +32,21 @@ public abstract partial class DebateScenario : IDebateStrategy
       float temperature = 0.7f,
       Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted = null,
       CancellationToken ct = default);
+   // ──────────────────────────────────────────────
+   // Operator helpers
+   // ──────────────────────────────────────────────
+
+   /// <summary>
+   ///    Matches the marker participants use to delegate a task to the Operator,
+   ///    e.g.: <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
+   ///    <para>
+   ///       Source-generated rather than <c>RegexOptions.Compiled</c>: the pattern is a
+   ///       compile-time literal, so the generator emits it at build time — no runtime JIT,
+   ///       no static-initialisation cost, and it keeps the pattern AOT/trim-safe.
+   ///    </para>
+   /// </summary>
+   [GeneratedRegex(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+   private static partial Regex OperatorRequestRegex();
 
    // ──────────────────────────────────────────────
    // Shared helpers
@@ -54,9 +55,9 @@ public abstract partial class DebateScenario : IDebateStrategy
    /// <summary>
    ///    Collects responses from all members in parallel.
    ///    <para>
-   ///    When <paramref name="executionOptions" /> carries a positive
-   ///    <c>MaxDegreeOfParallelism</c> it also bounds the fan-out; the operator and
-   ///    knowledge-keeper paths already honoured it, this one did not.
+   ///       When <paramref name="executionOptions" /> carries a positive
+   ///       <c>MaxDegreeOfParallelism</c> it also bounds the fan-out; the operator and
+   ///       knowledge-keeper paths already honoured it, this one did not.
    ///    </para>
    /// </summary>
    protected static async Task<Dictionary<string, string>> CollectResponsesAsync(
@@ -90,8 +91,36 @@ public abstract partial class DebateScenario : IDebateStrategy
          if (gates is not null) await gates.WaitAsync(ct).ConfigureAwait(false);
          try
          {
-            var response = await member.AskAsync(systemPrompt, effectivePrompt, temperature, ct).ConfigureAwait(false);
-            return (member.Role, member.DisplayName, Response: response, Failed: false, Error: (string?)null);
+            // Cost gate and rate limiter run before the call, not after: the point is to avoid
+            // spending the next call, and a check placed after the response can only report a
+            // breach that already happened. A denial records the member as failed rather than
+            // throwing, so the debate still returns a degraded result carrying the spend so far.
+            var admission = await AdmitAsync(member, executionOptions, ct).ConfigureAwait(false);
+            if (!admission.IsAllowed)
+               return (member.Role, member.DisplayName, Response: null, Failed: true, Error: admission.DenialReason);
+
+            var tools = await ResolveToolsAsync(executionOptions, ct).ConfigureAwait(false);
+
+            string response;
+            IReadOnlyList<ToolCallLog> toolCalls = [];
+            if (tools.Count > 0)
+            {
+               // Tools change what a member call costs, so the ledger has to see the extra
+               // round-trips the tool loop makes, not just the final answer.
+               (response, toolCalls) = await ToolCallingMemberExecutor.AskAsync(
+                  member, tools, systemPrompt, effectivePrompt, temperature,
+                  executionOptions?.MaxToolIterations ?? 3, roundNumber, ct).ConfigureAwait(false);
+
+               if (toolCalls.Count > 0)
+                  executionOptions?.GetOrCreateToolCalls().AddRange(toolCalls);
+            }
+            else
+            {
+               response = await member.AskAsync(systemPrompt, effectivePrompt, temperature, ct).ConfigureAwait(false);
+            }
+
+            executionOptions?.RecordMemberCall(member, systemPrompt, effectivePrompt, response);
+            return (member.Role, member.DisplayName, Response: response, Failed: false, Error: null);
          }
          catch (Exception ex)
          {
@@ -139,6 +168,81 @@ public abstract partial class DebateScenario : IDebateStrategy
       return responses;
    }
 
+   /// <summary>
+   ///    Resolves the tool catalogue for this run, caching it on the options so every member and
+   ///    every round enumerates the providers once rather than per call.
+   /// </summary>
+   private static ValueTask<IReadOnlyList<AIFunction>> ResolveToolsAsync(
+      DebateExecutionOptions? options,
+      CancellationToken ct)
+   {
+      if (options is null || (options.ToolProvider is null && options.MemberTools is null))
+         return ValueTask.FromResult<IReadOnlyList<AIFunction>>([]);
+
+      return options.GetOrCreateToolsAsync(ct);
+   }
+
+   /// <summary>
+   ///    Runs the configured cost gate and rate limiter for one member call and reports whether
+   ///    the call may proceed.
+   /// </summary>
+   /// <remarks>
+   ///    The cost gate is consulted first: waiting behind a rate limiter only to be denied by the
+   ///    budget would burn the wait. A rate limiter that refuses (<c>Throw</c> or <c>Drop</c>)
+   ///    surfaces as a member failure rather than an exception, matching how the rest of the
+   ///    fan-out reports per-member trouble.
+   /// </remarks>
+   private static ValueTask<(bool IsAllowed, string? DenialReason)> AdmitAsync(
+      CouncilMember member,
+      DebateExecutionOptions? options,
+      CancellationToken ct)
+   {
+      // Fast path, deliberately not async. This runs for every member call, and an `async
+      // ValueTask` that returns immediately still allocates a state machine — so a debate with no
+      // gate and no limiter paid that ten times over for nothing. Returning a completed ValueTask
+      // costs nothing and keeps the default path allocation-free.
+      if (options is null || (options.CostGate is null && options.RateLimiter is null))
+         return ValueTask.FromResult((true, (string?)null));
+
+      return AdmitSlowAsync(member, options, ct);
+   }
+
+   private static async ValueTask<(bool IsAllowed, string? DenialReason)> AdmitSlowAsync(
+      CouncilMember member,
+      DebateExecutionOptions options,
+      CancellationToken ct)
+   {
+      if (options is null) return (true, null);
+
+      if (options.CostGate is { } gate)
+      {
+         var decision = await gate.CheckAsync(options.GetOrCreateLedger().Build(), ct).ConfigureAwait(false);
+         if (!decision.IsAllowed)
+         {
+            options.GetOrCreateLedger().MarkTruncated();
+            options.Logger?.LogWarning(
+               "Debate stopped before {Member} could be called: {Reason}",
+               member.DisplayName,
+               decision.Reason);
+
+            return (false, decision.Reason ?? "Cost limit reached.");
+         }
+      }
+
+      if (options.RateLimiter is { } limiter)
+         try
+         {
+            await limiter.AcquireAsync(member.Provider.ProviderName, member.ModelName, member.DisplayName, ct)
+               .ConfigureAwait(false);
+         }
+         catch (RateLimitExceededException ex)
+         {
+            return (false, ex.Message);
+         }
+
+      return (true, null);
+   }
+
    /// <summary>Resolves a member's model name for failure reporting, tolerating duplicate display names.</summary>
    private static string ResolveModel(IReadOnlyList<CouncilMember> members, string displayName)
    {
@@ -150,13 +254,13 @@ public abstract partial class DebateScenario : IDebateStrategy
    }
 
    /// <summary>
-   ///   Compresses a round prompt when the configured compressor would actually save something.
+   ///    Compresses a round prompt when the configured compressor would actually save something.
    /// </summary>
    /// <remarks>
-   ///   Compression is best-effort: a compressor that throws or returns nothing leaves the prompt
-   ///   untouched, because a debate is more valuable than a few saved tokens. Each attempt appends a
-   ///   <see cref="CompressionLog" /> so the saving is observable afterwards - which is how the
-   ///   long-standing "compression silently does nothing" defect became visible in the first place.
+   ///    Compression is best-effort: a compressor that throws or returns nothing leaves the prompt
+   ///    untouched, because a debate is more valuable than a few saved tokens. Each attempt appends a
+   ///    <see cref="CompressionLog" /> so the saving is observable afterwards - which is how the
+   ///    long-standing "compression silently does nothing" defect became visible in the first place.
    /// </remarks>
    protected static async Task<string> CompressPromptAsync(
       string prompt,
@@ -177,7 +281,7 @@ public abstract partial class DebateScenario : IDebateStrategy
       if (originalTokens < executionOptions!.CompressionThresholdTokens)
          return prompt;
 
-      var sw = System.Diagnostics.Stopwatch.StartNew();
+      var sw = Stopwatch.StartNew();
       try
       {
          var result = await compressor
@@ -394,7 +498,8 @@ public abstract partial class DebateScenario : IDebateStrategy
       IReadOnlyDictionary<string, string> responses,
       CancellationToken ct = default)
    {
-      return await ProcessOperatorRequestsAsync(@operator, responses, DebateExecutionOptions.Default, ct).ConfigureAwait(false);
+      return await ProcessOperatorRequestsAsync(@operator, responses, DebateExecutionOptions.Default, ct)
+         .ConfigureAwait(false);
    }
 
    /// <summary>

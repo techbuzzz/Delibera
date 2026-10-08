@@ -82,7 +82,8 @@ public sealed class JsonSchemaOutputSerializer : IStructuredOutputSerializer
       if (string.IsNullOrWhiteSpace(json))
          throw new JsonException("No JSON object or array found in the LLM response.");
 
-      return JsonSerializer.Deserialize<T>(json, _options) ?? throw new JsonException($"Deserialisation returned null for type {typeof(T).Name}.");
+      return JsonSerializer.Deserialize<T>(json, _options) ??
+             throw new JsonException($"Deserialisation returned null for type {typeof(T).Name}.");
    }
 
    /// <summary>
@@ -164,7 +165,8 @@ public sealed class JsonSchemaOutputSerializer : IStructuredOutputSerializer
    /// <summary>
    ///    Builds a correction prompt for the retry attempt when the first deserialisation fails.
    /// </summary>
-   public static string BuildCorrectionPrompt(string originalResponse, string errorMessage, string schema, string typeName)
+   public static string BuildCorrectionPrompt(string originalResponse, string errorMessage, string schema,
+      string typeName)
    {
       return $"""
               Your previous response could not be parsed as valid JSON conforming to the schema.

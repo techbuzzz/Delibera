@@ -1,5 +1,3 @@
-using Delibera.Core.Models;
-
 namespace Delibera.Core.Interfaces;
 
 /// <summary>

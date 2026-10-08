@@ -1,23 +1,17 @@
-﻿using Delibera.Core.Council;
-using Delibera.Core.Interfaces;
-using Delibera.Core.Models;
+﻿using Delibera.Core.Interfaces;
 using Delibera.Core.Providers;
 using Delibera.Core.Voting;
-using Delibera.Server.Api.Contracts;
-using Delibera.Server.Templates.Registry;
 
 namespace Delibera.Server.Templates.Governance;
 
 /// <summary>
-/// Architecture Decision Council â€” for ADR / RFC decisions.
-///
-/// Members:
-///   Architect (lead)  â€” patterns, maintainability, coupling
-///   SecurityEngineer  â€” threat model, attack surface
-///   PerformanceEngineer â€” throughput, latency, scalability
-///   TechLead          â€” team capability, delivery risk, pragmatism
-///
-/// Strategy : CritiqueDebate â†’ BordaCountVoting â†’ Chairman produces ADR summary.
+///    Architecture Decision Council â€” for ADR / RFC decisions.
+///    Members:
+///    Architect (lead)  â€” patterns, maintainability, coupling
+///    SecurityEngineer  â€” threat model, attack surface
+///    PerformanceEngineer â€” throughput, latency, scalability
+///    TechLead          â€” team capability, delivery risk, pragmatism
+///    Strategy : CritiqueDebate â†’ BordaCountVoting â†’ Chairman produces ADR summary.
 /// </summary>
 public sealed class ArchitectureDecisionTemplate : IServerTemplate
 {
@@ -49,13 +43,13 @@ public sealed class ArchitectureDecisionTemplate : IServerTemplate
 
       var builder = new CouncilBuilder()
          .AddMember(strongModel, llm, "Architect",
-            persona: "Senior solution architect. Champion of clean boundaries, SOLID, and long-term maintainability.")
+            "Senior solution architect. Champion of clean boundaries, SOLID, and long-term maintainability.")
          .AddMember(fastModel, llm, "SecurityEngineer",
-            persona: "Application security expert. Evaluates threat surface, trust boundaries, secrets management and compliance.")
+            "Application security expert. Evaluates threat surface, trust boundaries, secrets management and compliance.")
          .AddMember(fastModel, llm, "PerformanceEngineer",
-            persona: "Performance and reliability engineer. Focuses on latency, throughput, scalability and failure modes.")
+            "Performance and reliability engineer. Focuses on latency, throughput, scalability and failure modes.")
          .AddMember(fastModel, llm, "TechLead",
-            persona: "Pragmatic tech lead. Weighs team skills, delivery risk, operational complexity and time-to-market.")
+            "Pragmatic tech lead. Weighs team skills, delivery risk, operational complexity and time-to-market.")
          .SetChairman(Chairman.CreateCustom(strongModel, llm,
             """
             You are the Architecture Decision Chair.

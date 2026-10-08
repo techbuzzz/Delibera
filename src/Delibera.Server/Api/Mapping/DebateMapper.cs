@@ -1,7 +1,4 @@
-using Delibera.Core.Models;
 using Delibera.Core.Voting;
-using Delibera.Server.Api.Contracts;
-using Delibera.Server.Services;
 
 namespace Delibera.Server.Api.Mapping;
 
@@ -30,7 +27,7 @@ public static class DebateMapper
          CompletedAt = record.CompletedAt,
          DurationMs = record.CompletedAt is { } completed
             ? (long)(completed - record.CreatedAt).TotalMilliseconds
-            : null,
+            : null
       };
    }
 
@@ -41,13 +38,14 @@ public static class DebateMapper
       {
          Recommendation = result.FinalVerdict,
          RawJson = result.TypedVerdict is not null
-            ? System.Text.Json.JsonSerializer.Serialize(result.TypedVerdict)
-            : null,
+            ? JsonSerializer.Serialize(result.TypedVerdict)
+            : null
       };
    }
 
    private static VotingResultDto MapVoting(this VotingResult v)
-      => new()
+   {
+      return new VotingResultDto
       {
          Strategy = v.Method,
          Winner = v.WinningOption,
@@ -60,22 +58,26 @@ public static class DebateMapper
                Votes = i == 0
                   ? 1
                   : 0,
-               Score = (float)kv.Value,
+               Score = (float)kv.Value
             })
-            .ToArray(),
+            .ToArray()
       };
+   }
 
    private static TokenStatsDto? MapStats(this TokenStatistics s)
-      => new()
+   {
+      return new TokenStatsDto
       {
          TotalInputTokens = s.TotalOriginalTokens,
          TotalOutputTokens = s.TotalResponseTokens,
          TotalTokens = s.GrandTotal,
-         SavedByCompression = s.TokensSaved,
+         SavedByCompression = s.TokensSaved
       };
+   }
 
    public static DebateRoundDto ToDto(this DebateRound round)
-      => new()
+   {
+      return new DebateRoundDto
       {
          RoundNumber = round.RoundNumber,
          IsFinal = round.IsFinal,
@@ -89,10 +91,11 @@ public static class DebateMapper
             {
                Role = r.Key,
                Content = r.Value,
-               ModelName = string.Empty,
+               ModelName = string.Empty
             }).ToArray(),
          OperatorInteractions = round.OperatorInteractions?
             .Select(o => new OperatorInteractionDto { Task = o.Task, Result = o.Answer })
-            .ToArray(),
+            .ToArray()
       };
+   }
 }

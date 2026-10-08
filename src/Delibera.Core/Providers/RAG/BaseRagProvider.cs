@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+
 namespace Delibera.Core.Providers.RAG;
 
 /// <summary>
@@ -11,11 +13,24 @@ public abstract class BaseRagProvider : IRagProvider
    /// <summary>
    ///    Initialises a base RAG provider with the supplied vector store and embedding provider.
    /// </summary>
-   protected BaseRagProvider(IVectorStore vectorStore, IEmbeddingProvider embeddingProvider)
+   /// <param name="vectorStore">Vector store used for persistence and search.</param>
+   /// <param name="embeddingProvider">Embedding provider used to vectorise chunks.</param>
+   /// <param name="logger">
+   ///    Optional logger. When supplied, <see cref="IndexFileAsync" /> reports a collection
+   ///    that still holds legacy random-id points left by Delibera 10.5.0 and earlier.
+   /// </param>
+   protected BaseRagProvider(
+      IVectorStore vectorStore,
+      IEmbeddingProvider embeddingProvider,
+      ILogger? logger = null)
    {
       VectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
       EmbeddingProvider = embeddingProvider ?? throw new ArgumentNullException(nameof(embeddingProvider));
+      Logger = logger;
    }
+
+   /// <summary>Logger used to surface indexing anomalies. <c>null</c> disables that reporting.</summary>
+   protected ILogger? Logger { get; }
 
    /// <summary>Abstract <see cref="IRagProvider" /> implementations describe themselves.</summary>
    public abstract string ProviderName { get; }
@@ -47,7 +62,10 @@ public abstract class BaseRagProvider : IRagProvider
       // Ensure collection/table exists
       await VectorStore.EnsureCollectionAsync(collectionName, vectors[0].Length, ct).ConfigureAwait(false);
 
-      // Build points
+      // Build points. The id is derived from the chunk's identity rather than a fresh GUID:
+      // both concrete stores treat the id as an upsert key (Qdrant point id, pgvector
+      // "ON CONFLICT (id) DO UPDATE"), so a stable id turns re-indexing into a replace
+      // instead of an append. A random id per call meant every run duplicated the corpus.
       var points = new List<VectorPoint>(chunks.Count);
       for (var i = 0; i < chunks.Count; i++)
       {
@@ -57,7 +75,7 @@ public abstract class BaseRagProvider : IRagProvider
          pointMeta["chunk_index"] = i.ToString();
 
          points.Add(new VectorPoint(
-            Guid.NewGuid().ToString(),
+            ComputePointId(collectionName, metadata, i, chunks[i]),
             vectors[i],
             chunks[i],
             pointMeta));
@@ -86,7 +104,23 @@ public abstract class BaseRagProvider : IRagProvider
          ["source_path"] = fullPath
       };
 
-      return await IndexDocumentAsync(collectionName, text, meta, chunkSize, chunkOverlap, ct).ConfigureAwait(false);
+      // Read the pre-existing point count before indexing so a collection written by Delibera
+      // 10.5.0 or earlier (random point ids) can be called out. Those points are never replaced,
+      // so they survive alongside the new deterministic ones and keep skewing search results.
+      var existingCount = await TryCountAsync(collectionName, ct).ConfigureAwait(false);
+
+      var indexed = await IndexDocumentAsync(collectionName, text, meta, chunkSize, chunkOverlap, ct)
+         .ConfigureAwait(false);
+
+      if (Logger is not null && existingCount > indexed)
+         Logger.LogWarning(
+            "Collection '{Collection}' held {ExistingCount} points before indexing '{File}', but this document contributes only {IndexedCount}. Delibera 10.5.0 and earlier assigned a random point id per chunk, so those points are never replaced by re-indexing and keep diluting search results. Delete the collection through IVectorStore.DeleteCollectionAsync and re-index once to remove them.",
+            collectionName,
+            existingCount,
+            fullPath,
+            indexed);
+
+      return indexed;
    }
 
    /// <inheritdoc />
@@ -98,7 +132,8 @@ public abstract class BaseRagProvider : IRagProvider
       CancellationToken ct = default)
    {
       var queryVector = await EmbeddingProvider.EmbedAsync(query, ct).ConfigureAwait(false);
-      return await VectorStore.SearchAsync(collectionName, queryVector, limit, scoreThreshold, ct).ConfigureAwait(false);
+      return await VectorStore.SearchAsync(collectionName, queryVector, limit, scoreThreshold, ct)
+         .ConfigureAwait(false);
    }
 
    /// <inheritdoc />
@@ -116,5 +151,71 @@ public abstract class BaseRagProvider : IRagProvider
    public virtual ValueTask DisposeAsync()
    {
       return VectorStore.DisposeAsync();
+   }
+
+   /// <summary>
+   ///    Reads the current point count for a collection, returning -1 when the collection does not
+   ///    exist yet. Both concrete stores throw on a missing collection, and a missing collection is
+   ///    the normal state on a first index, so the failure is expected rather than exceptional.
+   /// </summary>
+   private async Task<long> TryCountAsync(string collectionName, CancellationToken ct)
+   {
+      try
+      {
+         return await VectorStore.CountAsync(collectionName, ct).ConfigureAwait(false);
+      }
+      catch (Exception)
+      {
+         // Collection absent (or momentarily unreachable). Indexing below reports the real failure.
+         return -1;
+      }
+   }
+
+   /// <summary>
+   ///    Derives a stable, UUID-shaped point id so re-indexing replaces points instead of appending them.
+   /// </summary>
+   /// <remarks>
+   ///    The result must parse as a <see cref="Guid" />: both stores fall back to a freshly generated
+   ///    GUID when the supplied id does not parse (<c>QdrantVectorStore</c> point id, <c>PgVectorStore</c>
+   ///    id column), which would silently reintroduce the duplication this scheme exists to remove.
+   ///    <para>
+   ///       When the caller supplied a stable source identity the id is derived from position, so an
+   ///       edited chunk overwrites its own point instead of orphaning it. Without any source identity
+   ///       the id falls back to the chunk's own content hash, which at least makes re-indexing the same
+   ///       text idempotent.
+   ///    </para>
+   /// </remarks>
+   private static string ComputePointId(
+      string collectionName,
+      IReadOnlyDictionary<string, string>? metadata,
+      int chunkIndex,
+      string chunkText)
+   {
+      var sourceKey = ResolveSourceKey(metadata);
+      Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
+      var payload = sourceKey.Length > 0
+         ? $"{collectionName}{sourceKey}{chunkIndex}"
+         : $"{collectionName}{chunkText}";
+
+      SHA256.HashData(Encoding.UTF8.GetBytes(payload), hash);
+      return new Guid(hash[..16]).ToString();
+   }
+
+   /// <summary>
+   ///    Resolves the caller-supplied source identity, preferring the full path over the bare file name
+   ///    so two identically named files in different folders do not collide.
+   /// </summary>
+   private static string ResolveSourceKey(IReadOnlyDictionary<string, string>? metadata)
+   {
+      if (metadata is null)
+         return string.Empty;
+
+      if (metadata.TryGetValue("source_path", out var path) && !string.IsNullOrWhiteSpace(path))
+         return path;
+
+      if (metadata.TryGetValue("source", out var source) && !string.IsNullOrWhiteSpace(source))
+         return source;
+
+      return string.Empty;
    }
 }

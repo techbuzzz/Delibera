@@ -9,6 +9,33 @@
     <Description>Redis-based distributed debate orchestration for Delibera.</Description>
   </PropertyGroup>
 
+  <!-- NuGet package metadata. -->
+  <PropertyGroup>
+    <PackageId>Delibera.Redis</PackageId>
+    <Version>10.5.1</Version>
+    <Title>Delibera Redis</Title>
+    <Description>Redis-backed distributed debate execution for the Delibera multi-model AI council framework. RedisDebateOrchestrator publishes every completed round to a Redis Stream so multiple workers can share one debate and survive each other's restarts; RedisDebateCache adds shared result caching with TTLs; DebateWorkerService consumes work in the background. Streams are created with a max length so they cannot grow without bound. Depends on Delibera.Core.</Description>
+    <Authors>Victor Buzin</Authors>
+    <PackageTags>llm;ai;debate;council;deliberation;redis;distributed;orchestration;streams;worker;caching;multi-model</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageProjectUrl>https://github.com/techbuzzz/Delibera</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/techbuzzz/Delibera</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReleaseNotes>First GA release of Delibera.Redis as a standalone package.</PackageReleaseNotes>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <!-- icon.png and README.md must physically exist next to the csproj. -->
+  <ItemGroup>
+    <None Include="icon.png" Pack="true" PackagePath="\" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Delibera.Core\Delibera.Core.csproj" />
   </ItemGroup>

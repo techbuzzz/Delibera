@@ -77,6 +77,67 @@ cd Delibera
 
 ---
 
+## Попробуйте из командной строки
+
+🆕 Самый быстрый способ попробовать Delibera — CLI `delibera`: без консольного проекта и без
+composition root:
+
+```bash
+dotnet run --project src/Delibera.Cli -- run "Микросервисы или монолит?" --rounds 3
+```
+
+CLI читает ту же секцию конфигурации `Delibera`, что и сервер, поэтому советует ровно те модели,
+которые вы уже настроили:
+
+```json
+{
+  "Delibera": {
+    "Providers": {
+      "ollama": {
+        "Models": {
+          "llama3": { "Endpoint": "http://localhost:11434" },
+          "qwen":   { "Endpoint": "http://localhost:11434" }
+        }
+      }
+    },
+    "Ollama": { "ApiKey": "" }
+  }
+}
+```
+
+Записи моделей без `Endpoint` пропускаются. Поддерживаемые ключи провайдеров — `ollama` и `yandex`,
+ключ передаётся через `Delibera:Ollama:ApiKey` или `Delibera:Yandex:ApiKey`. Если ничего не
+настроено, команда объяснит, чего не хватает, а не вернёт молча пустой дебат.
+
+| Команда | Что делает |
+| ------- | ---------- |
+| `delibera run "<вопрос>" --strategy s --rounds N --temperature T --output path --stream --json --verbose` | Запускает дебат и печатает результат |
+| `delibera resume <debate-id> --store <dir> --json` | Восстанавливает `DebateResult` из завершённых раундов чекпоинта |
+| `delibera compare <baseline.json> <comparison.json> --output path --html` | Сравнивает два сохранённых результата |
+| `delibera benchmark "<вопрос>" --iterations N --rounds R` | Показывает разброс по повторным прогонам |
+
+```bash
+# Показывать раунды по мере готовности и сохранить результат для машины
+delibera run "Выкладываем ли мы в пятницу?" --stream --json --output result.md
+
+# Сравнить два прогона одного вопроса
+delibera run "Выкладываем ли мы в пятницу?" --json > baseline.json
+delibera run "Выкладываем ли мы в пятницу?" --json > today.json
+delibera compare baseline.json today.json --output diff.md
+
+# Повторить вопрос и посмотреть, насколько стабилен ответ
+delibera benchmark "Выкладываем ли мы в пятницу?" --iterations 5 --rounds 3
+```
+
+> 📌 `resume` **отчитывается** о прогрессе, а не продолжает дебат. Чекпоинт хранит завершённые
+> раунды и параметры, под которыми они выполнялись, а не готовый `DebateResult`, поэтому CLI
+> восстанавливает результат и печатает его с `IsCompleted = false`. Продолжить запуск — значит
+> воссоздать весь набор провайдеров из этого снимка параметров, а это задача хоста.
+
+`run` возвращает `0` при успехе, `1` при обработанной ошибке и `2` при ошибке использования.
+
+---
+
 ## 3. Ваше первое обсуждение
 
 Создайте консольный проект и вставьте следующее:
@@ -435,6 +496,174 @@ var (resultPath, statsPath, logsPath) = await result.SaveAllAsync("./output");
 | Operator (основы)    | `dotnet run -- --operator`       | Роль Operator с MCP-инструментами              |
 | Operator + MCP       | `dotnet run -- --operator-mcp`   | 🆕 MCP-серверы browser + Marp в совете         |
 | Microsoft.Extensions.AI | `dotnet run -- --msai`        | 🆕 `IChatClient`/`IEmbeddingGenerator` + middleware |
+
+---
+
+## Вызов инструментов (участники вызывают функции)
+
+🆕 Участник может вызывать инструменты в свой ход — прочитать файл, обратиться по URL или достучаться
+до MCP-сервера.
+
+```csharp
+using Delibera.Core.Interfaces;
+using Delibera.Core.Tools;
+
+// Привязан к каталогу, отклоняет выход за его пределы, ограничивает чтение 1 МБ по умолчанию
+var files = new FileSystemToolProvider("./repo");
+
+// Доступны только эти хосты; обычный HTTP отклоняется, если вы его явно не разрешили
+var http = new HttpToolProvider(httpClient, ["docs.example.com", "api.github.com"]);
+
+// Или подключите инструменты MCP-сервера
+var mcp = new McpToolProvider(mcpClient);
+
+var result = await new CouncilBuilder()
+    .AddMember("qwen2.5:7b", ollama, "Analyst")
+    .WithUserPrompt("Что валидирует CouncilBuilder.Build()?")
+    .WithTools(files, http)
+    .WithMaxToolIterations(5)
+    .Build()
+    .ExecuteAsync();
+```
+
+`IToolProvider` — интерфейс из двух членов: `Name` и `GetToolsAsync(CancellationToken)`,
+возвращающий `AIFunction`. Реализуйте его, чтобы открыть свои инструменты.
+
+Транспорт вызова зависит от провайдера участника:
+
+| Провайдер | Транспорт | Почему |
+| --------- | --------- | ------ |
+| Оборачивает настоящий `IChatClient` | `ToolCallTransport.Native` | На проводе идут настоящие function-call сообщения |
+| Только строковый адаптер | `ToolCallTransport.Marker` | Строковый адаптер сводит каждое сообщение к `message.Text`, структурированные вызовы через него не проходят — вызов выражается маркером `[[TOOL: name {json}]]` в тексте ответа |
+
+Сам цикл вызовов принадлежит `FunctionInvokingChatClient` из M.E.AI, а не собственной реализации с
+ручным повтором. Оба транспорта пишут в один и тот же лог, поэтому читать произошедшее не приходится
+через ветвление по транспорту:
+
+```csharp
+foreach (var call in result.ToolCalls)          // и по раундам: round.ToolCalls
+{
+    Console.WriteLine($"{call.MemberName} → {call.ToolName} ({call.Transport}, {call.Duration})");
+}
+```
+
+В `ToolCallLog` также есть `Arguments`, `Result`, `Succeeded`, `ErrorMessage` и `RoundNumber`.
+
+---
+
+## Лимиты расходов и ограничения частоты
+
+🆕 Ограничьте, сколько может потратить дебат. Превышение лимита **не приводит к исключению** —
+дебат возвращает деградированный результат вместе с уже потраченным: лимит, который бросает
+исключение, оставляет вас без отчёта.
+
+```csharp
+using Delibera.Core.Cost;
+
+// A money ceiling needs prices: spend only exists once tokens are priced
+var pricing = new ModelPricingRegistry("""
+[
+  { "model": "qwen2.5:7b",   "inputPerMillion": 0.30, "outputPerMillion": 0.40 },
+  { "model": "llama3.2:3b",  "inputPerMillion": 0.10, "outputPerMillion": 0.10 }
+]
+""");
+
+var result = await new CouncilBuilder()
+    .WithPricingRegistry(pricing)
+    .WithCostLimit(0.50m)                                  // Abort at the ceiling (default)
+    .WithRateLimit(20, TimeSpan.FromMinutes(1))             // 20 calls per minute, per model
+    // ...
+    .Build()
+    .ExecuteAsync();
+
+if (result.IsDegraded)
+{
+    Console.WriteLine($"Stopped early: {result.CostEstimate?.WasTruncated}");
+    foreach (var failure in result.FailedMembers) { /* why */ }
+}
+```
+
+`WithCostLimit(decimal, CostLimitBehavior)` по умолчанию использует `Abort`; также доступны
+`WarnAndContinue` и `Ignore`. `WithTokenBudget(long, …)` ограничивает токены и не требует прайс-листа.
+
+> ⚠️ `WithCostLimit(...)` без `WithPricingRegistry(...)` приводит к `InvalidOperationException` на
+> `Build()`. Без цен каждый вызов стоит ноль, поэтому лимит настроен, залогирован и не сработает
+> никогда.
+
+`DebateResult.CostEstimate` — record `CostEstimate`: `TotalCost`, `TotalPromptTokens`,
+`TotalCompletionTokens`, `Members`, `IsEstimate`, `WasTruncated`. `IsEstimate` выставляется, когда у
+модели не нашлось цены, поэтому оценка никогда не примет вид инвойса.
+
+Помимо сокращений на builder можно подставить свой `ICostGate` (`WithCostGate`) или `IRateLimiter`
+(`WithRateLimiter`); встроенные реализации — `BudgetCostGate`, `TokenBucketRateLimiter`,
+`ModelPricingRegistry` и `CostLedger`. `RateLimitBehavior` — это `Queue` (по умолчанию), `Throw`
+или `Drop`; `RateLimitScope` — `Global`, `PerProvider`, `PerModel` (по умолчанию) или `PerMember`.
+
+---
+
+## Сравнение двух дебатов
+
+🆕 `Diff` показывает, насколько расходятся два прогона одного вопроса:
+
+```csharp
+using Delibera.Core.Debate;
+
+DebateDiff diff = baseline.Diff(today);
+
+Console.WriteLine($"Verdict similarity: {diff.VerdictSimilarity:P0}");
+Console.WriteLine($"Verdict changed:   {diff.VerdictChanged}");
+Console.WriteLine($"Missing rounds:    {string.Join(", ", diff.MissingRoundNumbers)}");
+
+foreach (var round in diff.Rounds)
+{
+    foreach (var member in round.Members)
+    {
+        // word-level, rendered as **added** / ~~removed~~
+        Console.WriteLine(member.InlineDiff);
+    }
+}
+
+await diff.SaveToMarkdownAsync("diff.md");
+await diff.SaveToHtmlAsync("diff.html");       // self-contained
+```
+
+Раунды сопоставляются по **номеру** раунда, а участники — по отображаемому имени, никогда по позиции
+в списке. Поэтому сравнение прогона с четырьмя раундами и прогона с тремя сообщает о недостающем
+раунде, а не сдвигает все последующие сравнения на неверного участника. `Diff` также сообщает
+`AddedRoundNumbers`, `MembersOnlyInOld`, `MembersOnlyInNew` и `IsEmpty`, а каждый уровень можно
+вывести или сохранить:
+
+`DebateDiff` → `ToMarkdown()`, `ToHtml()`, `SaveToMarkdownAsync(path, ct)`, `SaveToHtmlAsync(path, ct)`
+`RoundDiff` → `RoundNumber`, `RoundName`, `Members`, `MemberSimilarity`, `VerdictChanged`
+`MemberDiff` → `Member`, `OldText`, `NewText`, `Similarity`, `InlineDiff`
+
+---
+
+## gRPC-транспорт
+
+🆕 Проекты `Delibera.Grpc` и `Delibera.Grpc.Client` отдают тот же совет по HTTP/2 и protobuf — для
+клиентов, которым нужен типизированный клиент вместо SSE:
+
+| Сервис | RPC |
+| ------ | --- |
+| `DebateService` | `CreateDebate`, `GetDebate`, `ListDebates`, `CancelDebate`, `StreamDebate` (server streaming) |
+| `ScenarioService` | `RunScenario`, `ValidateScenario` |
+| `CorpusService` | `ListCorpora`, `ListDocuments`, `IndexDocument` |
+
+```csharp
+builder.Services.AddGrpc();
+builder.Services.AddSingleton(sp => new DebateServiceImpl(
+    sp.GetRequiredService<IDebateOrchestrator>(),
+    () => BuildCouncil(),
+    sp.GetRequiredService<ILogger<DebateServiceImpl>>()));
+
+app.MapGrpcService<DebateServiceImpl>();
+```
+
+Сервис лежит **поверх** `IDebateOrchestrator`, а не рядом с ним, поэтому дебат, выполненный через
+gRPC, идёт тем же путём распределённого исполнения и кэширования результатов, что и дебат через
+REST. См. [`src/Delibera.Grpc/README.md`](../src/Delibera.Grpc/README.md) для разбора со стороны
+клиента.
 
 ---
 

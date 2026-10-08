@@ -76,7 +76,8 @@ public static class ResilienceExample
                })
       {
          var p = registry.GetPipeline(name);
-         Console.WriteLine($"   • {name,-30} → resolved: {!ReferenceEquals(p, ResiliencePipeline<HttpResponseMessage>.Empty)}");
+         Console.WriteLine(
+            $"   • {name,-30} → resolved: {!ReferenceEquals(p, ResiliencePipeline<HttpResponseMessage>.Empty)}");
       }
 
       // 5. Resolve the named HttpClient.

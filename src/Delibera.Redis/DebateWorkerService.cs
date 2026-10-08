@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Delibera.Core.Interfaces;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -26,11 +25,11 @@ namespace Delibera.Redis;
 /// </summary>
 public sealed class DebateWorkerService : BackgroundService
 {
+   private readonly IDatabase _db;
+   private readonly ILogger<DebateWorkerService> _logger;
    private readonly RedisOrchestratorOptions _options;
    private readonly IDebateOrchestrator _orchestrator;
-   private readonly ILogger<DebateWorkerService> _logger;
    private readonly IConnectionMultiplexer _redis;
-   private readonly IDatabase _db;
 
    public DebateWorkerService(
       IOptions<RedisOrchestratorOptions> options,
@@ -54,7 +53,6 @@ public sealed class DebateWorkerService : BackgroundService
       await EnsureConsumerGroupAsync().ConfigureAwait(false);
 
       while (!stoppingToken.IsCancellationRequested)
-      {
          try
          {
             // Wait on the client, not in a tight loop. StackExchange.Redis 3.x exposes no
@@ -95,7 +93,6 @@ public sealed class DebateWorkerService : BackgroundService
             _logger.LogError(ex, "DebateWorkerService encountered an error. Retrying in 5s.");
             await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken).ConfigureAwait(false);
          }
-      }
 
       _logger.LogInformation("DebateWorkerService stopped.");
    }

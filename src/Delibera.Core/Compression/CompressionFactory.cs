@@ -30,11 +30,14 @@ public static class CompressionFactory
       {
          CompressionStrategy.None => PassThroughCompressor.Instance,
          CompressionStrategy.Semantic => new SemanticCompressor(
-            embeddingProvider ?? throw new ArgumentException("Semantic compression requires an IEmbeddingProvider.", nameof(embeddingProvider))),
+            embeddingProvider ?? throw new ArgumentException("Semantic compression requires an IEmbeddingProvider.",
+               nameof(embeddingProvider))),
          CompressionStrategy.Deduplication => new DeduplicationCompressor(embeddingProvider),
          CompressionStrategy.Summarization => new SummarizationCompressor(
-            llmProvider ?? throw new ArgumentException("Summarization compression requires an ILLMProvider.", nameof(llmProvider)),
-            modelName ?? throw new ArgumentException("Summarization compression requires a modelName.", nameof(modelName))),
+            llmProvider ?? throw new ArgumentException("Summarization compression requires an ILLMProvider.",
+               nameof(llmProvider)),
+            modelName ??
+            throw new ArgumentException("Summarization compression requires a modelName.", nameof(modelName))),
          CompressionStrategy.Hybrid => new HybridCompressor(llmProvider, modelName, embeddingProvider),
          _ => throw new ArgumentOutOfRangeException(nameof(strategy), $"Unknown compression strategy: {strategy}")
       };
@@ -50,7 +53,8 @@ public static class CompressionFactory
       IEmbeddingProvider? embeddingProvider = null)
    {
       if (!Enum.TryParse<CompressionStrategy>(strategyName, true, out var strategy))
-         throw new ArgumentException($"Unknown compression strategy: '{strategyName}'. Available: {string.Join(", ", Enum.GetNames<CompressionStrategy>())}");
+         throw new ArgumentException(
+            $"Unknown compression strategy: '{strategyName}'. Available: {string.Join(", ", Enum.GetNames<CompressionStrategy>())}");
 
       return Create(strategy, llmProvider, modelName, embeddingProvider);
    }
@@ -74,7 +78,8 @@ internal sealed class PassThroughCompressor : IContextCompressor
    public string Description => "No compression — pass-through";
 
    /// <inheritdoc />
-   public Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null, CancellationToken ct = default)
+   public Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null,
+      CancellationToken ct = default)
    {
       var tokens = TokenCounter.Default.EstimateTokens(text);
       return Task.FromResult(CompressedContextFactory.PassThrough(
@@ -82,7 +87,8 @@ internal sealed class PassThroughCompressor : IContextCompressor
    }
 
    /// <inheritdoc />
-   public Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null, CancellationToken ct = default)
+   public Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null,
+      CancellationToken ct = default)
    {
       var merged = string.Join("\n\n", texts);
       return CompressAsync(merged, options, ct);

@@ -200,7 +200,7 @@ Everything here is a stopwatch reading against a running container.
 
 | Check | Surface | ms |
 |---|---|---:|
-| `GET /health` | REST | 110 |
+| `GET /api/v1/health` | REST | 110 |
 | `GET /templates` (5 registered) | REST | 36 |
 | `POST /corpora` | REST | 37 |
 | `POST /corpora/{id}/documents` (1 real chunk written) | RAG ingest | 321 |
@@ -304,6 +304,110 @@ an Operator, so the MCP tooling in section 4 is not reachable through this surfa
 A rejected request still leaves a `Failed` debate record behind: five `Failed` records of ~145 ms
 each were present in `GET /debates` for requests that never passed validation. Harmless today, but a
 polluting caller would misreport its rejection rate.
+
+---
+
+## 7. Vector indexing, measured against live stores (v10.5.1)
+
+The measurement round above found that indexing was not idempotent: three runs over the same document
+left 72 points for 24 unique chunks, because `BaseRagProvider` assigned `Guid.NewGuid()` to every chunk
+and both stores use the point id as an upsert key. That finding was measured with an in-memory stand-in,
+so the fix was re-measured against real Qdrant and real PostgreSQL + pgvector.
+
+| Check | Qdrant | pgvector |
+|---|---|---|
+| 3 index runs of a 6-chunk document | **6 points** (10.5.0 behaviour: 18) | **6 points** |
+| Editing the document, then re-indexing | still 6 — the chunk overwrote its own point | still 6 |
+| Every returned point id parses as a GUID | yes | yes |
+| Legacy random-id points, then re-index | 6 → 12 — duplicates survive | 6 → 12 |
+
+Two of these rows carry weight beyond the fix itself.
+
+**Point ids must parse.** Both stores silently substitute a fresh GUID when the supplied id fails to
+parse (`Guid.TryParse(...) ? ... : Guid.NewGuid()`). A malformed deterministic id would therefore
+reintroduce exactly the duplication the fix removes, quietly.
+
+**Re-indexing does not migrate.** The last row is why the release notes tell users to *delete* the
+collection rather than re-index it: points written by 10.5.0 and earlier carry random ids that no
+re-index can replace. `IndexFileAsync` logs a warning when the pre-existing point count exceeds what
+the current document contributes, which is the signature of an unmigrated collection.
+
+### The pgvector backend had never run
+
+Running the same suite against PostgreSQL exposed an unrelated and more serious defect: `PgVectorStore`
+could not write or search at all. It bound the embedding with `AddWithValue(new Vector(...))`, which
+takes `object` and boxes the `Vector`, leaving Npgsql with no type to map:
+
+```
+InvalidCastException: Writing values of 'Pgvector.Vector' is not supported for parameters having no
+NpgsqlDbType or DataTypeName
+```
+
+Declaring `NpgsqlDbType.Unknown` fails the same way — `UseVector()` registers a mapping only for the
+Npgsql version the `Pgvector` package was built against, and this project pairs `Pgvector` 0.3.2 with
+Npgsql 10. The unit tests covered the store through fakes, so the defect survived every release that
+claimed pgvector support. It is fixed in 10.5.1 by sending the vector as pgvector's text form with a
+`::vector` cast, which any pgvector version understands.
+
+Method: `.bench/FeatureBench`, experiment E6 — see
+[FEATURE-BENCH-FINDINGS.md](../.bench/FEATURE-BENCH-FINDINGS.md). Embeddings for this experiment are a
+local deterministic hash, not a model: the question is whether each store upserts on the supplied id, and
+a remote embedder would add cost and a second failure mode to an experiment about neither.
+
+---
+
+## 8. Framework overhead and retrieval, measured across checkouts (v10.5.1)
+
+The numbers above come from live cloud models, so they cannot be re-run cheaply and they cannot
+isolate framework cost — model latency swamps it. Two questions were therefore asked separately,
+with a fake provider returning instantly and with real vector stores.
+
+### 8.1 Did 10.5.1 make the pipeline slower?
+
+Three checkouts, same harness, same workload: three members, three rounds, chairman verdict,
+deterministic long responses.
+
+| Checkout | Median | p95 | Allocations, first debate |
+|---|---|---|---|
+| v10.5.0 (`1297e38`) | 0.634 ms | 1.22 ms | 3 735 640 B |
+| v10.5.1, accounting unguarded (`978f4cb`) | **1.404 ms** | 1.96 ms | **5 034 080 B** |
+| v10.5.1, accounting guarded (this tree) | 0.679 ms | 1.41 ms | 3 736 000 B |
+
+**It did — and it was found and fixed.** Recording a member call was unconditional: every call
+concatenated the system and user prompt and ran the token counter over both the prompt and the
+response. The prompt grows every round as history accumulates, so a debate paid a scanning cost
+quadratic in its own length, and then discarded it — the executor publishes `CostEstimate` only when a
+gate, limiter or price registry is configured. Cost was **+121%** on the median and **+35%** on
+allocations, for every user whether or not they cared about cost.
+
+The fix is a predicate: accounting runs only when something consumes it (`DebateExecutionOptions
+.CostTrackingEnabled`). A second pass removed an `async ValueTask` from the per-member admission
+check, whose state machine was allocated on every call even when it returned immediately. Wall time
+returned to baseline and allocations to within 360 bytes of 10.5.0 — **+0.01%**.
+
+Repeated 80-iteration runs put the two within each other's noise band (0.52–0.60 ms against
+0.56–0.66 ms), so the honest statement is: **no measurable regression remains, and none of the
+sub-millisecond differences here should be treated as a signal.** Absolute times vary with what else
+the machine is doing; the allocation figure is the deterministic one.
+
+### 8.2 What the indexing fix actually buys
+
+Same corpus, same queries, against live Qdrant — varying only how many index runs had happened.
+
+| | v10.5.0 | v10.5.1 |
+|---|---|---|
+| 1 index run | 120 points | 120 points |
+| 3 index runs | **360 points** | **120 points** |
+| Search median, after 3 runs | 0.968 ms | **0.873 ms** |
+
+Three index runs now leave exactly as many points as one. The retrieval win at this corpus size is
+real but modest (~10%): hundreds of vectors are index-resident, so scanning three times as many buys
+back very little time. **The larger effect is ranking, not latency, and it is not measured here** —
+duplicates crowd the top-k, which is the dilution the 10.5.0 round reported. Measuring that needs a
+recall/precision comparison, which this harness does not do.
+
+Method: `.bench/PerfCheck`, built against a checkout via `-p:DeliberaCorePath=`; baseline checkouts
+were git worktrees at `1297e38` and `978f4cb`.
 
 ---
 

@@ -1,9 +1,15 @@
 # 🗺️ Delibera — Multi-Version Roadmap
 
-> **Current stable:** `10.3.0`  
-> **Active branch:** `develop`  
-> **Document date:** July 2026  
+> **Current stable:** `10.5.1`  
+> **Active branch:** `feat/v10.5.1`  
+> **Document date:** October 2026  
 > **Versioning:** `NET_MAJOR.FEATURE.PATCH` — first digit matches the target .NET runtime (`10` = .NET 10, `11` = .NET 11). Breaking changes are allowed at .NET-major boundaries only.
+
+> **Note on 10.5.1.** This release carried six features in a PATCH slot, which does not match the
+> convention above — FEATURE work normally lands in a FEATURE version. It was chosen deliberately, and
+> the no-breaking-change rule is what keeps the SemVer contract consumers depend on intact. The
+> features originally planned for 10.4.0 and 10.5.0 therefore all shipped in 10.5.1, which is why both
+> of those rows below read as released.
 
 ---
 
@@ -14,8 +20,10 @@
 | **10.2.6** | _Feature Bundle_ | F-01 Streaming, F-02 Voting, F-03 Persistence, F-04 Memory, F-05 Structured Output, F-07 Templates, F-08 OpenTelemetry, F-09 Adaptive Strategy, F-10 Quick Wins | ✅ Released |
 | **10.2.7** | _Multi-Modal_ | F-06 Vision + Document Attachments | ✅ Released |
 | **10.3.0** | _Platform Release_ | Breaking-change cleanup, Distributed Debates, Result Caching, Delibera.Server, Delibera.Redis | ✅ Released |
-| **10.4.0** | _Intelligence & DX_ | Function Calling / Tool Use, Debate Result Diff, CLI improvements | 🔷 Planned |
-| **10.5.0** | _Scale & Reliability_ | Rate-limiting & cost gates | 🔷 Planned |
+| **10.4.0** | _Measured Round_ | SSE defect fixes, context compression wired up, correctness pass — 9 defects fixed | ✅ Released |
+| **10.5.0** | _Scale & Reliability_ | Measured round published; W2-15 index duplication measured but not yet fixed | ✅ Released |
+| **10.5.1** | _Close the Loop_ | Tool use (#14), debate diff (#15), CLI (#16), cost gates (#18), gRPC (#11), NuGet GA (#13), W2-15 fixed, W2-16 documented | ✅ Released |
+| **10.6.0** | _Harden the Edges_ | Vector pruning (filter-delete on `IVectorStore`), bounded round channels (W4-10), W2-13/W2-14 product decisions | 🔷 Planned |
 | **11.0.0** | _.NET 11 Migration_ | Target .NET 11, C# 14 idioms, performance tuning for new runtime | 🔶 Future (.NET 11 GA) |
 
 ---
@@ -201,78 +209,61 @@ app.MapDeliberaEndpoints();
 
 ---
 
-## 🔷 v10.4.0 — Intelligence & DX
+## ✅ v10.4.0 / v10.5.0 — Measured Rounds
 
-> _Theme: Smarter debates and better developer experience_
+> _Theme: run it for real, find what is actually broken_
 
-### I-01 · Function Calling / Tool Use
-
-**Why:** Council members should be able to call external tools (search, calculator, database lookup) during a debate round, grounding their arguments in real data.
-
-**What:**
-- `IToolProvider` interface — register named tools with JSON Schema descriptors
-- `CouncilBuilder.WithTool(IToolProvider)` — fluent API
-- `Microsoft.Extensions.AI` `AIFunction` integration (already a dependency)
-- Tool calls rendered in `*_result.md` with `<details>` collapsible sections
-- Chairman sees tool outputs in synthesis
-
-```csharp
-.AddMember("gpt-4o", openai, "Data Analyst", Persona.DataDrivenAnalyst)
-.WithTool(new WebSearchTool())
-.WithTool(new CalculatorTool())
-```
-
-**Effort:** L · 5–8 days
+These two releases came from the first end-to-end measurement of Delibera against live cloud models
+rather than from a feature plan. Nine defects were found and fixed; the release notes and
+[WhatsNew-v10.5.0.md](WhatsNew-v10.5.0.md) carry the details. The item that carried forward is W2-15,
+fixed in 10.5.1.
 
 ---
 
-### I-02 · Debate Result Diff
+## ✅ v10.5.1 — Close the Loop
 
-**Why:** Running the same question twice with different configurations produces two Markdown reports with no easy way to compare.
+> _Theme: the six issues that were open, plus the bug the measurements found_
 
-**What:**
-- `DebateResult.Diff(DebateResult other)` → `DebateDiff` record
-- Side-by-side Markdown rendering: agreement points, disagreements, unique arguments per side
-- CLI `--diff result1.json result2.json` flag
-- `BenchmarkReport` gains `DiffSection` automatically
+Released 2026-10-07. Every GitHub issue that was open at the start of this cycle is now closed, and the
+delivery includes **no breaking changes** — see
+[WhatsNew-v10.5.1.md](WhatsNew-v10.5.1.md) for the full account.
 
-**Effort:** M · 3–5 days
+| Issue | Delivered | Notes |
+|---|---|---|
+| **#14** I-01 Tool use | ✅ | `IToolProvider`, `AIFunction`, `ToolCallLog` on `DebateRound` and `DebateResult`. Native function calling where the provider wraps a real `IChatClient`; `[[TOOL: …]]` marker otherwise, because the string-only `AsChatClient` adapter drops `ChatOptions.Tools` entirely. |
+| **#15** I-02 Debate diff | ✅ | `DebateResultExtensions.Diff`, round matching by number and member by name, word-level LCS, Markdown + HTML export. `TextSimilarity` is public with an explicit length bound. |
+| **#16** I-03 CLI | ✅ | `delibera run \| resume \| compare \| benchmark` on System.CommandLine. |
+| **#18** S-02 Cost gates | ✅ | `ICostGate`, `IRateLimiter`, `IModelPricingRegistry`, `CostEstimate`. A denial returns a degraded result rather than throwing. |
+| **#13** P-04 NuGet GA | ✅ | Matrix is now `Delibera.Core`, `Delibera.Server`, `Delibera.Redis`. |
+| **#11** P-03 gRPC | ✅ | `Delibera.Grpc` + `Delibera.Grpc.Client`, layered **on top of** `IDebateOrchestrator`. Not yet in the publish matrix. |
+| **W2-15** | ✅ | Idempotent indexing via deterministic point ids. Migration note in the CHANGELOG. |
+| **W2-16** | 📋 | Documented as a roster-selection hazard. No framework change. |
 
----
-
-### I-03 · CLI Improvements
-
-**Why:** The ConsoleApp is a demo; a proper CLI makes Delibera accessible to non-C# users.
-
-**What:**
-- `System.CommandLine`-based CLI with subcommands: `run`, `resume`, `compare`, `benchmark`
-- `delibera run --config debate.json` — load configuration from file
-- `delibera resume --id <debate-id>` — resume from checkpoint
-- `delibera benchmark --configs dir/` — run comparison
-- Output format flags: `--markdown`, `--html`, `--json`
-
-**Effort:** M · 3–5 days
+Two findings from the tracker stayed open on purpose, because both need either a breaking change or a
+product decision: **W2-13** (`WithCache` on `ICouncilBuilder`) and **W2-14** (cache-hit duration
+semantics).
 
 ---
 
-## 🔷 v10.5.0 — Scale & Reliability
+## 🔷 v10.6.0 — Harden the Edges
 
-> _Theme: Production-grade throughput and cost control_
+> _Theme: the things that were left open on purpose_
 
-### S-02 · Rate-Limiting & Cost Gates
+The items 10.5.1 declined to take, each because it needs a decision rather than a patch.
 
-**Why:** Cloud LLM calls cost real money. Users need guardrails before launching expensive 5-round multi-model debates.
-
-**What:**
-- `CouncilBuilder.WithCostLimit(decimal maxUsd)` — estimate cost before execution, abort if over limit
-- `CouncilBuilder.WithRateLimit(int requestsPerMinute)` — throttle LLM calls per provider
-- `DebateResult.CostEstimate` — token counts × model pricing (built-in pricing table, extensible)
-- `CostLimitExceededException` — clear exception with partial results attached
-
-**Effort:** M · 3–5 days
+- **Vector pruning** — a document that shrinks leaves its tail chunks behind. Fixing it means a
+  filter-delete on `IVectorStore`, which has no default interface implementations today, so it is a
+  breaking change. Options: a DIM on `IVectorStore`, or accept the break at a feature-major boundary.
+- **Bounded round channels (W4-10)** — the SSE writer is fixed, but `Channel.CreateUnbounded` remains
+  in `LocalDebateOrchestrator` and `RedisDebateOrchestrator`. Bounding them requires defining what a
+  full channel does: block the producer, drop a round, or fail the debate.
+- **W2-13** — `WithCache(CacheBehavior, IDebateCache)` on `ICouncilBuilder`. Same trade-off as above.
+- **W2-14** — decide whether `TotalDuration` on a cache hit means provenance or caller wait time, then
+  document it. Measured today: 0.0 s actual against 189.0 s reported.
+- **Publish the gRPC packages** — `Delibera.Grpc` and `Delibera.Grpc.Client` carry full packaging
+  metadata and are one workflow line away from the GA matrix.
 
 ---
-
 ## 🔶 v11.0.0 — .NET 11 Migration
 
 > _Theme: Target .NET 11 runtime — this version aligns with .NET 11 GA_
@@ -327,10 +318,12 @@ release/10.3.0                 ← release stabilization branch
 | 10.2.6 | 2026-07-06 | ✅ Released |
 | 10.2.7 | 2026-07-07 | ✅ Released |
 | 10.3.0 | 2026-07-17 | ✅ Released |
-| 10.4.0 | Q4 2026 | 🔷 Planned |
-| 10.5.0 | Q1 2027 | 🔷 Planned |
+| 10.4.0 | 2026-10-05 | ✅ Released |
+| 10.5.0 | 2026-10-06 | ✅ Released |
+| 10.5.1 | 2026-10-07 | ✅ Released |
+| 10.6.0 | Q4 2026 | 🔷 Planned |
 | 11.0.0 | .NET 11 GA | 🔶 Future |
 
 ---
 
-*Delibera Roadmap · July 2026 · [techbuzzz/Delibera](https://github.com/techbuzzz/Delibera)*
+*Delibera Roadmap · October 2026 · [techbuzzz/Delibera](https://github.com/techbuzzz/Delibera)*

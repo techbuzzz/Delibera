@@ -126,7 +126,8 @@ public static class PgVectorExample
       Console.WriteLine(executor.GetInfo());
 
       var result = await executor.ExecuteAsync();
-      Console.WriteLine($"\n  ✅ Debate completed: {result.Rounds.Count} rounds, {result.TotalDuration.TotalSeconds:F1}s");
+      Console.WriteLine(
+         $"\n  ✅ Debate completed: {result.Rounds.Count} rounds, {result.TotalDuration.TotalSeconds:F1}s");
 
       if (result.FinalVerdict is not null)
          Console.WriteLine($"\n  📜 Verdict: {result.FinalVerdict[..Math.Min(300, result.FinalVerdict.Length)]}...");

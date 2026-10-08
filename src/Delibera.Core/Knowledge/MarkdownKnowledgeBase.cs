@@ -7,7 +7,9 @@ namespace Delibera.Core.Knowledge;
 public sealed class MarkdownKnowledgeBase : IKnowledgeBase
 {
    private readonly Dictionary<string, string> _documents = new(StringComparer.OrdinalIgnoreCase);
-   private readonly Dictionary<string, IReadOnlyDictionary<string, string>?> _metadata = new(StringComparer.OrdinalIgnoreCase);
+
+   private readonly Dictionary<string, IReadOnlyDictionary<string, string>?> _metadata =
+      new(StringComparer.OrdinalIgnoreCase);
 
    /// <summary>Creates a Markdown knowledge base with an optional name.</summary>
    public MarkdownKnowledgeBase(string name = "Markdown Knowledge Base")

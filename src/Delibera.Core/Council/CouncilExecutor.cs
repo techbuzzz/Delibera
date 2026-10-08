@@ -8,6 +8,7 @@ using Delibera.Core.Attachments;
 using Delibera.Core.Caching;
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
+using Delibera.Core.Cost;
 using Delibera.Core.Debate;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Memory;
@@ -15,7 +16,6 @@ using Delibera.Core.Output;
 using Delibera.Core.Persistence;
 using Delibera.Core.Telemetry;
 using Delibera.Core.Voting;
-using System.Text.Json;
 
 namespace Delibera.Core.Council;
 
@@ -26,6 +26,7 @@ namespace Delibera.Core.Council;
 public sealed partial class CouncilExecutor : ICouncilExecutor
 {
    private readonly AutoChunkingOptions? _autoChunkingOptions;
+   private readonly IDebateCache? _cache;
    private readonly CompressionOptions? _compressionOptions;
    private readonly PromptContext _context;
    private readonly List<ExecutionLog> _executionLogs = [];
@@ -34,8 +35,6 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
    private readonly string? _resumeFromDebateId;
    private readonly TelemetryOptions? _telemetryOptions;
    private readonly float _temperature;
-   private readonly CacheBehavior _cacheBehavior;
-   private readonly IDebateCache? _cache;
 
    internal CouncilExecutor(
       IReadOnlyList<CouncilMember> members,
@@ -90,6 +89,16 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
          CompressionLogs = []
       };
       CompressionLogs = ExecutionOptions.CompressionLogs;
+
+      // Backstop for the DI path: CouncilBuilder.Build() already rejects a money ceiling with no
+      // pricing registry, but DebateExecutionOptions can be assembled directly, and there a
+      // silently inert ceiling is still reachable. Tokens are only priced when a registry supplies
+      // rates, so the gate would compare zero against the limit forever.
+      if (ExecutionOptions.CostGate is BudgetCostGate && ExecutionOptions.PricingRegistry is null)
+         ExecutionOptions.Logger?.LogWarning(
+            "A cost limit is configured without a pricing registry, so member calls cannot be priced "
+            + "and the ceiling cannot be enforced — every call bills zero against it. Supply "
+            + "Delibera:Pricing, or use a token budget, which needs no prices.");
       _autoChunkingOptions = autoChunkingOptions;
       _telemetryOptions = telemetryOptions;
       DebateTimeout = debateTimeout;
@@ -102,14 +111,15 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
       AgentMemory = agentMemory;
       Attachments = attachments ?? [];
       FileReaders = fileReaders ?? new FileContentReaderRegistry();
-      _cacheBehavior = cacheBehavior;
+      CacheBehavior = cacheBehavior;
       _cache = cache;
 
       // When telemetry is enabled with a non-default source/meter name, configure the
       // global activity source and meter to honour the user's OpenTelemetry builder setup.
       if (_telemetryOptions is { Enabled: true })
       {
-         if (!string.Equals(_telemetryOptions.ActivitySourceName, DeliberaActivitySource.DefaultName, StringComparison.Ordinal))
+         if (!string.Equals(_telemetryOptions.ActivitySourceName, DeliberaActivitySource.DefaultName,
+                StringComparison.Ordinal))
             DeliberaActivitySource.Configure(_telemetryOptions.ActivitySourceName, _telemetryOptions.ServiceVersion);
          if (!string.Equals(_telemetryOptions.MeterName, DeliberaMeter.DefaultName, StringComparison.Ordinal))
             DeliberaMeter.Configure(_telemetryOptions.MeterName, _telemetryOptions.ServiceVersion);
@@ -126,11 +136,11 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
    public DebateExecutionOptions ExecutionOptions { get; }
 
    /// <summary>
-   ///   Compression operations recorded during the debate. Populated from
-   ///   <see cref="DebateResult.CompressionLogs" /> and <see cref="DebateResult.TokenStats" /> at
-   ///   the end of a run.
+   ///    Compression operations recorded during the debate. Populated from
+   ///    <see cref="DebateResult.CompressionLogs" /> and <see cref="DebateResult.TokenStats" /> at
+   ///    the end of a run.
    /// </summary>
-   public IReadOnlyList<CompressionLog> CompressionLogs { get; private set; } = [];
+   public IReadOnlyList<CompressionLog> CompressionLogs { get; } = [];
 
    /// <summary>
    ///    The configured debate-level wall-clock timeout. <c>null</c> means no timeout.
@@ -179,7 +189,7 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
 
    /// <summary>
    ///    The agent memory backend, or <c>null</c> when agent memory is disabled.
-   ///    Set via <see cref="ICouncilBuilder.WithAgentMemory(IAgentMemory?)"/>.
+   ///    Set via <see cref="ICouncilBuilder.WithAgentMemory(IAgentMemory?)" />.
    /// </summary>
    public IAgentMemory? AgentMemory { get; }
 
@@ -191,9 +201,9 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
 
    /// <summary>
    ///    The file-content reader registry used to read attachments (F-06 Multi-Modal).
-   ///    Pre-populated with built-in <see cref="Delibera.Core.Attachments.Readers.PlainTextFileReader"/>,
-   ///    <see cref="Delibera.Core.Attachments.Readers.ImageFileReader"/>, and
-   ///    <see cref="Delibera.Core.Attachments.Readers.FallbackFileReader"/>.
+   ///    Pre-populated with built-in <see cref="Delibera.Core.Attachments.Readers.PlainTextFileReader" />,
+   ///    <see cref="Delibera.Core.Attachments.Readers.ImageFileReader" />, and
+   ///    <see cref="Delibera.Core.Attachments.Readers.FallbackFileReader" />.
    /// </summary>
    public FileContentReaderRegistry FileReaders { get; }
 
@@ -201,7 +211,7 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
    ///    Cache behavior for this executor. When not <see cref="CacheBehavior.Disabled" />,
    ///    the executor checks <see cref="IDebateCache" /> before running a debate.
    /// </summary>
-   public CacheBehavior CacheBehavior => _cacheBehavior;
+   public CacheBehavior CacheBehavior { get; }
 
    /// <summary>
    ///    Whether telemetry instrumentation is active for this executor. When <c>true</c>,
@@ -224,24 +234,6 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
 
    /// <summary>Debate strategy.</summary>
    public IDebateStrategy Strategy { get; }
-
-   /// <summary>
-   ///    Identity a member contributes to the cache key. The display name already carries
-   ///    model and provider; role and persona are added because they change the prompt the
-   ///    member receives and therefore the output.
-   /// </summary>
-   private static string MemberCacheIdentity(CouncilMember member) =>
-      $"{member.DisplayName}|{member.Role}|{member.PersonaPrompt}";
-
-   /// <summary>
-   ///    Identity the chairman contributes to the cache key, or <c>null</c> when the
-   ///    debate has no chairman. Without it, two debates with identical members but
-   ///    different chairmen shared a cache entry and one received the other's verdict.
-   /// </summary>
-   private string? ChairmanCacheIdentity() =>
-      Chairman is null
-         ? null
-         : $"{Chairman.DisplayName}|{Chairman.Role}|{Chairman.PersonaPrompt}";
 
    /// <summary>Context compressor (may be <c>null</c> if compression is disabled).</summary>
    public IContextCompressor? Compressor { get; }
@@ -350,7 +342,7 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
 
       // ── Cache check ─────────────────────────────────────────────────────────
       if (cache is not null && cacheKey is not null
-         && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.ReadOnly)
+                            && CacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.ReadOnly)
       {
          var cached = await cache.GetAsync(cacheKey, ct).ConfigureAwait(false);
          if (cached is not null)
@@ -381,7 +373,7 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
 
          // ── Cache write ──────────────────────────────────────────────────────
          if (cache is not null && cacheKey is not null
-            && _cacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.WriteThrough)
+                               && CacheBehavior is CacheBehavior.ReadWrite or CacheBehavior.WriteThrough)
          {
             await cache.SetAsync(cacheKey, result, ct: ct).ConfigureAwait(false);
             Log(ExecutionLog.Info("Cache", $"Cache SET for key {cacheKey}."));
@@ -583,7 +575,8 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
          compressionActivity?.Dispose();
       }
 
-      Log(ExecutionLog.Info("Compression", $"Compressed: {result.OriginalTokens:N0} → {result.CompressedTokens:N0} tokens ({result.TokensSavedPercent:F1}% saved) via {result.StrategyUsed}"));
+      Log(ExecutionLog.Info("Compression",
+         $"Compressed: {result.OriginalTokens:N0} → {result.CompressedTokens:N0} tokens ({result.TokensSavedPercent:F1}% saved) via {result.StrategyUsed}"));
 
       // Telemetry: record compression ratio.
       if (IsTelemetryEnabled && result.OriginalTokens > 0)
@@ -594,49 +587,6 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
       CompressionCache?.Set(text, Compressor.StrategyName, result);
 
       return result;
-   }
-
-   /// <summary>
-   ///   Builds the token roll-up for a finished debate from the compression logs and the rounds.
-   /// </summary>
-   /// <remarks>
-   ///   Prompt figures come from the compressor's own counters, which are measured. Response
-   ///   figures come from <see cref="TokenCounter" />, the same estimator the library uses
-   ///   everywhere else, because the provider interface does not surface the API's exact output
-   ///   counter.
-   /// </remarks>
-   private static TokenStatistics BuildTokenStats(DebateResult result, IReadOnlyList<CompressionLog> logs)
-   {
-      ArgumentNullException.ThrowIfNull(result);
-      ArgumentNullException.ThrowIfNull(logs);
-
-      var counter = TokenCounter.Default;
-
-      var original = logs.Sum(l => l.OriginalTokens);
-      var compressed = logs.Sum(l => l.CompressedTokens);
-
-      var breakdown = new List<RoundTokenUsage>();
-      foreach (var round in result.Rounds)
-      {
-         var roundLogs = logs.Where(l => l.RoundNumber == round.RoundNumber).ToList();
-         var responseTokens = round.Responses.Sum(r => counter.EstimateTokens(r.Value));
-
-         breakdown.Add(new RoundTokenUsage(
-            round.RoundNumber,
-            round.RoundName,
-            roundLogs.Sum(l => l.OriginalTokens),
-            roundLogs.Sum(l => l.CompressedTokens),
-            responseTokens,
-            roundLogs.Count > 0 ? roundLogs[0].StrategyName : "None"));
-      }
-
-      return new TokenStatistics
-      {
-         TotalOriginalTokens = original,
-         TotalCompressedTokens = compressed,
-         TotalResponseTokens = result.Rounds.Sum(r => r.Responses.Sum(x => counter.EstimateTokens(x.Value))),
-         RoundBreakdown = breakdown
-      };
    }
 
    /// <summary>
@@ -708,7 +658,8 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
          sb.AppendLine($"    Safety margin: {_autoChunkingOptions.SafetyMargin:P0}");
          sb.AppendLine($"    Max chunks/round: {_autoChunkingOptions.MaxChunksPerRound}");
          sb.AppendLine($"    Map-Reduce: {(_autoChunkingOptions.EnableMapReduce ? "enabled" : "disabled")}");
-         sb.AppendLine($"    Progressive disclosure: {(_autoChunkingOptions.EnableProgressiveDisclosure ? "enabled" : "disabled")}");
+         sb.AppendLine(
+            $"    Progressive disclosure: {(_autoChunkingOptions.EnableProgressiveDisclosure ? "enabled" : "disabled")}");
       }
 
       if (IsTelemetryEnabled)
@@ -732,6 +683,71 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
       return sb.ToString();
    }
 
+   /// <summary>
+   ///    Identity a member contributes to the cache key. The display name already carries
+   ///    model and provider; role and persona are added because they change the prompt the
+   ///    member receives and therefore the output.
+   /// </summary>
+   private static string MemberCacheIdentity(CouncilMember member)
+   {
+      return $"{member.DisplayName}|{member.Role}|{member.PersonaPrompt}";
+   }
+
+   /// <summary>
+   ///    Identity the chairman contributes to the cache key, or <c>null</c> when the
+   ///    debate has no chairman. Without it, two debates with identical members but
+   ///    different chairmen shared a cache entry and one received the other's verdict.
+   /// </summary>
+   private string? ChairmanCacheIdentity()
+   {
+      return Chairman is null
+         ? null
+         : $"{Chairman.DisplayName}|{Chairman.Role}|{Chairman.PersonaPrompt}";
+   }
+
+   /// <summary>
+   ///    Builds the token roll-up for a finished debate from the compression logs and the rounds.
+   /// </summary>
+   /// <remarks>
+   ///    Prompt figures come from the compressor's own counters, which are measured. Response
+   ///    figures come from <see cref="TokenCounter" />, the same estimator the library uses
+   ///    everywhere else, because the provider interface does not surface the API's exact output
+   ///    counter.
+   /// </remarks>
+   private static TokenStatistics BuildTokenStats(DebateResult result, IReadOnlyList<CompressionLog> logs)
+   {
+      ArgumentNullException.ThrowIfNull(result);
+      ArgumentNullException.ThrowIfNull(logs);
+
+      var counter = TokenCounter.Default;
+
+      var original = logs.Sum(l => l.OriginalTokens);
+      var compressed = logs.Sum(l => l.CompressedTokens);
+
+      var breakdown = new List<RoundTokenUsage>();
+      foreach (var round in result.Rounds)
+      {
+         var roundLogs = logs.Where(l => l.RoundNumber == round.RoundNumber).ToList();
+         var responseTokens = round.Responses.Sum(r => counter.EstimateTokens(r.Value));
+
+         breakdown.Add(new RoundTokenUsage(
+            round.RoundNumber,
+            round.RoundName,
+            roundLogs.Sum(l => l.OriginalTokens),
+            roundLogs.Sum(l => l.CompressedTokens),
+            responseTokens,
+            roundLogs.Count > 0 ? roundLogs[0].StrategyName : "None"));
+      }
+
+      return new TokenStatistics
+      {
+         TotalOriginalTokens = original,
+         TotalCompressedTokens = compressed,
+         TotalResponseTokens = result.Rounds.Sum(r => r.Responses.Sum(x => counter.EstimateTokens(x.Value))),
+         RoundBreakdown = breakdown
+      };
+   }
+
    private async Task<DebateResult> ExecuteCoreAsync(
       CancellationToken ct,
       Func<DebateRound, DebateRound>? roundInterceptor = null)
@@ -749,7 +765,8 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
       var succeeded = false;
       try
       {
-         Log(ExecutionLog.Info("Council", $"Starting debate — strategy: {Strategy.StrategyName}, members: {Members.Count}, maxRounds: {_maxRounds}"));
+         Log(ExecutionLog.Info("Council",
+            $"Starting debate — strategy: {Strategy.StrategyName}, members: {Members.Count}, maxRounds: {_maxRounds}"));
 
          if (ExecutionOptions.HasResponseLanguage)
             Log(ExecutionLog.Info("Council", $"Response language enforced: {ExecutionOptions.ResponseLanguage}"));
@@ -761,7 +778,8 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
             Log(ExecutionLog.Info("Chairman", $"Chairman assigned: {Chairman.DisplayName}"));
 
          if (KnowledgeKeeper is not null)
-            Log(ExecutionLog.Info("KnowledgeKeeper", $"Knowledge Keeper ready: {KnowledgeKeeper.DisplayName} (collection: {KnowledgeKeeper.CollectionName})"));
+            Log(ExecutionLog.Info("KnowledgeKeeper",
+               $"Knowledge Keeper ready: {KnowledgeKeeper.DisplayName} (collection: {KnowledgeKeeper.CollectionName})"));
 
          // Initialise the Operator (connect to MCP servers, discover tools) before the debate begins.
          if (Operator is not null)
@@ -780,7 +798,8 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
                }
             }
 
-            Log(ExecutionLog.Info("Operator", $"Operator ready: {Operator.DisplayName} ({Operator.AvailableTools.Count} tool(s) available)"));
+            Log(ExecutionLog.Info("Operator",
+               $"Operator ready: {Operator.DisplayName} ({Operator.AvailableTools.Count} tool(s) available)"));
          }
 
          if (Compressor is not null)
@@ -806,7 +825,8 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
             foreach (var member in Members)
                try
                {
-                  var recalled = await memory.RecallAsync(member.DisplayName, _context.UserPrompt, 3, ct).ConfigureAwait(false);
+                  var recalled = await memory.RecallAsync(member.DisplayName, _context.UserPrompt, 3, ct)
+                     .ConfigureAwait(false);
                   foreach (var m in recalled)
                   {
                      var key = m.Content;
@@ -830,7 +850,8 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
                                 {effectiveContext.SystemPrompt}
                                 """;
                effectiveContext = effectiveContext with { SystemPrompt = augmented };
-               Log(ExecutionLog.Info("AgentMemory", $"Recalled {allMemories.Count} memory entries from previous sessions."));
+               Log(ExecutionLog.Info("AgentMemory",
+                  $"Recalled {allMemories.Count} memory entries from previous sessions."));
             }
          }
 
@@ -839,7 +860,6 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
          {
             var attachmentTexts = new List<string>();
             foreach (var attachment in Attachments)
-            {
                try
                {
                   var reader = FileReaders.GetReader(attachment.FilePath);
@@ -852,14 +872,13 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
 
                   Log(ExecutionLog.Info("Attachments",
                      $"Read {Path.GetFileName(attachment.FilePath)}: " +
-                     $"{(readResult.TextContent?.Length ?? 0)} chars text, " +
+                     $"{readResult.TextContent?.Length ?? 0} chars text, " +
                      $"{readResult.BinaryParts?.Count ?? 0} binary parts"));
                }
                catch (Exception ex)
                {
                   ReportError(ex, "Attachments");
                }
-            }
 
             if (attachmentTexts.Count > 0)
             {
@@ -919,7 +938,8 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
             _temperature,
             async (round, callbackCt) =>
             {
-               Log(ExecutionLog.Info("Council", $"Round {round.RoundNumber} completed: {round.RoundName} ({round.Duration.TotalSeconds:F1}s, {round.Responses.Count} responses)"));
+               Log(ExecutionLog.Info("Council",
+                  $"Round {round.RoundNumber} completed: {round.RoundName} ({round.Duration.TotalSeconds:F1}s, {round.Responses.Count} responses)"));
 
                // Telemetry: per-round duration histogram.
                if (IsTelemetryEnabled)
@@ -927,11 +947,13 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
 
                // Log knowledge interactions
                foreach (var ki in round.KnowledgeInteractions)
-                  Log(ExecutionLog.Info("KnowledgeKeeper", $"Query: \"{Truncate(ki.Query, 100)}\" → {ki.SourceChunks} chunks"));
+                  Log(ExecutionLog.Info("KnowledgeKeeper",
+                     $"Query: \"{Truncate(ki.Query, 100)}\" → {ki.SourceChunks} chunks"));
 
                // Log operator interactions
                foreach (var oi in round.OperatorInteractions)
-                  Log(ExecutionLog.Info("Operator", $"{oi.RequesterName} → \"{Truncate(oi.Task, 100)}\" ({oi.ToolCallCount} tool call(s))"));
+                  Log(ExecutionLog.Info("Operator",
+                     $"{oi.RequesterName} → \"{Truncate(oi.Task, 100)}\" ({oi.ToolCallCount} tool call(s))"));
 
                // Log participant responses
                foreach (var (member, response) in round.Responses)
@@ -970,7 +992,8 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
                // Awaited rather than blocked on: this used to pin a thread-pool thread for
                // the whole checkpoint write, once per round (W3-07).
                if (DebateStore is { } store)
-                  await SaveCheckpointAsync(store, round, completedRounds, checkpointTarget, callbackCt).ConfigureAwait(false);
+                  await SaveCheckpointAsync(store, round, completedRounds, checkpointTarget, callbackCt)
+                     .ConfigureAwait(false);
 
                // Track the round AFTER the callbacks so it's included in the next checkpoint.
                completedRounds.Add(round);
@@ -1010,6 +1033,41 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
                $"({result.TokenStats.TokensSaved:N0} tokens), total cost {logs.Aggregate(TimeSpan.Zero, (a, l) => a + l.Duration).TotalMilliseconds:F0} ms"));
          }
 
+         // Same reasoning for spend: a cost gate, rate limiter or price list is only meaningful if
+         // the result says what it actually cost. Reported whenever any of them was configured, so
+         // a caller that enabled a ceiling always gets the number it was protecting.
+         if (ExecutionOptions.CostGate is not null
+             || ExecutionOptions.RateLimiter is not null
+             || ExecutionOptions.PricingRegistry is not null)
+         {
+            var cost = ExecutionOptions.GetOrCreateLedger().Build();
+            result = result with { CostEstimate = cost };
+
+            Log(ExecutionLog.Info(
+               "Cost",
+               $"{cost.TotalCost:F4} across {cost.Members.Sum(m => m.CallCount)} call(s), " +
+               $"{cost.TotalPromptTokens:N0} prompt + {cost.TotalCompletionTokens:N0} completion tokens" +
+               (cost.IsEstimate ? " (estimated — at least one model had no registered price)" : string.Empty) +
+               (cost.WasTruncated ? " (debate truncated by the cost gate)" : string.Empty)));
+         }
+
+         // Publish the tool calls members actually made. The strategy layer accumulates them on the
+         // execution options because member turns run concurrently; without this the only record
+         // of a tool having been called was the model's own text, which is exactly the kind of
+         // claim a debate result should not take on trust.
+         var allToolCalls = ExecutionOptions.GetOrCreateToolCalls();
+         if (allToolCalls.Count > 0)
+         {
+            result = result with { ToolCalls = allToolCalls.ToList() };
+
+            Log(ExecutionLog.Info(
+               "Tools",
+               $"{allToolCalls.Count} tool call(s): {string.Join(", ", allToolCalls.Select(c => $"{c.MemberName}→{c.ToolName}").Distinct())}"
+               + (allToolCalls.Any(c => !c.Succeeded)
+                  ? $" — {allToolCalls.Count(c => !c.Succeeded)} failed"
+                  : string.Empty)));
+         }
+
          // F-09: Stamp StrategyUsed on every round so consumers can audit which strategy
          // produced each round.
          if (StrategySelector is not null)
@@ -1039,11 +1097,13 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
             }
          }
 
-         Log(ExecutionLog.Info("Council", $"Debate completed — {result.Rounds.Count} rounds, duration: {result.TotalDuration.TotalSeconds:F1}s"));
+         Log(ExecutionLog.Info("Council",
+            $"Debate completed — {result.Rounds.Count} rounds, duration: {result.TotalDuration.TotalSeconds:F1}s"));
 
          if (result.TokenStats is not null)
          {
-            Log(ExecutionLog.Info("Compression", $"Token stats — original: {result.TokenStats.TotalOriginalTokens:N0}, compressed: {result.TokenStats.TotalCompressedTokens:N0}, saved: {result.TokenStats.SavedPercent:F1}%"));
+            Log(ExecutionLog.Info("Compression",
+               $"Token stats — original: {result.TokenStats.TotalOriginalTokens:N0}, compressed: {result.TokenStats.TotalCompressedTokens:N0}, saved: {result.TokenStats.SavedPercent:F1}%"));
 
             if (IsTelemetryEnabled)
             {
@@ -1078,7 +1138,7 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
                   debateId = checkpointTarget.Resolved
                      ? checkpointTarget.Id
                      : (await DebateStore.ListAsync(ct).ConfigureAwait(false))
-                        .FirstOrDefault(m => m.OriginalQuestion == _context.UserPrompt)?.DebateId;
+                     .FirstOrDefault(m => m.OriginalQuestion == _context.UserPrompt)?.DebateId;
                }
                catch (Exception ex)
                {
@@ -1149,7 +1209,9 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
    private Task<DebateResult> ExecuteCoreWithCallbackAsync(
       Func<DebateRound, DebateRound> roundInterceptor,
       CancellationToken ct)
-      => ExecuteCoreAsync(ct, roundInterceptor);
+   {
+      return ExecuteCoreAsync(ct, roundInterceptor);
+   }
 
    private void Log(ExecutionLog entry)
    {
@@ -1199,7 +1261,7 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
          for (var i = 0; i < count; i++)
          for (var j = i + 1; j < count; j++)
          {
-            totalSim += Debate.TextSimilarity.Similarity(responses[i], responses[j]);
+            totalSim += TextSimilarity.Similarity(responses[i], responses[j]);
             pairs++;
          }
 
@@ -1212,20 +1274,6 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
       {
          ArrayPool<string>.Shared.Return(rented);
       }
-   }
-
-   /// <summary>
-   ///    Carries the checkpoint this debate writes to from the first save to the rest of
-   ///    its rounds. A per-execution local rather than a field, so two debates on the same
-   ///    executor cannot share it.
-   /// </summary>
-   private sealed class CheckpointTarget
-   {
-      /// <summary>The checkpoint id, or <c>null</c> until the store assigns one.</summary>
-      internal string? Id;
-
-      /// <summary>Whether the lookup has already run for this debate.</summary>
-      internal bool Resolved;
    }
 
    /// <summary>
@@ -1355,7 +1403,8 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
       {
          try
          {
-            var response = await member.AskAsync(_context.SystemPrompt, rankPrompt, _temperature, token).ConfigureAwait(false);
+            var response = await member.AskAsync(_context.SystemPrompt, rankPrompt, _temperature, token)
+               .ConfigureAwait(false);
             var rankings = ParseRankings(response, options);
             if (rankings.Count > 0)
                ballots.Add(new ParticipantBallot(member.DisplayName, 1.0, rankings));
@@ -1439,7 +1488,8 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
       // Extract the first sequence of comma-separated numbers from the response.
       var match = RankingDigitsRegex().Match(response);
       if (!match.Success) return rankings;
-      var numbers = match.Groups[1].Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+      var numbers = match.Groups[1].Value
+         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
       var rank = 1;
       foreach (var numStr in numbers)
          if (int.TryParse(numStr, out var num) && num >= 1 && num <= options.Count)
@@ -1449,5 +1499,19 @@ public sealed partial class CouncilExecutor : ICouncilExecutor
          }
 
       return rankings;
+   }
+
+   /// <summary>
+   ///    Carries the checkpoint this debate writes to from the first save to the rest of
+   ///    its rounds. A per-execution local rather than a field, so two debates on the same
+   ///    executor cannot share it.
+   /// </summary>
+   private sealed class CheckpointTarget
+   {
+      /// <summary>The checkpoint id, or <c>null</c> until the store assigns one.</summary>
+      internal string? Id;
+
+      /// <summary>Whether the lookup has already run for this debate.</summary>
+      internal bool Resolved;
    }
 }

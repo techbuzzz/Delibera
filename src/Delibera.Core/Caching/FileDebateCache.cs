@@ -1,7 +1,6 @@
 using System.Text.Json;
-using Delibera.Core.Interfaces;
-using Delibera.Core.Models;
-using Microsoft.Extensions.Logging;
+using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Delibera.Core.Caching;
 
@@ -13,16 +12,16 @@ namespace Delibera.Core.Caching;
 /// </summary>
 public sealed class FileDebateCache : IDebateCache
 {
-   private readonly string _cacheDirectory;
-   private readonly TimeSpan _defaultTtl;
-   private readonly ILogger<FileDebateCache> _logger;
-
    private static readonly JsonSerializerOptions _json = new()
    {
       PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-      DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-      WriteIndented = false,
+      DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+      WriteIndented = false
    };
+
+   private readonly string _cacheDirectory;
+   private readonly TimeSpan _defaultTtl;
+   private readonly ILogger<FileDebateCache> _logger;
 
    /// <summary>
    ///    Creates a new file-system cache.
@@ -34,7 +33,7 @@ public sealed class FileDebateCache : IDebateCache
    {
       _cacheDirectory = cacheDirectory;
       _defaultTtl = defaultTtl ?? TimeSpan.FromDays(7);
-      _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<FileDebateCache>.Instance;
+      _logger = logger ?? NullLogger<FileDebateCache>.Instance;
 
       if (!Directory.Exists(_cacheDirectory))
          Directory.CreateDirectory(_cacheDirectory);
@@ -81,7 +80,8 @@ public sealed class FileDebateCache : IDebateCache
    }
 
    /// <inheritdoc />
-   public async ValueTask SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
+   public async ValueTask SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null,
+      CancellationToken ct = default)
    {
       var filePath = GetFilePath(cacheKey);
       try
@@ -142,5 +142,8 @@ public sealed class FileDebateCache : IDebateCache
       return new ValueTask<bool>(true);
    }
 
-   private string GetFilePath(string cacheKey) => Path.Combine(_cacheDirectory, $"{cacheKey}.cache.json");
+   private string GetFilePath(string cacheKey)
+   {
+      return Path.Combine(_cacheDirectory, $"{cacheKey}.cache.json");
+   }
 }

@@ -1,6 +1,3 @@
-using Delibera.Server.Api.Contracts;
-using Delibera.Server.Templates.Registry;
-
 namespace Delibera.Server.Api.Endpoints;
 
 public static class TemplateEndpoints
@@ -26,7 +23,9 @@ public static class TemplateEndpoints
    }
 
    private static Ok<TemplateDto[]> ListTemplates(ITemplateRegistry registry)
-      => TypedResults.Ok(registry.GetAll().Select(ToDto).ToArray());
+   {
+      return TypedResults.Ok(registry.GetAll().Select(ToDto).ToArray());
+   }
 
    private static Results<Ok<TemplateDto>, NotFound> GetTemplate(
       string id, ITemplateRegistry registry)
@@ -38,7 +37,8 @@ public static class TemplateEndpoints
    }
 
    private static TemplateDto ToDto(IServerTemplate t)
-      => new()
+   {
+      return new TemplateDto
       {
          TemplateId = t.TemplateId,
          DisplayName = t.DisplayName,
@@ -48,6 +48,7 @@ public static class TemplateEndpoints
          MemberRoles = t.MemberRoles,
          VotingStrategy = t.VotingStrategy,
          RagEnabled = t.RagEnabled,
-         OperatorEnabled = t.OperatorEnabled,
+         OperatorEnabled = t.OperatorEnabled
       };
+   }
 }

@@ -42,28 +42,53 @@ jobs:
       - name: Test
         run: dotnet test Delibera.slnx -c Release --no-build --logger "trx;LogFileName=test-results.trx"
 
+      # The GA matrix is Delibera.Core, Delibera.Server and Delibera.Redis.
+      # Delibera.Grpc / Delibera.Grpc.Client carry the same packaging metadata and
+      # are one line away from this list once they are published.
       - name: Pack
-        run: dotnet pack src/Delibera.Core/Delibera.Core.csproj -c Release --no-build --output ./artifacts
+        run: |
+          for proj in \
+            src/Delibera.Core/Delibera.Core.csproj \
+            src/Delibera.Server/Delibera.Server.csproj \
+            src/Delibera.Redis/Delibera.Redis.csproj; do
+            dotnet pack "$proj" -c Release --no-build --output ./artifacts
+          done
 
       - name: Verify package layout (hash, no signature)
         run: |
-          # Sanity-check the package. `dotnet package list` is project-scoped —
+          # Sanity-check the packages. `dotnet package list` is project-scoped —
           # it does NOT accept a .nupkg path — so it reports the dependency graph
           # we are about to publish. `unzip -l` stays as the archive listing.
           # We do NOT run `dotnet nuget verify` because it requires a code
           # signing certificate (NU3004) — overkill for an OSS package.
           ls -la ./artifacts
-          for pkg in ./artifacts/Delibera.Core.*.nupkg; do
+          for proj in \
+            src/Delibera.Core/Delibera.Core.csproj \
+            src/Delibera.Server/Delibera.Server.csproj \
+            src/Delibera.Redis/Delibera.Redis.csproj; do
+            echo "── $proj dependencies ──"
+            dotnet package list --project "$proj" --include-transitive
+          done
+          # Every shipped package must carry its README and icon: a package without
+          # them renders as a bare dependency line on nuget.org.
+          for pkg in ./artifacts/*.nupkg; do
             echo "── $pkg ──"
-            dotnet package list --project src/Delibera.Core/Delibera.Core.csproj --include-transitive
             unzip -l "$pkg"
+            unzip -l "$pkg" | grep -q 'README.md' || { echo "MISSING README.md in $pkg"; exit 1; }
+            unzip -l "$pkg" | grep -q 'icon.png'  || { echo "MISSING icon.png in $pkg";  exit 1; }
           done
 
+      # Symbol packages (.snupkg) are built too, so they must be uploaded and pushed with the
+      # rest. IncludeSymbols/SymbolPackageFormat in each csproj is otherwise decoration: without
+      # this they would be generated on every run and dropped, and consumers would get no
+      # stack traces from the package.
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nuget-artifacts
-          path: ./artifacts/*.nupkg
+          path: |
+            ./artifacts/*.nupkg
+            ./artifacts/*.snupkg
           if-no-files-found: error
           retention-days: 14
 
@@ -98,7 +123,8 @@ jobs:
 
       - name: Push to NuGet.org
         run: |
-          for pkg in ./artifacts/*.nupkg; do
+          for pkg in ./artifacts/*.nupkg ./artifacts/*.snupkg; do
+            [ -e "$pkg" ] || continue
             echo "Pushing $pkg"
             dotnet nuget push "$pkg" \
               --source https://api.nuget.org/v3/index.json \

@@ -1,7 +1,6 @@
-using Delibera.Core.Providers.LLM;
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Configuration;
 using System.Collections.Concurrent;
+using Delibera.Core.Providers.LLM;
+using Microsoft.Extensions.Configuration;
 
 namespace Delibera.Core.Providers;
 
@@ -96,7 +95,8 @@ public abstract class CachingFactory<TBuilder, TInstance>
 ///    Factory for creating <see cref="ILLMProvider" /> instances.
 ///    Supports registration of custom provider builders for extensibility.
 /// </summary>
-public sealed class ProviderFactory : CachingFactory<Func<IConfigurationSection, ILLMProvider>, ILLMProvider>, ILLMProviderFactory
+public sealed class ProviderFactory : CachingFactory<Func<IConfigurationSection, ILLMProvider>, ILLMProvider>,
+   ILLMProviderFactory
 {
    /// <summary>Creates a factory with the built-in Ollama provider registered.</summary>
    public ProviderFactory()
@@ -113,7 +113,8 @@ public sealed class ProviderFactory : CachingFactory<Func<IConfigurationSection,
    }
 
    /// <inheritdoc />
-   ILLMProviderFactory ILLMProviderFactory.RegisterBuilder(string providerType, Func<IConfigurationSection, ILLMProvider> builder)
+   ILLMProviderFactory ILLMProviderFactory.RegisterBuilder(string providerType,
+      Func<IConfigurationSection, ILLMProvider> builder)
    {
       RegisterBuilder(providerType, builder);
       return this;

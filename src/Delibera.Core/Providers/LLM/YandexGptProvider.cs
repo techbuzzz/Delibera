@@ -65,7 +65,7 @@ public sealed class YandexGptProvider : ILLMProvider
       float temperature = 0.3f,
       int maxOutputTokens = 4000)
       : this(apiKey, folderId, endpoint, legacyEndpoint, temperature, maxOutputTokens,
-         null, null, null, null)
+         null, null)
    {
    }
 

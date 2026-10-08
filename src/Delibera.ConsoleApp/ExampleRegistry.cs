@@ -31,33 +31,65 @@ public sealed record ExampleEntry(
 public static class ExampleRegistry
 {
    // (Title, Description, Category, Order, explicit Id?, aliases[])
-   private static readonly Dictionary<string, (string Title, string Description, string Category, int Order, string? Id, string[] Aliases)> Metadata =
+   private static readonly Dictionary<string, (string Title, string Description, string Category, int Order, string? Id,
+      string[] Aliases)> Metadata =
       new(StringComparer.OrdinalIgnoreCase)
       {
-         ["QuickStart"] = ("Quick Start", "Minimal programmatic council — no appsettings required.", "Getting Started", 0, "quick", []),
-         ["DependencyInjectionExample"] = ("Dependency Injection", "AddDelibera() DI registration, options binding, resolved services.", "Core", 0, "di", []),
-         ["MultiProviderExample"] = ("Multi-Provider Council", "Mix models from different LLM providers in one council.", "Core", 1, "multiprovider", ["multi-provider"]),
-         ["CompressionExample"] = ("Context Compression", "All 4 strategies, cache, token counting, council integration.", "Features", 0, "compression", []),
-         ["AutoChunkingExample"] = ("AutoChunking", "Progressive disclosure for large documents across rounds.", "Features", 1, "autochunking", ["auto-chunking"]),
-         ["CancellationExample"] = ("Cooperative Cancellation", "Ctrl+C / CancellationToken across the whole pipeline.", "Features", 2, "cancellation", []),
-         ["SeparateFilesExample"] = ("Separate File Output", "Export result.md, statistics.md, logs.md independently.", "Features", 3, "separate-files", []),
-         ["ResilienceExample"] = ("Resilience (Polly v8)", "Named HttpClients + retry pipelines via Microsoft.Extensions.Http.Resilience.", "Infrastructure", 0, "resilience", []),
-         ["RagExample"] = ("RAG — Qdrant", "Qdrant-backed Knowledge Keeper with semantic retrieval.", "RAG", 0, "rag", []),
-         ["PgVectorExample"] = ("RAG — pgvector", "PostgreSQL/pgvector-backed Knowledge Keeper.", "RAG", 1, "pgvector", ["pg-vector"]),
-         ["OperatorExample"] = ("Operator (MCP)", "Operator micro-agent delegating tasks to MCP tools.", "Advanced", 0, "operator", []),
-         ["OperatorMcpToolsExample"] = ("Operator + MCP Tools", "Full MCP tool wiring with the Operator role.", "Advanced", 1, "operator-mcp", ["operator-mcp-tools"]),
-         ["MicrosoftExtensionsAiExample"] = ("M.E.AI Integration", "IChatClient ↔ ILLMProvider bridges + middleware + council.", "Microsoft.Extensions.AI", 0, "msai", ["microsoft-extensions-ai"]),
-         ["ChatClientLLMProviderExample"] = ("ChatClientLLMProvider", "OpenAI/Azure/Ollama via Microsoft.Extensions.AI + streaming.", "Microsoft.Extensions.AI", 1, "chatclient", ["chat-client-llm-provider"]),
-         ["TelemetryExample"] = ("Telemetry (OpenTelemetry)", "In-process ActivityListener + MeterListener printing spans & metrics.", "Observability", 0, "telemetry", []),
-         ["QuickWinsExample"] = ("Quick Wins Bundle", "HTML export, timeout, personas, benchmark, participant limit.", "Features", 4, "quick-wins", ["quickwins"]),
-         ["TemplatesExample"] = ("Debate Templates", "Pre-configured councils: ArchitectureReview, RiskAssessment, CodeReview, …", "Features", 5, "templates", []),
-         ["StreamingCouncilExample"] = ("Streaming Council", "IAsyncEnumerable<DebateRound> — rounds yielded live as they complete.", "Features", 6, "stream", ["streaming"]),
-         ["AdaptiveStrategyExample"] = ("Adaptive Strategy", "Switch debate strategy mid-flight on stagnation (AdaptiveStrategySelector).", "Features", 7, "adaptive-strategy", []),
-         ["VotingExample"] = ("Voting Engine", "Pluggable vote/consensus: Majority, BordaCount, Weighted strategies.", "Features", 8, "voting", []),
-         ["StructuredOutputExample"] = ("Structured Output", "JSON-schema-validated typed verdicts from the Chairman.", "Features", 9, "structured-output", []),
-         ["PersistenceExample"] = ("Debate Persistence", "Checkpoint after every round; resume from last completed round.", "Features", 10, "persistence", []),
-         ["AgentMemoryExample"] = ("Agent Memory", "Council members recall + persist conclusions across sessions.", "Features", 11, "agent-memory", []),
-         ["MultiModalExample"] = ("Multi-Modal Council", "Images, diagrams, and documents via pluggable IFileContentReader.", "Features", 12, "multimodal", [])
+         ["QuickStart"] = ("Quick Start", "Minimal programmatic council — no appsettings required.", "Getting Started",
+            0, "quick", []),
+         ["DependencyInjectionExample"] = ("Dependency Injection",
+            "AddDelibera() DI registration, options binding, resolved services.", "Core", 0, "di", []),
+         ["MultiProviderExample"] = ("Multi-Provider Council",
+            "Mix models from different LLM providers in one council.", "Core", 1, "multiprovider", ["multi-provider"]),
+         ["CompressionExample"] = ("Context Compression",
+            "All 4 strategies, cache, token counting, council integration.", "Features", 0, "compression", []),
+         ["AutoChunkingExample"] = ("AutoChunking", "Progressive disclosure for large documents across rounds.",
+            "Features", 1, "autochunking", ["auto-chunking"]),
+         ["CancellationExample"] = ("Cooperative Cancellation", "Ctrl+C / CancellationToken across the whole pipeline.",
+            "Features", 2, "cancellation", []),
+         ["SeparateFilesExample"] = ("Separate File Output", "Export result.md, statistics.md, logs.md independently.",
+            "Features", 3, "separate-files", []),
+         ["ResilienceExample"] = ("Resilience (Polly v8)",
+            "Named HttpClients + retry pipelines via Microsoft.Extensions.Http.Resilience.", "Infrastructure", 0,
+            "resilience", []),
+         ["RagExample"] = ("RAG — Qdrant", "Qdrant-backed Knowledge Keeper with semantic retrieval.", "RAG", 0, "rag",
+            []),
+         ["PgVectorExample"] = ("RAG — pgvector", "PostgreSQL/pgvector-backed Knowledge Keeper.", "RAG", 1, "pgvector",
+            ["pg-vector"]),
+         ["OperatorExample"] = ("Operator (MCP)", "Operator micro-agent delegating tasks to MCP tools.", "Advanced", 0,
+            "operator", []),
+         ["OperatorMcpToolsExample"] = ("Operator + MCP Tools", "Full MCP tool wiring with the Operator role.",
+            "Advanced", 1, "operator-mcp", ["operator-mcp-tools"]),
+         ["MicrosoftExtensionsAiExample"] = ("M.E.AI Integration",
+            "IChatClient ↔ ILLMProvider bridges + middleware + council.", "Microsoft.Extensions.AI", 0, "msai",
+            ["microsoft-extensions-ai"]),
+         ["ChatClientLLMProviderExample"] = ("ChatClientLLMProvider",
+            "OpenAI/Azure/Ollama via Microsoft.Extensions.AI + streaming.", "Microsoft.Extensions.AI", 1, "chatclient",
+            ["chat-client-llm-provider"]),
+         ["TelemetryExample"] = ("Telemetry (OpenTelemetry)",
+            "In-process ActivityListener + MeterListener printing spans & metrics.", "Observability", 0, "telemetry",
+            []),
+         ["QuickWinsExample"] = ("Quick Wins Bundle", "HTML export, timeout, personas, benchmark, participant limit.",
+            "Features", 4, "quick-wins", ["quickwins"]),
+         ["TemplatesExample"] = ("Debate Templates",
+            "Pre-configured councils: ArchitectureReview, RiskAssessment, CodeReview, …", "Features", 5, "templates",
+            []),
+         ["StreamingCouncilExample"] = ("Streaming Council",
+            "IAsyncEnumerable<DebateRound> — rounds yielded live as they complete.", "Features", 6, "stream",
+            ["streaming"]),
+         ["AdaptiveStrategyExample"] = ("Adaptive Strategy",
+            "Switch debate strategy mid-flight on stagnation (AdaptiveStrategySelector).", "Features", 7,
+            "adaptive-strategy", []),
+         ["VotingExample"] = ("Voting Engine", "Pluggable vote/consensus: Majority, BordaCount, Weighted strategies.",
+            "Features", 8, "voting", []),
+         ["StructuredOutputExample"] = ("Structured Output", "JSON-schema-validated typed verdicts from the Chairman.",
+            "Features", 9, "structured-output", []),
+         ["PersistenceExample"] = ("Debate Persistence",
+            "Checkpoint after every round; resume from last completed round.", "Features", 10, "persistence", []),
+         ["AgentMemoryExample"] = ("Agent Memory", "Council members recall + persist conclusions across sessions.",
+            "Features", 11, "agent-memory", []),
+         ["MultiModalExample"] = ("Multi-Modal Council",
+            "Images, diagrams, and documents via pluggable IFileContentReader.", "Features", 12, "multimodal", [])
       };
 
    /// <summary>Discovers all examples in the Examples namespace, ordered by category then order.</summary>
@@ -74,9 +106,12 @@ public static class ExampleRegistry
          if (!type.IsClass) continue;
          if (type.IsGenericTypeDefinition) continue;
          if (type.Name.StartsWith('<') || type.Name.StartsWith("<>")) continue;
-         if (type.Namespace is null || !type.Namespace.StartsWith(examplesNamespace, StringComparison.Ordinal)) continue;
+         if (type.Namespace is null ||
+             !type.Namespace.StartsWith(examplesNamespace, StringComparison.Ordinal)) continue;
 
-         var method = type.GetMethod("RunAsync", BindingFlags.Public | BindingFlags.Static, null, [typeof(CancellationToken)], null) ?? type.GetMethod("RunAsync", BindingFlags.Public | BindingFlags.Static, null, [], null);
+         var method =
+            type.GetMethod("RunAsync", BindingFlags.Public | BindingFlags.Static, null, [typeof(CancellationToken)],
+               null) ?? type.GetMethod("RunAsync", BindingFlags.Public | BindingFlags.Static, null, [], null);
          if (method is null) continue;
          if (method.ReturnType != typeof(Task) && method.ReturnType != typeof(ValueTask)) continue;
 

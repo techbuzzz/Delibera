@@ -31,7 +31,8 @@ public interface IVectorStoreFactory : IAsyncDisposable
    /// <param name="config">Configuration section with provider-specific settings.</param>
    /// <param name="embeddingProvider">Embedding provider for vectorization.</param>
    /// <returns>The created or cached RAG provider.</returns>
-   IRagProvider Create(string name, string providerType, IConfigurationSection config, IEmbeddingProvider embeddingProvider);
+   IRagProvider Create(string name, string providerType, IConfigurationSection config,
+      IEmbeddingProvider embeddingProvider);
 
    /// <summary>
    ///    Returns a previously created provider by name, or <c>null</c> if not found.

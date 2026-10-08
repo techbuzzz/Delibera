@@ -19,7 +19,8 @@ public interface IContextCompressor
    /// <param name="options">Compression options controlling behaviour.</param>
    /// <param name="ct">Cancellation token.</param>
    /// <returns>Compressed context with metadata about the compression.</returns>
-   Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null, CancellationToken ct = default);
+   Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null,
+      CancellationToken ct = default);
 
    /// <summary>
    ///    Compresses multiple texts and merges the results.
@@ -28,7 +29,8 @@ public interface IContextCompressor
    /// <param name="options">Compression options.</param>
    /// <param name="ct">Cancellation token.</param>
    /// <returns>Compressed and merged context.</returns>
-   Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null, CancellationToken ct = default);
+   Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null,
+      CancellationToken ct = default);
 }
 
 /// <summary>

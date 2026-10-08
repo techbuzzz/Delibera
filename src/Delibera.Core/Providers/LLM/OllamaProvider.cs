@@ -3,7 +3,6 @@ using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
 using Delibera.Core.DependencyInjection;
 using Delibera.Core.Resilience;
-using Microsoft.Extensions.AI;
 using OllamaSharp;
 using OllamaSharp.Models;
 using OllamaSharp.Models.Chat;
@@ -51,13 +50,13 @@ public sealed partial class OllamaProvider : ILLMProvider
 {
    private static readonly TimeSpan DefaultCloudTimeout = TimeSpan.FromMinutes(5);
    private static readonly TimeSpan DefaultLocalTimeout = TimeSpan.FromMinutes(10);
+   private readonly bool _enableThinking;
 
    private readonly IHttpClientFactory? _httpClientFactory;
    private readonly string? _httpClientName;
    private readonly int _maxOutputTokens;
-   private readonly bool _enableThinking;
-   private readonly bool _retryOnBudgetExhaustion;
    private readonly ResiliencePipeline? _pipeline;
+   private readonly bool _retryOnBudgetExhaustion;
    private bool _disposed;
 
    /// <summary>
@@ -100,16 +99,16 @@ public sealed partial class OllamaProvider : ILLMProvider
    ///    truncates long responses mid-JSON. Pass a positive value to cap output per call.
    /// </param>
    /// <param name="enableThinking">
-   ///   Sends <c>think</c> explicitly to the model. Reasoning models (gpt-oss, glm, deepseek)
-   ///   think by default, and the reasoning tokens come out of the same generation budget as the
-   ///   answer. When <c>false</c> the request carries <c>think: false</c>, so the whole budget is
-   ///   available for the answer. Set <c>true</c> only when you actually want the reasoning and
-   ///   have sized <paramref name="maxOutputTokens" /> to absorb it.
+   ///    Sends <c>think</c> explicitly to the model. Reasoning models (gpt-oss, glm, deepseek)
+   ///    think by default, and the reasoning tokens come out of the same generation budget as the
+   ///    answer. When <c>false</c> the request carries <c>think: false</c>, so the whole budget is
+   ///    available for the answer. Set <c>true</c> only when you actually want the reasoning and
+   ///    have sized <paramref name="maxOutputTokens" /> to absorb it.
    /// </param>
    /// <param name="retryOnBudgetExhaustion">
-   ///   When a reasoning model burns the entire generation budget thinking and is cut off before
-   ///   emitting any answer (<c>done_reason: length</c> with zero content), retry once with a
-   ///   larger budget. Default <c>true</c>. Disable it to get the failure immediately.
+   ///    When a reasoning model burns the entire generation budget thinking and is cut off before
+   ///    emitting any answer (<c>done_reason: length</c> with zero content), retry once with a
+   ///    larger budget. Default <c>true</c>. Disable it to get the failure immediately.
    /// </param>
    public OllamaProvider(
       string endpoint,
@@ -180,77 +179,6 @@ public sealed partial class OllamaProvider : ILLMProvider
       _maxOutputTokens = maxOutputTokens;
       _enableThinking = enableThinking;
       _retryOnBudgetExhaustion = retryOnBudgetExhaustion;
-   }
-
-   /// <summary>One completed stream: the answer plus the signal needed to classify an empty one.</summary>
-   private readonly record struct StreamAttempt(
-      string Text,
-      string? DoneReason,
-      int ReasoningChars,
-      long PromptTokens,
-      long EvalTokens)
-   {
-      /// <summary>
-      ///   The generation budget ran out before any answer was produced. On a reasoning model
-      ///   this is the signature of "the whole budget went into thinking": content is empty,
-      ///   <c>done_reason</c> is <c>length</c>, and the reasoning field is non-empty.
-      /// </summary>
-      public bool ExhaustedBudget =>
-         string.IsNullOrEmpty(Text) && ReasoningChars > 0
-         && string.Equals(DoneReason, "length", StringComparison.OrdinalIgnoreCase);
-   }
-
-   /// <summary>
-   ///   Streams one request, accumulating the answer separately from the reasoning text.
-   /// </summary>
-   /// <remarks>
-   ///   <see cref="ChatRequest.Think" /> being false does not stop a model that thinks anyway
-   ///   from emitting reasoning, so <see cref="Message.Thinking" /> is counted rather than
-   ///   assumed absent. It is what distinguishes "budget spent on reasoning" from a genuinely
-   ///   empty response, and the two need different handling.
-   /// </remarks>
-   private async Task<StreamAttempt> StreamOnceAsync(ChatRequest request, CancellationToken token)
-   {
-      var sb = new StringBuilder();
-      var reasoningChars = 0;
-
-      var done = await Client.ChatAsync(request, token)
-         .StreamToEndAsync(chunk =>
-         {
-            if (chunk?.Message is not { } message)
-               return;
-
-            if (message.Content is { Length: > 0 } content)
-               sb.Append(content);
-
-            if (message.Thinking is { Length: > 0 } thought)
-               reasoningChars += thought.Length;
-         })
-         .ConfigureAwait(false);
-
-      return new StreamAttempt(
-         sb.ToString().Trim(),
-         done?.DoneReason,
-         reasoningChars,
-         done?.PromptEvalCount ?? 0,
-         done?.EvalCount ?? 0);
-   }
-
-   /// <summary>
-   ///   Picks the budget for the budget-exhaustion retry: double what the failed attempt was
-   ///   allowed, or fall back to the prompt size plus a generous allowance when the caller left
-   ///   the budget uncapped.
-   /// </summary>
-   private int NextBudget(long promptTokens, long evalTokens)
-   {
-      if (_maxOutputTokens > 0)
-         return _maxOutputTokens * 2;
-
-      // -1 means "unlimited" in the library, but the model still stops at its own ceiling and
-      // reports a length cut-off; a concrete retry budget is what makes the retry meaningful.
-      var spent = evalTokens > 0 ? (int)Math.Min(evalTokens, int.MaxValue) : 1024;
-      var floor = promptTokens > 0 ? (int)Math.Min(promptTokens, int.MaxValue) : 0;
-      return Math.Clamp(Math.Max(spent * 2, floor + 1024), 2048, 32_768);
    }
 
    /// <summary>The connection mode this provider was configured with.</summary>
@@ -464,6 +392,59 @@ public sealed partial class OllamaProvider : ILLMProvider
    }
 
    /// <summary>
+   ///    Streams one request, accumulating the answer separately from the reasoning text.
+   /// </summary>
+   /// <remarks>
+   ///    <see cref="ChatRequest.Think" /> being false does not stop a model that thinks anyway
+   ///    from emitting reasoning, so <see cref="Message.Thinking" /> is counted rather than
+   ///    assumed absent. It is what distinguishes "budget spent on reasoning" from a genuinely
+   ///    empty response, and the two need different handling.
+   /// </remarks>
+   private async Task<StreamAttempt> StreamOnceAsync(ChatRequest request, CancellationToken token)
+   {
+      var sb = new StringBuilder();
+      var reasoningChars = 0;
+
+      var done = await Client.ChatAsync(request, token)
+         .StreamToEndAsync(chunk =>
+         {
+            if (chunk?.Message is not { } message)
+               return;
+
+            if (message.Content is { Length: > 0 } content)
+               sb.Append(content);
+
+            if (message.Thinking is { Length: > 0 } thought)
+               reasoningChars += thought.Length;
+         })
+         .ConfigureAwait(false);
+
+      return new StreamAttempt(
+         sb.ToString().Trim(),
+         done?.DoneReason,
+         reasoningChars,
+         done?.PromptEvalCount ?? 0,
+         done?.EvalCount ?? 0);
+   }
+
+   /// <summary>
+   ///    Picks the budget for the budget-exhaustion retry: double what the failed attempt was
+   ///    allowed, or fall back to the prompt size plus a generous allowance when the caller left
+   ///    the budget uncapped.
+   /// </summary>
+   private int NextBudget(long promptTokens, long evalTokens)
+   {
+      if (_maxOutputTokens > 0)
+         return _maxOutputTokens * 2;
+
+      // -1 means "unlimited" in the library, but the model still stops at its own ceiling and
+      // reports a length cut-off; a concrete retry budget is what makes the retry meaningful.
+      var spent = evalTokens > 0 ? (int)Math.Min(evalTokens, int.MaxValue) : 1024;
+      var floor = promptTokens > 0 ? (int)Math.Min(promptTokens, int.MaxValue) : 0;
+      return Math.Clamp(Math.Max(spent * 2, floor + 1024), 2048, 32_768);
+   }
+
+   /// <summary>
    ///    Extracts the <c>num_ctx</c> parameter from an Ollama Modelfile parameters string.
    ///    The parameters string looks like:
    ///    <c>num_keep 24\nstop "&lt;|start_header_id|&gt;"\nnum_ctx 131072\n...</c>
@@ -580,6 +561,24 @@ public sealed partial class OllamaProvider : ILLMProvider
    public IEmbeddingGenerator<string, Embedding<float>> AsEmbeddingGenerator()
    {
       return Client;
+   }
+
+   /// <summary>One completed stream: the answer plus the signal needed to classify an empty one.</summary>
+   private readonly record struct StreamAttempt(
+      string Text,
+      string? DoneReason,
+      int ReasoningChars,
+      long PromptTokens,
+      long EvalTokens)
+   {
+      /// <summary>
+      ///    The generation budget ran out before any answer was produced. On a reasoning model
+      ///    this is the signature of "the whole budget went into thinking": content is empty,
+      ///    <c>done_reason</c> is <c>length</c>, and the reasoning field is non-empty.
+      /// </summary>
+      public bool ExhaustedBudget =>
+         string.IsNullOrEmpty(Text) && ReasoningChars > 0
+                                    && string.Equals(DoneReason, "length", StringComparison.OrdinalIgnoreCase);
    }
 
    private sealed record ChatState(Func<CancellationToken, ValueTask> Op);

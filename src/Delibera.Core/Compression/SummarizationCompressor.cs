@@ -26,7 +26,8 @@ public sealed class SummarizationCompressor(ILLMProvider llmProvider, string mod
    public string Description => "Uses an LLM to produce a concise summary preserving key facts.";
 
    /// <inheritdoc />
-   public async Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null, CancellationToken ct = default)
+   public async Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null,
+      CancellationToken ct = default)
    {
       var sw = Stopwatch.StartNew();
       options ??= CompressionOptions.Default;
@@ -70,11 +71,13 @@ public sealed class SummarizationCompressor(ILLMProvider llmProvider, string mod
       var compressedTokens = counter.EstimateTokens(summary);
 
       sw.Stop();
-      return CompressedContextFactory.Compressed(text, summary, originalTokens, compressedTokens, StrategyName, sw.Elapsed);
+      return CompressedContextFactory.Compressed(text, summary, originalTokens, compressedTokens, StrategyName,
+         sw.Elapsed);
    }
 
    /// <inheritdoc />
-   public async Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null, CancellationToken ct = default)
+   public async Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts,
+      CompressionOptions? options = null, CancellationToken ct = default)
    {
       ArgumentNullException.ThrowIfNull(texts);
       var sw = Stopwatch.StartNew();
@@ -112,6 +115,7 @@ public sealed class SummarizationCompressor(ILLMProvider llmProvider, string mod
       var compressedTokens = counter.EstimateTokens(summary);
 
       sw.Stop();
-      return CompressedContextFactory.Compressed(merged, summary, originalTokens, compressedTokens, StrategyName, sw.Elapsed);
+      return CompressedContextFactory.Compressed(merged, summary, originalTokens, compressedTokens, StrategyName,
+         sw.Elapsed);
    }
 }

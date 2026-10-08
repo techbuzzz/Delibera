@@ -76,6 +76,66 @@ cd Delibera
 
 ---
 
+## Try It From the Command Line
+
+🆕 The fastest way to try Delibera is the `delibera` CLI — no console project, no composition root:
+
+```bash
+dotnet run --project src/Delibera.Cli -- run "Microservices vs Monolith?" --rounds 3
+```
+
+It reads the same `Delibera` configuration section the server does, so the models you already
+configured are the models it debates with:
+
+```json
+{
+  "Delibera": {
+    "Providers": {
+      "ollama": {
+        "Models": {
+          "llama3": { "Endpoint": "http://localhost:11434" },
+          "qwen":   { "Endpoint": "http://localhost:11434" }
+        }
+      }
+    },
+    "Ollama": { "ApiKey": "" }
+  }
+}
+```
+
+A model entry needs an `Endpoint`; entries without one are skipped. Supported provider keys are
+`ollama` and `yandex` — `Delibera:Ollama:ApiKey` and `Delibera:Yandex:ApiKey` supply the key. With
+nothing configured the command explains what is missing rather than silently returning an empty debate.
+
+| Command | What it does |
+| ------- | ------------ |
+| `delibera run "<question>" --strategy s --rounds N --temperature T --output path --stream --json --verbose` | Runs a debate and prints the result |
+| `delibera resume <debate-id> --store <dir> --json` | Reconstructs a `DebateResult` from a checkpoint's completed rounds |
+| `delibera compare <baseline.json> <comparison.json> --output path --html` | Diffs two saved results |
+| `delibera benchmark "<question>" --iterations N --rounds R` | Reports the spread across repeated runs |
+
+```bash
+# Stream rounds as they complete, and keep the machine-readable result
+delibera run "Should we ship on Friday?" --stream --json --output result.md
+
+# Compare two runs of the same question
+delibera run "Should we ship on Friday?" --json > baseline.json
+delibera run "Should we ship on Friday?" --json > today.json
+delibera compare baseline.json today.json --output diff.md
+
+# Repeat a question and see how stable the answer is
+delibera benchmark "Should we ship on Friday?" --iterations 5 --rounds 3
+```
+
+> 📌 `resume` **reports** progress, it does not continue the debate. A checkpoint holds the rounds
+> that completed plus the options they ran under — not a finished `DebateResult` — so the CLI
+> reconstructs and prints it, marked `IsCompleted = false`. Continuing the run means rehydrating the
+> provider set from that options snapshot, which is the host's job.
+
+`run` exits `0` on success, `1` on a handled failure, and `2` on a usage error.
+
+---
+
 ## 3. Your First Deliberation
 
 Create a console project and paste the following:
@@ -434,6 +494,169 @@ The repository ships with a runnable demo under
 | Operator (basics)    | `dotnet run -- --operator`       | Operator role with MCP tools                   |
 | Operator + MCP       | `dotnet run -- --operator-mcp`   | 🆕 Browser + Marp MCP servers in a council     |
 | Microsoft.Extensions.AI | `dotnet run -- --msai`        | 🆕 `IChatClient`/`IEmbeddingGenerator` + middleware |
+
+---
+
+## Tool Use (Members Calling Functions)
+
+🆕 A member can call tools during its turn — read a file, fetch a URL, or reach an MCP server.
+
+```csharp
+using Delibera.Core.Interfaces;
+using Delibera.Core.Tools;
+
+// Rooted at a directory, rejects traversal, caps each read at 1 MB by default
+var files = new FileSystemToolProvider("./repo");
+
+// Only these hosts are reachable; plain HTTP is refused unless you opt in
+var http = new HttpToolProvider(httpClient, ["docs.example.com", "api.github.com"]);
+
+// Or bridge an MCP server's tools
+var mcp = new McpToolProvider(mcpClient);
+
+var result = await new CouncilBuilder()
+    .AddMember("qwen2.5:7b", ollama, "Analyst")
+    .WithUserPrompt("What does CouncilBuilder.Build() validate?")
+    .WithTools(files, http)
+    .WithMaxToolIterations(5)
+    .Build()
+    .ExecuteAsync();
+```
+
+`IToolProvider` is a two-member interface: a `Name`, and
+`GetToolsAsync(CancellationToken)` returning `AIFunction`s. Implement it to expose your own tools.
+
+Which transport carries the call depends on the member's provider:
+
+| Provider | Transport | Why |
+| -------- | --------- | --- |
+| Wraps a real `IChatClient` | `ToolCallTransport.Native` | Real function-calling traffic on the wire |
+| String-only adapter | `ToolCallTransport.Marker` | A string adapter flattens every message through `message.Text`, so structured function calls cannot survive it — the call is expressed as `[[TOOL: name {json}]]` in the response text instead |
+
+The invocation loop itself is M.E.AI's `FunctionInvokingChatClient`, not a hand-rolled retry. Both
+transports write the same log, so you do not branch on transport to read what happened:
+
+```csharp
+foreach (var call in result.ToolCalls)          // and per round: round.ToolCalls
+{
+    Console.WriteLine($"{call.MemberName} → {call.ToolName} ({call.Transport}, {call.Duration})");
+}
+```
+
+`ToolCallLog` also carries `Arguments`, `Result`, `Succeeded`, `ErrorMessage` and `RoundNumber`.
+
+---
+
+## Cost Limits and Rate Limits
+
+🆕 Cap what a debate may spend. Exceeding a ceiling **does not throw** — the debate returns a
+degraded result carrying the spend so far, because a ceiling that throws leaves you with no report.
+
+```csharp
+using Delibera.Core.Cost;
+
+// A money ceiling needs prices: spend only exists once tokens are priced
+var pricing = new ModelPricingRegistry("""
+[
+  { "model": "qwen2.5:7b",   "inputPerMillion": 0.30, "outputPerMillion": 0.40 },
+  { "model": "llama3.2:3b",  "inputPerMillion": 0.10, "outputPerMillion": 0.10 }
+]
+""");
+
+var result = await new CouncilBuilder()
+    .WithPricingRegistry(pricing)
+    .WithCostLimit(0.50m)                                  // Abort at the ceiling (default)
+    .WithRateLimit(20, TimeSpan.FromMinutes(1))             // 20 calls per minute, per model
+    // ...
+    .Build()
+    .ExecuteAsync();
+
+if (result.IsDegraded)
+{
+    Console.WriteLine($"Stopped early: {result.CostEstimate?.WasTruncated}");
+    foreach (var failure in result.FailedMembers) { /* why */ }
+}
+```
+
+`WithCostLimit(decimal, CostLimitBehavior)` defaults to `Abort`; `WarnAndContinue` and `Ignore` are
+also available. `WithTokenBudget(long, …)` bounds tokens instead and needs no price list.
+
+> ⚠️ `WithCostLimit(...)` without `WithPricingRegistry(...)` makes `Build()` throw
+> `InvalidOperationException`. Without prices every call bills zero, so the ceiling is configured,
+> logged, and can never fire.
+
+`DebateResult.CostEstimate` is a `CostEstimate` record: `TotalCost`, `TotalPromptTokens`,
+`TotalCompletionTokens`, `Members`, `IsEstimate`, `WasTruncated`. `IsEstimate` is set when a model had
+no registered price, so a projection is never mistaken for an invoice.
+
+Beyond the builder shorthands you can supply your own `ICostGate` (`WithCostGate`) or `IRateLimiter`
+(`WithRateLimiter`); `BudgetCostGate`, `TokenBucketRateLimiter`, `ModelPricingRegistry` and
+`CostLedger` are the built-in implementations. `RateLimitBehavior` is `Queue` (default), `Throw` or
+`Drop`; `RateLimitScope` is `Global`, `PerProvider`, `PerModel` (default) or `PerMember`.
+
+---
+
+## Comparing Two Debates
+
+🆕 `Diff` says how far apart two runs of the same question are:
+
+```csharp
+using Delibera.Core.Debate;
+
+DebateDiff diff = baseline.Diff(today);
+
+Console.WriteLine($"Verdict similarity: {diff.VerdictSimilarity:P0}");
+Console.WriteLine($"Verdict changed:   {diff.VerdictChanged}");
+Console.WriteLine($"Missing rounds:    {string.Join(", ", diff.MissingRoundNumbers)}");
+
+foreach (var round in diff.Rounds)
+{
+    foreach (var member in round.Members)
+    {
+        // word-level, rendered as **added** / ~~removed~~
+        Console.WriteLine(member.InlineDiff);
+    }
+}
+
+await diff.SaveToMarkdownAsync("diff.md");
+await diff.SaveToHtmlAsync("diff.html");       // self-contained
+```
+
+Rounds are matched on round **number** and members on **display name**, never on list position — so
+comparing a four-round run against a three-round run reports the missing round instead of shifting
+every later comparison onto the wrong member. `Diff` also reports `AddedRoundNumbers`,
+`MembersOnlyInOld`, `MembersOnlyInNew` and `IsEmpty`, and every level can be rendered or saved:
+
+`DebateDiff` → `ToMarkdown()`, `ToHtml()`, `SaveToMarkdownAsync(path, ct)`, `SaveToHtmlAsync(path, ct)`
+`RoundDiff` → `RoundNumber`, `RoundName`, `Members`, `MemberSimilarity`, `VerdictChanged`
+`MemberDiff` → `Member`, `OldText`, `NewText`, `Similarity`, `InlineDiff`
+
+---
+
+## gRPC Transport
+
+🆕 `Delibera.Grpc` and `Delibera.Grpc.Client` expose the same council over HTTP/2 and protobuf, for
+callers that want a typed client rather than SSE:
+
+| Service | RPCs |
+| ------- | ---- |
+| `DebateService` | `CreateDebate`, `GetDebate`, `ListDebates`, `CancelDebate`, `StreamDebate` (server streaming) |
+| `ScenarioService` | `RunScenario`, `ValidateScenario` |
+| `CorpusService` | `ListCorpora`, `ListDocuments`, `IndexDocument` |
+
+```csharp
+builder.Services.AddGrpc();
+builder.Services.AddSingleton(sp => new DebateServiceImpl(
+    sp.GetRequiredService<IDebateOrchestrator>(),
+    () => BuildCouncil(),
+    sp.GetRequiredService<ILogger<DebateServiceImpl>>()));
+
+app.MapGrpcService<DebateServiceImpl>();
+```
+
+The service sits **on top of** `IDebateOrchestrator`, not beside it — so a debate executed over gRPC
+takes the same distributed-execution and result-caching path as one executed over REST. See
+[`src/Delibera.Grpc/README.md`](../src/Delibera.Grpc/README.md) for the client-side walkthrough.
 
 ---
 

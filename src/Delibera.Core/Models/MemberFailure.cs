@@ -31,6 +31,8 @@ public sealed record MemberFailure(
    string Error)
 {
    /// <summary>Renders one line suitable for an execution log or a report row.</summary>
-   public override string ToString() =>
-      $"Round {RoundNumber} ({RoundName}): {DisplayName} [{Model}] failed - {Error}";
+   public override string ToString()
+   {
+      return $"Round {RoundNumber} ({RoundName}): {DisplayName} [{Model}] failed - {Error}";
+   }
 }

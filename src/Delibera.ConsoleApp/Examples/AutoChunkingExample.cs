@@ -128,7 +128,8 @@ public static class AutoChunkingExample
                "You are a business analyst. Evaluate contracts from a commercial perspective — pricing, terms, obligations.")
             .SetChairman(chairModel, provider)
             .WithKnowledge(kb)
-            .WithUserPrompt("Проанализируй данный договор на предмет рисков для заказчика. Выдели ключевые проблемные пункты.")
+            .WithUserPrompt(
+               "Проанализируй данный договор на предмет рисков для заказчика. Выдели ключевые проблемные пункты.")
             .WithSystemPrompt("You are an expert participating in a contract review council. Be thorough and precise.")
             .WithMaxRounds(4)
             .WithTemperature(0.3f)
@@ -244,7 +245,8 @@ public static class AutoChunkingExample
       Console.WriteLine("\n── Model Context Window Registry ──\n");
 
       Console.WriteLine("  Known model context windows:");
-      foreach (var testModel in new[] { "llama3.2", "phi3:mini", "qwen2.5:7b", "deepseek-r1", "gpt-4o", "unknown-model" })
+      foreach (var testModel in new[]
+                  { "llama3.2", "phi3:mini", "qwen2.5:7b", "deepseek-r1", "gpt-4o", "unknown-model" })
       {
          var window = ModelContextWindowRegistry.GetContextWindow(testModel);
          Console.WriteLine($"    {testModel,-25} → {(window is { } w ? $"{w:N0} tokens" : "unknown")}");
@@ -287,9 +289,11 @@ public static class AutoChunkingExample
 
    private static void PrintResultSummary(DebateResult result)
    {
-      Console.WriteLine($"\n  ✅ Debate completed: {result.Rounds.Count} rounds, {result.TotalDuration.TotalSeconds:F1}s");
+      Console.WriteLine(
+         $"\n  ✅ Debate completed: {result.Rounds.Count} rounds, {result.TotalDuration.TotalSeconds:F1}s");
       if (result.TokenStats is not null)
-         Console.WriteLine($"  📊 Tokens: {result.TokenStats.TotalOriginalTokens:N0} original → {result.TokenStats.TotalCompressedTokens:N0} compressed");
+         Console.WriteLine(
+            $"  📊 Tokens: {result.TokenStats.TotalOriginalTokens:N0} original → {result.TokenStats.TotalCompressedTokens:N0} compressed");
 
       if (!string.IsNullOrWhiteSpace(result.FinalVerdict))
       {
@@ -329,11 +333,14 @@ public static class AutoChunkingExample
       sb.AppendLine();
       sb.AppendLine("## 1. ПРЕДМЕТ ДОГОВОРА");
       sb.AppendLine();
-      sb.AppendLine("1.1. Исполнитель обязуется по заданию Заказчика оказать услуги по разработке программного обеспечения (далее — «ПО»), а Заказчик обязуется принять и оплатить эти услуги в порядке и на условиях, предусмотренных настоящим Договором.");
+      sb.AppendLine(
+         "1.1. Исполнитель обязуется по заданию Заказчика оказать услуги по разработке программного обеспечения (далее — «ПО»), а Заказчик обязуется принять и оплатить эти услуги в порядке и на условиях, предусмотренных настоящим Договором.");
       sb.AppendLine();
-      sb.AppendLine("1.2. Техническое задание (ТЗ) является неотъемлемой частью настоящего Договора (Приложение №1). Любые изменения ТЗ оформляются дополнительным соглашением сторон.");
+      sb.AppendLine(
+         "1.2. Техническое задание (ТЗ) является неотъемлемой частью настоящего Договора (Приложение №1). Любые изменения ТЗ оформляются дополнительным соглашением сторон.");
       sb.AppendLine();
-      sb.AppendLine("1.3. Срок оказания услуг: с даты подписания Договора до полного выполнения обязательств, но не позднее 6 (шести) месяцев с даты начала работ.");
+      sb.AppendLine(
+         "1.3. Срок оказания услуг: с даты подписания Договора до полного выполнения обязательств, но не позднее 6 (шести) месяцев с даты начала работ.");
       sb.AppendLine();
 
       // Generate many sections to make the document large.
@@ -442,7 +449,8 @@ public static class AutoChunkingExample
       // Add detailed risk analysis commentary to make the document even larger.
       sb.AppendLine("## 12. АНАЛИЗ РИСКОВ (ПРИЛОЖЕНИЕ)");
       sb.AppendLine();
-      sb.AppendLine("12.1. Ниже представлен детальный анализ потенциальных рисков для Заказчика по каждому разделу Договора.");
+      sb.AppendLine(
+         "12.1. Ниже представлен детальный анализ потенциальных рисков для Заказчика по каждому разделу Договора.");
       sb.AppendLine();
 
       var riskItems = new[]
@@ -482,7 +490,8 @@ public static class AutoChunkingExample
       sb.AppendLine("- Локализация: русский, английский, китайский языки интерфейса.");
       sb.AppendLine("- Доступность: WCAG 2.1 Level AA.");
       sb.AppendLine();
-      sb.AppendLine("13.2. Все требования должны быть верифицированы на этапе приёмки. Несоответствие любому из требований является основанием для отказа в приёмке.");
+      sb.AppendLine(
+         "13.2. Все требования должны быть верифицированы на этапе приёмки. Несоответствие любому из требований является основанием для отказа в приёмке.");
       sb.AppendLine();
       sb.AppendLine("---");
       sb.AppendLine();

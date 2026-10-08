@@ -1,6 +1,4 @@
 using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Http.Features;
-using Microsoft.AspNetCore.Mvc;
 
 namespace Delibera.Server.Infrastructure;
 
@@ -14,9 +12,9 @@ namespace Delibera.Server.Infrastructure;
 ///    <c>UseExceptionHandler()</c> only produces ProblemDetails outside Development, so the
 ///    behaviour would still differ by environment; writing it here makes it uniform.
 ///    <para>
-///    The exception message is included in <c>detail</c> only in Development. Stack traces
-///    are never part of the payload — they belong in the log, where the correlation id
-///    makes them findable.
+///       The exception message is included in <c>detail</c> only in Development. Stack traces
+///       are never part of the payload — they belong in the log, where the correlation id
+///       makes them findable.
 ///    </para>
 /// </remarks>
 public sealed class ProblemDetailsExceptionHandler(
@@ -50,7 +48,7 @@ public sealed class ProblemDetailsExceptionHandler(
       }
 
       var correlationId = httpContext.Items.TryGetValue(CorrelationIdHeader, out var value)
-         && value is string id
+                          && value is string id
          ? id
          : httpContext.TraceIdentifier;
 
@@ -80,7 +78,7 @@ public sealed class ProblemDetailsExceptionHandler(
          // Detail is the one place an internal message could reach a client, so it is
          // limited to the development environment.
          Detail = environment.IsDevelopment() ? exception.Message : null,
-         Instance = httpContext.Request.Path,
+         Instance = httpContext.Request.Path
       };
 
       // Lets a caller quote the id and find the matching entry in the log.
@@ -90,7 +88,7 @@ public sealed class ProblemDetailsExceptionHandler(
       {
          HttpContext = httpContext,
          ProblemDetails = problem,
-         Exception = exception,
+         Exception = exception
       });
    }
 }

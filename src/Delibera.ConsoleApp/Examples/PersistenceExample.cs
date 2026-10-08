@@ -105,7 +105,9 @@ public static class PersistenceExample
       // ── Phase 2: List stored checkpoints ──
       Console.WriteLine("  ── Stored checkpoints ──");
       var list = await store.ListAsync(ct);
-      foreach (var meta in list.Take(5)) Console.WriteLine($"    • {meta.DebateId}  round {meta.LastCompletedRound}  \"{Truncate(meta.OriginalQuestion, 60)}\"");
+      foreach (var meta in list.Take(5))
+         Console.WriteLine(
+            $"    • {meta.DebateId}  round {meta.LastCompletedRound}  \"{Truncate(meta.OriginalQuestion, 60)}\"");
 
       Console.WriteLine();
       Console.WriteLine("  💡 Usage:");

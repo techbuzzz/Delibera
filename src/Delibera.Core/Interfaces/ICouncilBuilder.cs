@@ -289,7 +289,7 @@ public interface ICouncilBuilder
    ICouncilBuilder WithVotingChairman(string modelName, ILLMProvider provider, IVotingStrategy votingStrategy);
 
    /// <summary>
-   /// Configures a voting strategy (F-02) that uses an <see cref="IVotingStrategy" />
+   ///    Configures a voting strategy (F-02) that uses an <see cref="IVotingStrategy" />
    /// </summary>
    /// <param name="votingStrategy"></param>
    /// <returns></returns>
@@ -308,7 +308,8 @@ public interface ICouncilBuilder
    ///    with default options.
    /// </param>
    /// <returns>This builder for fluent chaining.</returns>
-   ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null) where TVerdict : class;
+   ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null)
+      where TVerdict : class;
 
    /// <summary>
    ///    Attaches an <see cref="IDebateStore" /> so a checkpoint is saved after every
@@ -349,8 +350,8 @@ public interface ICouncilBuilder
    // ── Multi-Modal attachments (F-06) ──
 
    /// <summary>
-   ///    Adds a participant with explicit <see cref="MemberCapabilities"/>. When
-   ///    <see cref="MemberCapabilities.Vision"/> is set, the member receives image
+   ///    Adds a participant with explicit <see cref="MemberCapabilities" />. When
+   ///    <see cref="MemberCapabilities.Vision" /> is set, the member receives image
    ///    attachments as <c>ImageContent</c> via Microsoft.Extensions.AI.
    /// </summary>
    /// <param name="modelName">Model name (e.g. "llava:13b").</param>
@@ -364,7 +365,7 @@ public interface ICouncilBuilder
 
    /// <summary>
    ///    Attaches a file to the debate. Read lazily by the
-   ///    <see cref="FileContentReaderRegistry"/> when the debate starts.
+   ///    <see cref="FileContentReaderRegistry" /> when the debate starts.
    /// </summary>
    /// <param name="filePath">Path to the file.</param>
    /// <returns>This builder for fluent chaining.</returns>
@@ -380,7 +381,7 @@ public interface ICouncilBuilder
    ICouncilBuilder WithAttachment(string filePath, string description);
 
    /// <summary>
-   ///    Registers a custom <see cref="IFileContentReader"/> for a specific file
+   ///    Registers a custom <see cref="IFileContentReader" /> for a specific file
    ///    extension (e.g. <c>.pdf</c>).
    /// </summary>
    /// <param name="extension">File extension including the leading dot.</param>
@@ -392,7 +393,7 @@ public interface ICouncilBuilder
    ///    Registers a delegate-based reader for a specific file extension.
    /// </summary>
    /// <param name="extension">File extension including the leading dot.</param>
-   /// <param name="handler">Delegate that reads the file and returns a <see cref="FileReadResult"/>.</param>
+   /// <param name="handler">Delegate that reads the file and returns a <see cref="FileReadResult" />.</param>
    /// <returns>This builder for fluent chaining.</returns>
    ICouncilBuilder WithFileReader(string extension, Func<string, CancellationToken, Task<FileReadResult>> handler);
 

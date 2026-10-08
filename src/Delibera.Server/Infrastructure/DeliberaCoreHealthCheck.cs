@@ -1,6 +1,4 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Delibera.Server.Services;
-using Delibera.Server.Templates.Registry;
 
 namespace Delibera.Server.Infrastructure;
 

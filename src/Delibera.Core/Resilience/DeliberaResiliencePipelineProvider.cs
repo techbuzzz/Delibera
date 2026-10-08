@@ -70,7 +70,11 @@ public sealed class DeliberaResiliencePipelineProvider : IDeliberaResiliencePipe
    private static readonly int[] DefaultCloudStatusCodes = [408, 429, 500, 502, 503, 504, 524];
    private readonly Dictionary<string, ResiliencePipeline<HttpResponseMessage>> _built;
    private readonly Dictionary<string, ResiliencePipeline> _builtOperation;
-   private readonly Dictionary<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>> _customBuilders;
+
+   private readonly
+      Dictionary<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>
+      _customBuilders;
+
    private readonly object _gate = new();
    private readonly IOptionsMonitor<ResilienceOptions> _options;
 
@@ -79,11 +83,15 @@ public sealed class DeliberaResiliencePipelineProvider : IDeliberaResiliencePipe
    /// <param name="customPipelines">Optional consumer-registered pipelines (may be <c>null</c>).</param>
    public DeliberaResiliencePipelineProvider(
       IOptionsMonitor<ResilienceOptions> options,
-      IEnumerable<KeyValuePair<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>>? customPipelines = null)
+      IEnumerable<KeyValuePair<string,
+            Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>>?
+         customPipelines = null)
    {
       ArgumentNullException.ThrowIfNull(options);
       _options = options;
-      _customBuilders = new Dictionary<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>(StringComparer.OrdinalIgnoreCase);
+      _customBuilders =
+         new Dictionary<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>,
+            ResiliencePipeline<HttpResponseMessage>>>(StringComparer.OrdinalIgnoreCase);
       _built = new Dictionary<string, ResiliencePipeline<HttpResponseMessage>>(StringComparer.OrdinalIgnoreCase);
       _builtOperation = new Dictionary<string, ResiliencePipeline>(StringComparer.OrdinalIgnoreCase);
       if (customPipelines is not null)
@@ -140,7 +148,8 @@ public sealed class DeliberaResiliencePipelineProvider : IDeliberaResiliencePipe
       }
    }
 
-   private ResiliencePipeline<HttpResponseMessage> GetOrBuildBuilt(string key, Func<ResilienceOptions, ResiliencePipeline<HttpResponseMessage>> build)
+   private ResiliencePipeline<HttpResponseMessage> GetOrBuildBuilt(string key,
+      Func<ResilienceOptions, ResiliencePipeline<HttpResponseMessage>> build)
    {
       lock (_gate)
       {

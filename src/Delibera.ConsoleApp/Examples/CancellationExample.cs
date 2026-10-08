@@ -58,7 +58,8 @@ public static class CancellationExample
          ollama = factory.CreateLocalOllama("http://localhost:11434");
          if (!await ollama.IsAvailableAsync(cts.Token))
          {
-            Console.WriteLine("  ⚠️  Local Ollama not available — falling back to Ollama Cloud (set OLLAMA_API_KEY env).");
+            Console.WriteLine(
+               "  ⚠️  Local Ollama not available — falling back to Ollama Cloud (set OLLAMA_API_KEY env).");
             ollama.Dispose();
             ollama = null;
          }

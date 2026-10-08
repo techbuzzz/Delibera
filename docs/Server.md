@@ -296,3 +296,43 @@ builder.Services.UseRedisCache(ttl: TimeSpan.FromHours(24));
 ```
 
 See [docs/caching.md](caching.md) for `CacheBehavior` modes and cache key generation.
+
+---
+
+## REST route prefix
+
+Every REST route lives under `/api/v1`, including health at `/api/v1/health`. There is no unversioned alias — a client targeting `/debates` or `/health` gets a 404. The table above is the complete surface.
+
+## gRPC endpoint
+
+The REST host also serves gRPC, over HTTP/2 on the same Kestrel endpoint. `Delibera.Grpc` adds the transport without adding a second composition root:
+
+```csharp
+// Program.cs — alongside the existing AddDelibera() / orchestrator registration
+builder.Services.AddGrpc();
+builder.Services.AddSingleton(sp => new DebateServiceImpl(
+    sp.GetRequiredService<IDebateOrchestrator>(),   // the same orchestrator REST uses
+    () => BuildCouncil(),                            // a fresh builder per call
+    sp.GetRequiredService<ILogger<DebateServiceImpl>>()));
+
+var app = builder.Build();
+app.MapGrpcService<DebateServiceImpl>();
+```
+
+`MapGrpcService` is additive — the REST routes and the gRPC services are mapped side by side, and `app.MapDeliberaEndpoints()` (or whatever the REST mapping is called in your host) stays untouched.
+
+| Service | RPCs |
+|---------|------|
+| `DebateService` | `CreateDebate`, `GetDebate`, `ListDebates`, `CancelDebate`, `StreamDebate` (server streaming) |
+| `ScenarioService` | `RunScenario`, `ValidateScenario` |
+| `CorpusService` | `ListCorpora`, `ListDocuments`, `IndexDocument` |
+
+Client stubs are a separate package (`Delibera.Grpc.Client`), compiled from the same `Protos/delibera.proto` as the server, so the two cannot drift at build time.
+
+Three details worth knowing before you put this in front of a client:
+
+- **The service layers on `IDebateOrchestrator`.** A debate executed over gRPC takes the same distributed-execution and result-caching path as one executed over REST — a parallel pipeline would silently ignore `WithOrchestrator` and `WithCache`. See [docs/distributed-debates.md](distributed-debates.md).
+- **A stream ends with exactly one terminal event**, `completed` or `error` — never both, never neither. A client can therefore distinguish a finished debate from a dropped connection.
+- **`GetDebate` returns status only**, not round bodies. The orchestrator exposes progress as a stream and the durable transcript through the debate store, which the REST surface reads; a `rounds` list that was always empty would read as "this debate produced no rounds".
+
+See [`src/Delibera.Grpc/README.md`](../src/Delibera.Grpc/README.md) for a full client example.

@@ -1,3 +1,4 @@
+using Delibera.Core.Attachments;
 using Delibera.Core.Caching;
 using Delibera.Core.Compression;
 using Delibera.Core.Council;
@@ -5,7 +6,7 @@ using Delibera.Core.Providers;
 using Delibera.Core.Providers.LLM;
 using Delibera.Core.Providers.RAG;
 using Delibera.Core.Resilience;
-using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -35,6 +36,41 @@ public static class ServiceCollectionExtensions
          "linear" => DelayBackoffType.Linear,
          _ => DelayBackoffType.Exponential
       };
+   }
+
+   // ── Cache extensions ───────────────────────────────────────────────────────
+
+   /// <summary>
+   ///    Registers an in-memory <see cref="IDebateCache" /> with the specified TTL.
+   /// </summary>
+   public static IServiceCollection UseInMemoryCache(
+      this IServiceCollection services,
+      TimeSpan? ttl = null)
+   {
+      // The factory below resolves IMemoryCache lazily, on first debate. AddMemoryCache
+      // is idempotent, so registering it here is a no-op for hosts that already did —
+      // and it keeps the documented one-liner (AddDelibera().UseInMemoryCache())
+      // resolvable instead of throwing at first use.
+      services.AddMemoryCache();
+
+      services.TryAddSingleton<IDebateCache>(sp =>
+         new InMemoryDebateCache(
+            sp.GetRequiredService<IMemoryCache>(),
+            ttl));
+      return services;
+   }
+
+   /// <summary>
+   ///    Registers a file-system <see cref="IDebateCache" /> that persists results as JSON.
+   /// </summary>
+   public static IServiceCollection UseFileCache(
+      this IServiceCollection services,
+      string cacheDirectory,
+      TimeSpan? ttl = null)
+   {
+      services.TryAddSingleton<IDebateCache>(_ =>
+         new FileDebateCache(cacheDirectory, ttl));
+      return services;
    }
 
    /// <param name="services">The service collection.</param>
@@ -192,7 +228,7 @@ public static class ServiceCollectionExtensions
             services.Configure(configure);
 
          // Register the pipeline factory (and any consumer-supplied custom pipelines).
-         services.AddDeliberaResilienceCore(null);
+         services.AddDeliberaResilienceCore();
 
          // Register the three built-in HttpClients with Polly resilience handlers attached.
          AddNamedHttpClient(services, "Delibera.Ollama.Local", ResilienceOptions.LocalPipelineName);
@@ -228,7 +264,8 @@ public static class ServiceCollectionExtensions
             // Resolve the live ResilienceOptions snapshot so option changes are honoured.
             var monitor = context.ServiceProvider.GetService<IOptionsMonitor<ResilienceOptions>>();
             var opts = monitor is not null
-               ? pipelineName == ResilienceOptions.LocalPipelineName || pipelineName == ResilienceOptions.CloudPipelineName
+               ? pipelineName == ResilienceOptions.LocalPipelineName ||
+                 pipelineName == ResilienceOptions.CloudPipelineName
                   ? monitor.Get(ResilienceOptions.DefaultPipelineName)
                   : monitor.CurrentValue
                : new ResilienceOptions();
@@ -311,7 +348,8 @@ public static class ServiceCollectionExtensions
       ///    Registers a Microsoft.Extensions.AI <see cref="IEmbeddingGenerator{TInput,TEmbedding}" /> and exposes
       ///    it as a Delibera <see cref="IEmbeddingProvider" /> (<see cref="EmbeddingGeneratorProvider" />).
       /// </summary>
-      public IServiceCollection AddDeliberaEmbeddingGenerator(Func<IServiceProvider, IEmbeddingGenerator<string, Embedding<float>>> generatorFactory,
+      public IServiceCollection AddDeliberaEmbeddingGenerator(
+         Func<IServiceProvider, IEmbeddingGenerator<string, Embedding<float>>> generatorFactory,
          string? modelName = null,
          int? vectorSize = null)
       {
@@ -335,56 +373,21 @@ public static class ServiceCollectionExtensions
       /// <summary>
       ///    Registers a file-content reader for a specific extension via DI factory
       ///    (F-06 Multi-Modal). The reader is stored as a singleton
-      ///    <see cref="Delibera.Core.Attachments.IFileContentReader"/> keyed by
-      ///    extension so that resolved <see cref="CouncilBuilder"/> instances can
+      ///    <see cref="Delibera.Core.Attachments.IFileContentReader" /> keyed by
+      ///    extension so that resolved <see cref="CouncilBuilder" /> instances can
       ///    pick it up automatically.
       /// </summary>
       /// <param name="extension">File extension including the leading dot (e.g. ".pdf").</param>
       /// <param name="readerFactory">Factory that creates the reader from the service provider.</param>
       /// <returns>The service collection for chaining.</returns>
       public IServiceCollection AddFileReader(string extension,
-         Func<IServiceProvider, Delibera.Core.Attachments.IFileContentReader> readerFactory)
+         Func<IServiceProvider, IFileContentReader> readerFactory)
       {
          ArgumentException.ThrowIfNullOrWhiteSpace(extension);
          ArgumentNullException.ThrowIfNull(readerFactory);
          var key = $"Delibera.FileReader.{extension.ToLowerInvariant()}";
-         services.TryAddSingleton(new Delibera.Core.Attachments.FileReaderDIEntry(extension, readerFactory));
+         services.TryAddSingleton(new FileReaderDIEntry(extension, readerFactory));
          return services;
       }
-   }
-
-   // ── Cache extensions ───────────────────────────────────────────────────────
-
-   /// <summary>
-   ///    Registers an in-memory <see cref="IDebateCache" /> with the specified TTL.
-   /// </summary>
-   public static IServiceCollection UseInMemoryCache(
-      this IServiceCollection services,
-      TimeSpan? ttl = null)
-   {
-      // The factory below resolves IMemoryCache lazily, on first debate. AddMemoryCache
-      // is idempotent, so registering it here is a no-op for hosts that already did —
-      // and it keeps the documented one-liner (AddDelibera().UseInMemoryCache())
-      // resolvable instead of throwing at first use.
-      services.AddMemoryCache();
-
-      services.TryAddSingleton<IDebateCache>(sp =>
-         new InMemoryDebateCache(
-            sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(),
-            ttl));
-      return services;
-   }
-
-   /// <summary>
-   ///    Registers a file-system <see cref="IDebateCache" /> that persists results as JSON.
-   /// </summary>
-   public static IServiceCollection UseFileCache(
-      this IServiceCollection services,
-      string cacheDirectory,
-      TimeSpan? ttl = null)
-   {
-      services.TryAddSingleton<IDebateCache>(_ =>
-         new FileDebateCache(cacheDirectory, ttl));
-      return services;
    }
 }
