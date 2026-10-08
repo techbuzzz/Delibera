@@ -49,6 +49,11 @@ well-reasoned outcomes** rather than single-model guesses.
 | **🌐 Distributed Debates**   | `IDebateOrchestrator` with `LocalDebateOrchestrator` (in-process) and `RedisDebateOrchestrator` (Redis Streams). `DebateHandle`, `DebateRoundEvent` discriminated union, `EnqueueAsync`/`StreamAsync`/`CancelAsync` API |
 | **💾 Result Caching**         | `IDebateCache` with `InMemoryDebateCache`, `FileDebateCache`, `RedisDebateCache`. `CacheBehavior` enum (Disabled/ReadWrite/ReadOnly/WriteThrough/Bypass). `DebateCacheKeyGenerator` (SHA-256). Per-debate cache control via `WithCacheBehavior()` |
 | **🖥️ Delibera.Server**       | ASP.NET Core 10 Minimal API with REST + SSE streaming. Debate orchestration via `IDebateOrchestrator` |
+| **🧰 Tool Use**              | `IToolProvider` + `AIFunction` tools. `FileSystemToolProvider`, `HttpToolProvider`, `McpToolProvider`. `WithTools(...)` / `WithMaxToolIterations(n)`. Native function calling where the provider wraps an `IChatClient`, `[[TOOL: name {json}]]` marker protocol otherwise. `DebateResult.ToolCalls` / `DebateRound.ToolCalls` carry `ToolCallLog` with `ToolCallTransport` |
+| **💵 Cost Gates & Limits**   | `ICostGate` / `IRateLimiter` / `IModelPricingRegistry`. `WithCostLimit`, `WithTokenBudget`, `WithRateLimit`. `BudgetCostGate`, `TokenBucketRateLimiter`, `ModelPricingRegistry`, `CostLedger`. Denial returns a degraded `DebateResult` with `CostEstimate` — it never throws |
+| **🔍 Debate Diff**           | `DebateResultExtensions.Diff(left, right)` → `DebateDiff`. Word-level `**added**` / `~~removed~~` inline diff, verdict similarity, missing/added rounds. Markdown and self-contained HTML export |
+| **⌨️ delibera CLI**          | `run`, `resume`, `compare`, `benchmark` on System.CommandLine. Reads `Delibera:Providers`; `run` exits 0/1/2 |
+| **📡 gRPC Transport**        | `Delibera.Grpc` + `Delibera.Grpc.Client`. `DebateService`, `ScenarioService`, `CorpusService`, layered on `IDebateOrchestrator` |
 | **🔌 Interface-First**        | Clean abstractions for providers, factories, builders and executors                   |
 | **🧱 Modern C# 15**           | File-scoped namespaces, records, init-only properties, global usings, discriminated unions |
 
@@ -411,6 +416,13 @@ IEmbeddingProvider
 The Knowledge Keeper is then attached to the council via `WithKnowledgeKeeper(...)` — see
 the [RAG example](src/Delibera.ConsoleApp/Examples/RagExample.cs) for a full working demo.
 
+> ⚠️ **pgvector requires 10.5.1 or later.** `PgVectorStore` previously bound the embedding as
+> `AddWithValue(new Vector(...))`, which boxes the value so Npgsql cannot infer a type, and
+> `NpgsqlDbType.Unknown` fails too — `UseVector()` only registers a mapping for the Npgsql version
+> Pgvector was built against. The first upsert threw `InvalidCastException`, so the backend could not
+> write or search at all. The embedding now travels as pgvector's text form with a `::vector` cast,
+> which any pgvector version understands. Qdrant was never affected.
+
 ---
 
 ## 🗣️ Debate Strategies
@@ -655,18 +667,24 @@ Delibera.Core
 │   ├── LLM/              ← OllamaProvider, ChatClientLLMProvider, EmbeddingGeneratorProvider
 │   ├── RAG/              ← QdrantRagProvider, PgVectorRagProvider
 │   └── Mcp/              ← McpClientAdapter (Operator ↔ MCP servers)
+├── Tools/                ← FileSystemToolProvider, HttpToolProvider, McpToolProvider
+├── Cost/                 ← ICostGate, IRateLimiter, IModelPricingRegistry, BudgetCostGate, TokenBucketRateLimiter, ModelPricingRegistry, CostLedger
 ├── Extensions/           ← MicrosoftAIExtensions (IChatClient ↔ ILLMProvider bridges)
 ├── DependencyInjection/  ← AddDelibera() / AddDeliberaChatClient() + CouncilOptions
 ├── Knowledge/            ← MarkdownKnowledgeBase
-├── Models/               ← CouncilMember, DebateResult, DebateRound, TokenStatistics, DebateExecutionOptions, ...
-└── Interfaces/           ← ILLMProvider, IRagProvider, IContextCompressor, IDebateStrategy, ...
+├── Models/               ← CouncilMember, DebateResult, DebateRound, CostEstimate, TokenStatistics, DebateExecutionOptions, ...
+└── Interfaces/           ← ILLMProvider, IRagProvider, IToolProvider, ToolCallLog, IContextCompressor, IDebateStrategy, ...
 
 Delibera.Redis
 ├── Orchestration/        ← RedisDebateOrchestrator (Redis Streams), RedisDebateCache
 
 Delibera.Server
-├── Minimal API endpoints ← REST + SSE streaming
+├── Minimal API endpoints ← REST + SSE streaming, all routes under /api/v1
 └── DebateWorkerService   ← Background service for debate orchestration
+
+Delibera.Cli              ← delibera run / resume / compare / benchmark
+Delibera.Grpc             ← DebateService, ScenarioService, CorpusService (Protobuf)
+Delibera.Grpc.Client      ← Generated client stubs for the same .proto
 ```
 
 ---

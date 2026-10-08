@@ -63,6 +63,28 @@ well-reasoned outcomes** rather than single-model guesses.
 | **🛑 Cooperative Cancellation**| Every public async method accepts a `CancellationToken`; a host shutdown or user cancel aborts the debate mid-flight (rounds, LLM calls, MCP tools, RAG, file saves) |
 | **🧱 Modern C# 15 (preview)** | Built on .NET 10 with `LangVersion=preview`, file-scoped namespaces, records, span/SIMD hot paths |
 
+### 🆕 What's new in v10.5.1
+
+Closes all six open issues and adds one fix that only a live database could surface. No breaking
+changes — everything is opt-in and no public interface gained a member. Full account:
+[docs/WhatsNew-v10.5.1.md](docs/WhatsNew-v10.5.1.md).
+
+| Feature | Description |
+| --- | --- |
+| **🔧 Tool Use** | `IToolProvider` + `AIFunction`. `CouncilBuilder.WithTools(...)`. Native function calling where the provider wraps a real `IChatClient`; the `[[TOOL: name {json}]]` marker protocol elsewhere — because a string-only adapter cannot carry structured tool traffic. Loop is owned by `FunctionInvokingChatClient`, bounded by `WithMaxToolIterations(n)`. Ships `FileSystemToolProvider` (rooted, traversal-rejecting), `HttpToolProvider` (host allow-list, refuses plain HTTP), `McpToolProvider`. Calls land on `DebateRound.ToolCalls` / `DebateResult.ToolCalls`. |
+| **💸 Cost Gates & Rate Limits** | `WithCostLimit(decimal, CostLimitBehavior)` and `WithTokenBudget(long)`; `WithRateLimit(n, window)`. `DebateResult.CostEstimate` reports spend per member with an `IsEstimate` flag. A denial returns a **degraded result carrying the spend**, never an exception — a ceiling that throws leaves you with no record of what was spent. `Build()` throws if a money ceiling is configured without a price registry, because that combination can never be enforced. |
+| **🔀 Debate Diff** | `baseline.Diff(candidate)` → `DebateDiff` with word-level `**added**` / `~~removed~~` diffs, verdict similarity, and explicit lists of rounds or members present on only one side. `ToMarkdown()`, `ToHtml()`, `SaveToHtmlAsync(path)`. Rounds match by number and members by name, so a 4-round run against a 3-round run reports the missing round instead of shifting every later comparison. |
+| **⌨️ delibera CLI** | `delibera run \| resume \| compare \| benchmark` on System.CommandLine. `compare` diffs two saved results; `benchmark` reports the spread across runs rather than a single number. |
+| **📡 gRPC** | `Delibera.Grpc` + `Delibera.Grpc.Client`, layered **on top of** `IDebateOrchestrator` so caching and distributed execution behave identically. Server streaming ends with exactly one terminal event. |
+| **📦 NuGet GA** | `Delibera.Core`, `Delibera.Server` and `Delibera.Redis` are all publishable now. The workflow fails if any package ships without its README or icon. |
+
+Two defects fixed here were invisible to the unit tests, because the tests used fakes:
+
+| Fix | Description |
+| --- | --- |
+| **🐘 pgvector could not write or search** | `AddWithValue(new Vector(...))` boxes the value, so Npgsql had no type to map and the **first upsert threw** `InvalidCastException`. Declaring `NpgsqlDbType.Unknown` fails too — `UseVector()` only registers a mapping for the Npgsql version `Pgvector` was built against. The embedding now travels as pgvector's text form with a `::vector` cast, understood by any version. Qdrant was unaffected. |
+| **🪞 Idempotent vector indexing** | `BaseRagProvider` assigned `Guid.NewGuid()` per chunk, and both stores use the id as an upsert key — so re-indexing appended. Three runs over 24 chunks left **72 points**. The id is now derived from the chunk's identity. Verified on live Qdrant and pgvector: three runs of a 6-chunk document leave 6. |
+
 ### 🆕 What's new in v10.5.0
 
 Five defects found by measuring real deliberations against Ollama Cloud. Two of them made headline

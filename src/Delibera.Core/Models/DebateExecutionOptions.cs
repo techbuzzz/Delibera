@@ -75,6 +75,26 @@ public sealed record DebateExecutionOptions(
    public RateLimitPolicy? RateLimitPolicy { get; init; }
 
    /// <summary>
+   ///   Whether per-call accounting is worth doing at all.
+   /// </summary>
+   /// <remarks>
+   ///   <para>
+   ///   True when the caller configured anything that consumes a cost: a gate, a limiter or a
+   ///   price registry. False means the ledger would be built and filled for nothing — the
+   ///   executor publishes <see cref="Models.DebateResult.CostEstimate" /> only in the first
+   ///   case.
+   ///   </para>
+   ///   <para>
+   ///   This is a hot-path predicate. Accounting concatenates the prompts and runs the token
+   ///   counter over the prompt and the response on every member call, and the prompt grows each
+   ///   round as history accumulates, so an unconfigured debate would pay a scanning cost
+   ///   quadratic in its own length and discard the result.
+   ///   </para>
+   /// </remarks>
+   public bool CostTrackingEnabled =>
+      CostGate is not null || RateLimiter is not null || PricingRegistry is not null;
+
+   /// <summary>
    ///   Shared accumulator of token counts and spend. Left <c>null</c> until a member call
    ///   actually needs it, then created once and reused by every round so that concurrent member
    ///   tasks accumulate into a single estimate.

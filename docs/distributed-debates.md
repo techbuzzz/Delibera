@@ -115,3 +115,9 @@ services.AddHostedService<DebateWorkerService>();
 ## Serialization
 
 `DebateRound` contains `IDebateStrategy? StrategyUsed` which is not serializable. The `RedisSerializer` maps to/from `RedisRoundEvent` / `RedisDebateResult` DTOs that exclude non-serializable fields.
+
+## Transport-independent by construction
+
+The gRPC service (`Delibera.Grpc`, `DebateService` / `ScenarioService` / `CorpusService`) sits **on top of** `IDebateOrchestrator`, not beside it. Distributed execution and result caching are therefore transport-independent: a debate started over gRPC takes the same `RedisDebateOrchestrator` path and the same `IDebateCache` as one started over REST or in-process.
+
+This is deliberate. A parallel gRPC pipeline would silently ignore `WithOrchestrator` and `WithCache`, and the same council would behave differently depending on how it was called — the failure mode the `IDebateOrchestrator` abstraction exists to prevent. See [Server.md](Server.md#grpc-endpoint) for hosting and [`src/Delibera.Grpc/README.md`](../src/Delibera.Grpc/README.md) for the client side.

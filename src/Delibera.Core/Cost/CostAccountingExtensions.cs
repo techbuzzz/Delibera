@@ -24,12 +24,20 @@ public static class CostAccountingExtensions
    {
       if (options is null) return;
 
-      var prompt = string.IsNullOrEmpty(systemPrompt) ? userPrompt : systemPrompt + "\n" + userPrompt;
-      options.GetOrCreateLedger().RecordCall(
-         member.DisplayName,
-         member.Provider.ProviderName,
-         member.ModelName,
-         prompt,
-         response);
+      // Nothing to account for unless the caller asked for it. Without this guard every member
+      // call concatenated the prompts and ran the token counter over both the prompt and the
+      // response — and the prompt grows every round as history accumulates, so the default path
+      // paid a scanning cost that grew with the square of the debate. The result was discarded
+      // anyway: the executor only publishes CostEstimate when a gate, limiter or registry is set.
+      if (options.CostTrackingEnabled)
+      {
+         var prompt = string.IsNullOrEmpty(systemPrompt) ? userPrompt : systemPrompt + "\n" + userPrompt;
+         options.GetOrCreateLedger().RecordCall(
+            member.DisplayName,
+            member.Provider.ProviderName,
+            member.ModelName,
+            prompt,
+            response);
+      }
    }
 }

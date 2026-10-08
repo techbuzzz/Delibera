@@ -79,6 +79,23 @@ await. If a test genuinely needs synchronous completion, ask for it explicitly
 dotnet test --configuration Release
 ```
 
+### 📈 Local benchmark harness (`.bench/`)
+
+`.bench/` holds the local latency / throughput / cost harnesses. **It is gitignored and deliberately outside `Delibera.slnx`** — it must stay that way. Every run in it bills real money, and CI must never see the key.
+
+- **Key.** `Bench:OllamaCloud:ApiKey`, supplied via UserSecrets:
+
+  ```bash
+  dotnet user-secrets set "Bench:OllamaCloud:ApiKey" "<your key>"
+  ```
+
+  The harnesses resolve it by **scanning every UserSecrets store** for that key rather than reading only their own. That is intentional: the key lives in the sweep harness's store, and regenerating a `UserSecretsId` orphans it — a new harness must not demand its own. `OLLAMA_API_KEY` overrides all of it for a one-off run.
+- **CI must never see the key.** Do not add `.bench/` to the solution, to a build script, or to any workflow. It stays untracked for the same reason it stays unpaid: a harness that cannot run unattended must not be wired into a pipeline that does.
+- **Network.** It runs against `https://api.ollama.com`, which on some networks requires `HTTP_PROXY` / `HTTPS_PROXY`. .NET's `HttpClient` honours them, so a proxy inflates measured TTFT; the harness prints a warning rather than letting a network artefact look like a property of the model.
+- **Containers.** The vector-store experiments need local **Qdrant**, **Postgres** and **Redis**. Start them with `docker compose` before running those cases, or the harness fails on a connection error that is not a harness bug.
+
+See `.bench/README.md` for the sweep's flags, exit codes and report format.
+
 ---
 
 ## 🌿 Branch & Commit Conventions

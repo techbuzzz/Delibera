@@ -11,6 +11,36 @@ Closes all six open GitHub issues (#11, #13, #14, #15, #16, #18) and the two fin
 tracked only in `docs/TASKS/`. **No breaking changes** — every addition is opt-in, and no member
 was added to an existing public interface.
 
+### Fixed — the CLI could not authenticate to Ollama Cloud
+
+`delibera run` built its Ollama provider as `new OllamaProvider(endpoint)`, with no API key, while
+the Yandex branch read one. Against a local daemon that is fine and invisible; against
+`api.ollama.com` every call returned **401 Unauthorized**. The key is now read from the model's
+`ApiKey` or from `Delibera:Ollama:ApiKey`, matching the Yandex branch.
+
+### Fixed — per-call cost accounting ran on every debate whether or not anyone wanted it
+
+Recording a member call was unconditional: each call concatenated the system and user prompt and
+ran the token counter over both the prompt and the response. The prompt grows every round as history
+accumulates, so a debate paid a scanning cost quadratic in its own length — and then threw the
+result away, because `CostEstimate` is published only when a gate, limiter or price registry is
+configured.
+
+Measured against v10.5.0 with the same harness and workload:
+
+| | Median | Allocations |
+|---|---|---|
+| v10.5.0 | 0.634 ms | 3 735 640 B |
+| v10.5.1 before this fix | **1.404 ms** (+121%) | **5 034 080 B** (+35%) |
+| v10.5.1 after | 0.679 ms | 3 736 000 B (+0.01%) |
+
+Two changes: accounting now runs only when `DebateExecutionOptions.CostTrackingEnabled`, and the
+per-member admission check stopped being an `async ValueTask` — its state machine was allocated on
+every call even when the method returned immediately, which is most of what remained.
+
+The improvement that survived: three index runs of the same document now leave the same points as one,
+instead of three times as many — 120 points rather than 360 against live Qdrant.
+
 ### Fixed — the pgvector backend could not write or search
 
 `PgVectorStore` bound the embedding with `AddWithValue(new Vector(v))`. That overload takes `object`, so

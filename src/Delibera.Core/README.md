@@ -43,8 +43,30 @@ outcomes** rather than single-model guesses.
 - 📁 **Separate File Output** — export `result.md`, `statistics.md`, `logs.md` independently
 - 🤝 **Microsoft.Extensions.AI** — first-class `IChatClient` / `IEmbeddingGenerator` interop with logging & function-invocation middleware
 - 🛑 **Cooperative Cancellation** — every public async method accepts a `CancellationToken`; a host shutdown or user-initiated cancel aborts the debate mid-flight (rounds, LLM calls, MCP tools, RAG queries, file saves)
+- ⌨️ **Companion packages** — `Delibera.Cli` (assembly `delibera`: `run`, `resume`, `compare`, `benchmark` on System.CommandLine) and `Delibera.Grpc` / `Delibera.Grpc.Client` (`DebateService`, `ScenarioService`, `CorpusService`, layered on `IDebateOrchestrator`). Both build on `Delibera.Core` alone.
 - 🔌 **Interface-First** — clean abstractions for providers, factories, builders and executors
 - 🧱 **Modern C# 15** — file-scoped namespaces, records, init-only properties, global usings
+
+### v10.5.1 — New Features
+
+- 🧰 **Tool Use** — `IToolProvider` (`Name`, `GetToolsAsync(CancellationToken)`) with built-in `FileSystemToolProvider(rootDirectory, maxBytes = 1024*1024)`, `HttpToolProvider(HttpClient, allowedHosts, allowInsecureHttp = false, maxCharacters = 20000)` and `McpToolProvider(IMcpClient)`. Configure with `WithTools(IToolProvider)`, `WithTools(params AIFunction[])` and `WithMaxToolIterations(int)`. A provider wrapping a real `IChatClient` gets native function calling; a string-only provider gets the `[[TOOL: name {json}]]` marker protocol, because a string adapter cannot carry structured function-call traffic. Both transports write the same `ToolCallLog` (`ToolCallTransport.Native` / `.Marker`), readable from `DebateRound.ToolCalls` and `DebateResult.ToolCalls`.
+- 💵 **Cost Gates & Rate Limits** — `ICostGate`, `IRateLimiter`, `IModelPricingRegistry` with `BudgetCostGate`, `TokenBucketRateLimiter`, `ModelPricingRegistry` and `CostLedger`. Builder: `WithCostLimit(decimal, CostLimitBehavior = Abort)`, `WithTokenBudget(long, …)`, `WithRateLimit(callsPerWindow, window, RateLimitBehavior = Queue, RateLimitScope = PerModel)`, plus the `WithCostGate` / `WithRateLimiter` / `WithPricingRegistry` escape hatches. Prices come from `new ModelPricingRegistry(json)` — an array of `{ "model", "inputPerMillion", "outputPerMillion" }`. Exceeding a ceiling does **not** throw: the debate returns a degraded result (`IsDegraded == true`, `FailedMembers` populated) carrying the spend so far, reported as `DebateResult.CostEstimate` (`TotalCost`, `TotalPromptTokens`, `TotalCompletionTokens`, `Members`, `IsEstimate`, `WasTruncated`). `WithCostLimit` without `WithPricingRegistry` makes `Build()` throw `InvalidOperationException`; `WithTokenBudget` needs no prices.
+- 🔍 **Debate Diff** — `DebateResultExtensions.Diff(this DebateResult left, DebateResult right)` → `DebateDiff` (`OldDebateId`, `NewDebateId`, `VerdictSimilarity`, `VerdictChanged`, `Rounds`, `MissingRoundNumbers`, `AddedRoundNumbers`, `MembersOnlyInOld`, `MembersOnlyInNew`, `IsEmpty`) with `ToMarkdown()`, `ToHtml()`, `SaveToMarkdownAsync(path, ct)`, `SaveToHtmlAsync(path, ct)`. Per round: `RoundDiff` (`RoundNumber`, `RoundName`, `Members`, `MemberSimilarity`, `VerdictChanged`); per member: `MemberDiff` (`Member`, `OldText`, `NewText`, `Similarity`, `InlineDiff` — word-level `**added**` / `~~removed~~`). Rounds match on round **number** and members on **display name**, never list position, so a 4-round run against a 3-round run reports the missing round instead of shifting later comparisons onto the wrong member.
+
+> ⚠️ **Vector indexing is now idempotent.** Point ids are derived from the chunk's identity —
+> `(collection, source_path, chunk_index)` when a source is known, `(collection, content hash)` when it
+> is not — so re-indexing upserts instead of appending. Previously `Guid.NewGuid()` was used per
+> chunk, and since both stores treat the id as an upsert key, three runs over 24 chunks left 72
+> points. **Migration:** collections written by 10.5.0 or earlier hold random-id points that
+> re-indexing will never replace — delete the collection via `IVectorStore.DeleteCollectionAsync` and
+> re-index once.
+
+> ⚠️ **pgvector requires 10.5.1 or later.** `PgVectorStore` could not write or search at all: it bound
+> the embedding as `AddWithValue(new Vector(...))`, which boxes the value so Npgsql cannot infer a
+> type, and the first upsert threw `InvalidCastException`. `NpgsqlDbType.Unknown` fails too —
+> `UseVector()` only registers a mapping for the Npgsql version Pgvector was built against. The
+> embedding now travels as pgvector's text form with a `::vector` cast, which any pgvector version
+> understands. Qdrant was never affected.
 
 ### v10.3.0 — New Features
 

@@ -252,6 +252,36 @@ IChatClient chatClient = ollama.AsChatClient()
 If the provider is already a `ChatClientLLMProvider`, `AsChatClient()` returns its
 underlying client directly (no extra wrapping layer).
 
+### How function invocation actually reaches a string-only provider
+
+A provider that returns plain strings cannot emit a `FunctionCallContent`, and
+`FunctionInvokingChatClient` reacts to nothing else. So `AsChatClient()` on a
+string-only provider is a **text bridge**, and this is worth knowing before you
+wonder why a tool call looks like prose:
+
+| Provider under the adapter | Transport | What goes over the wire |
+|---|---|---|
+| Wraps a real `IChatClient` (`ChatClientLLMProvider`) | Native | Structured `FunctionCallContent` / `FunctionResultContent` |
+| Returns a string (`OllamaProvider`, `YandexGptProvider`, …) | Marker | `[[TOOL: name {"arg":"value"}]]` in the prompt text, parsed back into a real `FunctionCallContent` |
+
+The bridge renders the configured tools into the system prompt, parses the marker out
+of the response, and flattens earlier tool exchanges back into readable text so the
+model can see what it already asked for. Both paths produce the same
+`ToolCallLog`, and `ToolCallTransport` on each entry tells you which one ran.
+
+If you want the structured path, wrap a real client instead:
+
+```csharp
+using var ollama = new OllamaProvider("http://localhost:11434");
+ILLMProvider native = ollama.AsChatClient().AsLLMProvider("Ollama");  // real IChatClient underneath
+```
+
+**Before 10.5.1 the marker transport did not exist** and the adapter silently
+discarded `ChatOptions.Tools`: the middleware never saw a tool request, so it
+invoked nothing and returned an ordinary answer with no error to explain why. If you
+carried your own loop as a workaround, `ToolCallingMemberExecutor` now owns that and
+drives `FunctionInvokingChatClient` for every provider.
+
 ---
 
 ## 🏥 Provider Introspection

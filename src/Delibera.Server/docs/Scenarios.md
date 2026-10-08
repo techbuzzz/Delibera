@@ -156,3 +156,22 @@ curl http://localhost:8080/api/v1/debates/$ID/result
 | Registration required | Yes (`templateId`) | No |
 | Structured output | Via template verdict type | Via `outputSchema` JSON string |
 | Best for | Repeatable, governed councils | One-off, CI pipelines, SDK clients |
+
+---
+
+## Over gRPC
+
+Since 10.5.1 the same surface is available over gRPC in `Delibera.Grpc`, which is the better fit for the
+SDK-client column above:
+
+| REST | gRPC |
+|---|---|
+| `POST /api/v1/scenarios` | `ScenarioService.RunScenario` |
+| `POST /api/v1/scenarios/validate` | `ScenarioService.ValidateScenario` |
+| `GET /api/v1/scenarios/{id}/stream` (SSE) | `DebateService.StreamDebate` (server streaming) |
+
+The service layer sits on top of `IDebateOrchestrator`, so a scenario run over gRPC takes the same
+distributed-execution and caching path as the REST one. Note that a gRPC stream ends with exactly one
+terminal event, which makes a finished scenario distinguishable from a dropped connection.
+
+See `src/Delibera.Grpc/README.md`.

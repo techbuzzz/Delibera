@@ -193,9 +193,24 @@ public abstract partial class DebateScenario : IDebateStrategy
    ///    surfaces as a member failure rather than an exception, matching how the rest of the
    ///    fan-out reports per-member trouble.
    /// </remarks>
-   private static async ValueTask<(bool IsAllowed, string? DenialReason)> AdmitAsync(
+   private static ValueTask<(bool IsAllowed, string? DenialReason)> AdmitAsync(
       CouncilMember member,
       DebateExecutionOptions? options,
+      CancellationToken ct)
+   {
+      // Fast path, deliberately not async. This runs for every member call, and an `async
+      // ValueTask` that returns immediately still allocates a state machine — so a debate with no
+      // gate and no limiter paid that ten times over for nothing. Returning a completed ValueTask
+      // costs nothing and keeps the default path allocation-free.
+      if (options is null || options.CostGate is null && options.RateLimiter is null)
+         return ValueTask.FromResult((true, (string?)null));
+
+      return AdmitSlowAsync(member, options, ct);
+   }
+
+   private static async ValueTask<(bool IsAllowed, string? DenialReason)> AdmitSlowAsync(
+      CouncilMember member,
+      DebateExecutionOptions options,
       CancellationToken ct)
    {
       if (options is null) return (true, null);

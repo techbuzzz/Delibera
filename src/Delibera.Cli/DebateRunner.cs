@@ -100,10 +100,16 @@ public static class DebateRunner
 
             ILLMProvider created = provider.Key.ToLowerInvariant() switch
             {
-               "ollama" => new OllamaProvider(endpoint),
+               // The API key is read here too, not only for yandex: Ollama Cloud is an
+               // authenticated endpoint, and a provider built without one gets a 401 from
+               // api.ollama.com while working perfectly against a local daemon — which makes
+               // the omission easy to miss until someone runs it against the cloud.
+               "ollama" => new OllamaProvider(
+                  endpoint,
+                  model["ApiKey"] ?? configuration["Delibera:Ollama:ApiKey"] ?? string.Empty),
                "yandex" => new YandexGptProvider(
                   endpoint,
-                  model["ApiKey"] ?? configuration["Delibera:Yandex:ApiKey"] ?? "",
+                  model["ApiKey"] ?? configuration["Delibera:Yandex:ApiKey"] ?? string.Empty,
                   name),
                _ => throw new NotSupportedException(
                   $"Provider '{provider.Key}' is not supported by the CLI. Use 'ollama' or 'yandex'.")
