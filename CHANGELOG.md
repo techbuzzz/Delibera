@@ -215,7 +215,7 @@ from publishing; they are deliberately **not** in the matrix yet.
 
 ### Verification
 
-595 unit tests, **595 passing** (477 Core + 108 Server + 10 gRPC contract), 0 failed, 0 skipped.
+611 unit tests, **611 passing** (493 Core + 108 Server + 10 gRPC contract), 0 failed, 0 skipped.
 `dotnet build Delibera.slnx -c Release -warnaserror` is clean (0 warnings, 0 errors) across all eight
 projects.
 

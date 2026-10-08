@@ -78,11 +78,17 @@ jobs:
             unzip -l "$pkg" | grep -q 'icon.png'  || { echo "MISSING icon.png in $pkg";  exit 1; }
           done
 
+      # Symbol packages (.snupkg) are built too, so they must be uploaded and pushed with the
+      # rest. IncludeSymbols/SymbolPackageFormat in each csproj is otherwise decoration: without
+      # this they would be generated on every run and dropped, and consumers would get no
+      # stack traces from the package.
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nuget-artifacts
-          path: ./artifacts/*.nupkg
+          path: |
+            ./artifacts/*.nupkg
+            ./artifacts/*.snupkg
           if-no-files-found: error
           retention-days: 14
 
@@ -117,7 +123,8 @@ jobs:
 
       - name: Push to NuGet.org
         run: |
-          for pkg in ./artifacts/*.nupkg; do
+          for pkg in ./artifacts/*.nupkg ./artifacts/*.snupkg; do
+            [ -e "$pkg" ] || continue
             echo "Pushing $pkg"
             dotnet nuget push "$pkg" \
               --source https://api.nuget.org/v3/index.json \

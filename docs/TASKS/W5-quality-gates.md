@@ -135,31 +135,94 @@ repository-layout decision, so it is left in place and flagged here.
 
 ---
 
-## W5-06 · CHANGELOG · **P1** · ⬜ todo
+## W5-06 · CHANGELOG · **P1** · ✅ done
 
 **Problem.** The changelog is the only place a consumer learns about the breaking changes
-in this cycle. So far: `WeightedVotingStrategy(double)` removal, the S-01/S-03 additions
-in 10.3.0, and the 10.2.6 feature set.
-
-**Fix.** One entry per wave, with a Breaking Changes table in the owner's chosen format
-(the P-01 migration table in `docs/scope/P-01-breaking-change-cleanup.md` is the precedent).
+in this cycle.
 
 **Acceptance.**
-- [ ] Every breaking change since 10.3.0 is listed with its replacement
-- [ ] The 10.3.0 entry's claim of "402 unit tests pass" is reconciled with reality
+- [x] Every breaking change since 10.3.0 is listed with its replacement — `## [10.3.0]` carries
+      the P-01 table, `## [10.4.0]` carries W3-07 with before/after code, and `[10.5.1]` states
+      plainly that it introduces none
+- [x] The 10.3.0 entry's claim of "402 unit tests pass" is reconciled with reality — the claim was
+      never actually written into the entry, so there is nothing outstanding to correct. Worth
+      recording rather than leaving implied: the same class of drift did reach nuget.org through
+      `PackageReleaseNotes` (the 514 figure), and that one is fixed and called out in `[10.5.1]`.
 
 ---
 
-## W5-07 · Documentation sync · **P2** · ⬜ todo
+## W5-07 · Documentation sync · **P2** · 🟡 partial
 
 **Problem.** `docs/` is extensive (QuickStart, Server, caching, WhatsNew × 3, NET10
 upgrade × 2, ROADMAP) and drifts: several documents describe behaviour this plan is
 changing, and the deleted `docs/NET10-Upgrade.pdf` files are still tracked in git.
 
-**Fix.** After the waves land: update `caching.md` (tenant/cache-key semantics), `Server.md`
-(problem details, auth posture), QuickStart (DI examples that actually resolve), and
-either restore or intentionally remove the two PDFs with a note.
+**Acceptance.**
+- [x] Git index matches the intended file set — the two `docs/NET10-Upgrade.pdf` files are no
+      longer tracked, and no document outside this one still references them
+- [x] Behaviour-changing documents updated for 10.5.1 — QuickStart (EN/RU), `Server.md`,
+      `caching.md`, `distributed-debates.md`, `src/README.md`, `src/Delibera.Core/README.md`,
+      `README.md`, `README-RU.md`, `ChatClientLLMProvider.md`, `CONTRIBUTING.md`, plus new
+      `docs/WhatsNew-v10.5.1.md`
+- [ ] Every documented code sample compiles — **not verified.** The samples in the files changed
+      for 10.5.1 were written against the source and every `With…` method they name was checked to
+      exist, but no documentation-wide sample compilation was run. Treat this row as open.
+
+---
+
+## W5-08 · No framework regression in the debate loop · **P1** · ✅ done
+
+**Problem.** Nothing compared framework cost between releases, so a change that made every debate
+~2× slower to orchestrate would ship green. That is exactly what happened in 10.5.1: cost accounting
+ran unconditionally, concatenating the prompts and running the token counter over prompt and response
+on every member call — a cost quadratic in the debate's own length, for a result that was then
+discarded.
+
+**Measurement.** `.bench/PerfCheck`: a fake provider returning instantly, three members, three rounds,
+long deterministic responses, and the baseline checkout supplied as a git worktree through
+`-p:DeliberaCorePath=`. Wall time against live models is useless here — the proxy on this machine
+dominates latency by orders of magnitude.
+
+| Checkout | Median | p95 | Allocations |
+|---|---|---|---|
+| v10.5.0 (`1297e38`) | 0.634 ms | 1.22 ms | 3 735 640 B |
+| v10.5.1, unguarded (`978f4cb`) | **1.404 ms** (+121%) | 1.96 ms | **5 034 080 B** (+35%) |
+| v10.5.1, guarded | 0.679 ms | 1.41 ms | 3 736 000 B |
+
+**Fix (done).** Accounting runs only when `DebateExecutionOptions.CostTrackingEnabled`. A second pass
+removed an `async ValueTask` from the per-member admission check — its state machine was allocated on
+every call even though the method returned immediately.
 
 **Acceptance.**
-- [ ] Every documented code sample compiles
-- [ ] Git index matches the intended file set
+- [x] Allocations within noise of the previous release (+0.01%)
+- [x] Wall time within the noise band — repeated 80-iteration runs put the two within each other's
+      spread (0.52–0.60 ms vs 0.56–0.66 ms), so the residual difference is not treated as signal
+- [x] Cost gating still works where configured — `CostGateIntegrationTests` covers both the
+      enforcing and the permissive case
+
+---
+
+## W5-09 · Indexing produces the same corpus regardless of run count · **P1** · ✅ done
+
+**Problem.** W2-15: every index run appended, because point ids were random. The 10.5.0 measurement
+found 72 points for 24 unique chunks.
+
+**Measurement.** Live Qdrant, same corpus and queries, varying only how many index runs had happened.
+
+| | v10.5.0 | v10.5.1 |
+|---|---|---|
+| 3 index runs of one document | **360 points** | **120 points** |
+| Search median afterwards | 0.968 ms | 0.873 ms |
+
+**Fix (done)** — deterministic point ids; see W2-15.
+
+**Acceptance.**
+- [x] Point count independent of run count
+- [x] Latency improves as a consequence
+- [ ] Ranking quality under duplicates improves — **not measured.** The latency win is modest
+      because a few hundred vectors stay index-resident; the real effect is on top-k ranking, and
+      demonstrating it needs a recall/precision comparison this harness does not perform.
+
+**Why this gate exists at all.** W5-05 closed the fake-vs-real gap for *behaviour*. This is its
+performance twin: a fake provider returning instantly is exactly what makes framework overhead
+measurable, and a feature that made the pipeline twice as slow passed every behavioural test.

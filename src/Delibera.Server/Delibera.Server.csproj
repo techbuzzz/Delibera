@@ -33,7 +33,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageReleaseNotes>First GA release of Delibera.Server as a standalone package.
 
-The 10.5.0 package page for Delibera.Core shows a 514-test figure; the measured count at that tag was 532 (424 Core + 108 Server). This package ships the corrected numbers in the 10.5.1 release notes.</PackageReleaseNotes>
+The 10.5.0 package page for Delibera.Core shows a 514-test figure; that number was measured at 10.4.0. At the 10.5.0 tag the count was 532, and at this release it is 611 (493 Core + 108 Server + 10 gRPC contract). This package ships with the corrected numbers.</PackageReleaseNotes>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>

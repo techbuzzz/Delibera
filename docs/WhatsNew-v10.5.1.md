@@ -248,8 +248,8 @@ away from publishing. They are deliberately not in the matrix yet.
 | Gate | Result |
 |---|---|
 | `dotnet build Delibera.slnx -c Release -warnaserror` | **0 warnings, 0 errors** across 8 projects |
-| `dotnet test Delibera.slnx -c Release` | **595 passed**, 0 failed, 0 skipped |
-| Breakdown | 477 Core + 108 Server + 10 gRPC contract |
+| `dotnet test Delibera.slnx -c Release` | **611 passed**, 0 failed, 0 skipped |
+| Breakdown | 493 Core + 108 Server + 10 gRPC contract |
 
 > **Correction to a published figure.** The 10.5.0 page for `Delibera.Core` states *514 unit tests
 > (406 Core + 108 Server)*. That number was measured at 10.4.0 — 10.5.0 shipped with 10.4.0's release

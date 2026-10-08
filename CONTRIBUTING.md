@@ -96,6 +96,39 @@ dotnet test --configuration Release
 
 See `.bench/README.md` for the sweep's flags, exit codes and report format.
 
+### 🧪 Framework overhead harness (`.bench/PerfCheck`)
+
+The harnesses above measure **models**. This one measures **Delibera**, and it exists because a change
+in the 10.5.1 cycle made every debate ~2× slower to orchestrate while every behavioural test stayed
+green.
+
+It drives the whole pipeline with a fake provider that returns instantly, so what is left is framework
+CPU. The baseline is a checkout supplied at build time, which makes before/after honest:
+
+```powershell
+cd .bench\PerfCheck
+
+# this tree
+dotnet run -c Release -- current --iterations 25
+
+# a baseline checkout: git worktree add --detach D:\Temp\delibera-1050 1297e38
+dotnet run -c Release -p:DeliberaCorePath=D:\Temp\delibera-1050\src\Delibera.Core\Delibera.Core.csproj -- baseline --iterations 25
+
+# retrieval against a live Qdrant, at one index run and at three
+dotnet run -c Release -- retrieval --iterations 300
+```
+
+**Compare allocations, not milliseconds.** Wall time on a sub-millisecond workload is dominated by
+whatever else the machine is doing; repeated 80-iteration runs of two builds here overlapped almost
+completely. `GC.GetTotalAllocatedBytes` is deterministic and is what caught the regression: +35% while
+wall time looked like normal variance.
+
+**Never compare it against `docs/performance-measurements.md`.** Those numbers come from live models
+through a proxy. Mixing them measures the proxy.
+
+Recorded results: `docs/performance-measurements.md` §8, `docs/TASKS/W5-quality-gates.md` (W5-08,
+W5-09).
+
 ---
 
 ## 🌿 Branch & Commit Conventions

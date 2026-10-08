@@ -44,7 +44,7 @@ New — gRPC transport (#11): Delibera.Grpc and Delibera.Grpc.Client, derived fr
 
 Packaging (#13): Delibera.Server and Delibera.Redis are now publishable, so the GA matrix is Delibera.Core, Delibera.Server and Delibera.Redis. Server needed IsPackable=true — Microsoft.NET.Sdk.Web sets it false — plus its own README and icon, which must sit next to the csproj for pack to resolve them. Delibera.Grpc and Delibera.Grpc.Client carry the same metadata and are one workflow line away from publishing.
 
-Tests: 595 unit tests, 595 passing (477 Core + 108 Server + 10 gRPC contract), 0 failed, 0 skipped. The release build is clean under -warnaserror. The 10.5.0 page for Delibera.Core states 514 tests (406 Core + 108 Server); that figure was measured at 10.4.0 and is corrected here.
+Tests: 611 unit tests, 611 passing (493 Core + 108 Server + 10 gRPC contract), 0 failed, 0 skipped. The release build is clean under -warnaserror. The 10.5.0 page for Delibera.Core states 514 tests (406 Core + 108 Server); that figure was measured at 10.4.0 and is corrected here.
 
 Carried forward, still not fixed: W2-13 (WithCache missing from ICouncilBuilder) and W2-14 (cache-hit TotalDuration reports provenance, not caller wait time) are documented product decisions; pruning orphaned vector points when a source document shrinks needs a filter-delete on IVectorStore, which would be a breaking interface change; W4-10's bounded round channels remain open — the SSE writer itself is fixed, but Channel.CreateUnbounded is still in use in LocalDebateOrchestrator and RedisDebateOrchestrator, so a consumer that stops draining grows memory without limit.
 

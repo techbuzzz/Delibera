@@ -68,6 +68,11 @@ comfort: W1 correctness → W2 performance → W3 architecture → W4 server →
 
 Legend: ✅ done · 🔄 in progress · ⬜ todo · 🔒 10.4.0 (breaking) · ❓ needs owner decision · 📋 documented, no code change · 🟡 partial
 
+🟡 W5-07 is partial: the documents themselves are synced for 10.5.1 and the stale PDFs are gone,
+but "every documented code sample compiles" has not been run as a check, so that row stays open.
+W5-08 and W5-09 are the performance gate, added in 10.5.1 — see
+[W5-quality-gates.md](W5-quality-gates.md) and §7 below.
+
 ### W0 — Build & toolchain
 | ID | Task | Pri | Status |
 |----|------|-----|--------|
@@ -153,8 +158,10 @@ still needs `docker compose up` + `docker inspect` to confirm the built image re
 | W5-03 | Concurrency tests for orchestrator eviction / `Dispose` / `volatile` status | P1 | ⬜ |
 | W5-04 | CI runs build + test on every PR | P1 | ✅ |
 | W5-05 | "Async fake" test provider to close the fake-vs-real gap | **P0** | ✅ |
-| W5-06 | CHANGELOG entry with the breaking changes of this cycle | P1 | ⬜ |
-| W5-07 | `docs/` sync: README, QuickStart, `caching.md`, `Server.md` | P2 | ⬜ |
+| W5-06 | CHANGELOG entry with the breaking changes of this cycle | P1 | ✅ |
+| W5-07 | `docs/` sync: README, QuickStart, `caching.md`, `Server.md` | P2 | 🟡 |
+| W5-08 | No framework regression in the debate loop (added v10.5.1) | P1 | ✅ |
+| W5-09 | Indexing produces the same corpus regardless of run count (added v10.5.1) | P1 | ✅ |
 
 ---
 
@@ -176,11 +183,54 @@ standing property of the test suite:
 - [x] `dotnet build -c Release` → 0 errors, **0 warnings**
 - [x] `TreatWarningsAsErrors=true` in CI — `publish-nuget.yml` builds with `-warnaserror`
 - [ ] `dotnet test` → green, with a regression test for every W1 item
-      *(tests are green: 532/532 — 424 Core + 108 Server, re-measured on this tree, not carried
-      forward. The "regression test for every W1 item" half is **not verified**: no audit has
-      established that every W1 item has a corresponding test, so this box stays open.)*
+      *(tests are green: 611/611 — 493 Core + 108 Server + 10 gRPC contract, re-measured on this
+      tree, not carried forward. The "regression test for every W1 item" half is **not verified**:
+      no audit has established that every W1 item has a corresponding test, so this box stays open.)*
 - [x] No `GetAwaiter().GetResult()` / `.Result` / `.Wait()` in `src/` outside `Dispose` —
       one occurrence remains, `VectorStoreFactory.DisposeInstances`, which is a disposal path
 - [ ] No `new Regex(` in a hot path (already true — keep it true)
 - [ ] No mutable `List<T>` shared between the debate loop and a request thread
 - [x] CHANGELOG documents every breaking change since v10.3.0 — W3-07, with before/after code
+
+---
+
+## 7. Performance gate (v10.5.1)
+
+A release gate exists for the other properties above, and a performance one used not to. Added in
+v10.5.1, because two defects in that release were invisible to every gate that was already in place.
+
+### W5-08 · no framework regression in the debate loop
+
+| Checkout | Median | p95 | Allocations |
+|---|---|---|---|
+| v10.5.0 (`1297e38`) | 0.634 ms | 1.22 ms | 3 735 640 B |
+| v10.5.1, accounting unguarded (`978f4cb`) | **1.404 ms** (+121%) | 1.96 ms | **5 034 080 B** (+35%) |
+| v10.5.1, accounting guarded | 0.679 ms | 1.41 ms | 3 736 000 B |
+
+**✅ Fixed.** Cost accounting ran unconditionally: every member call concatenated the prompts and ran
+the token counter over the prompt and the response. The prompt grows every round as history
+accumulates, so a debate paid a cost quadratic in its own length and then discarded it. Accounting now
+runs only when `DebateExecutionOptions.CostTrackingEnabled`. A second pass removed an `async ValueTask`
+from the per-member admission check, whose state machine was allocated on every call.
+
+Method: `.bench/PerfCheck` — a fake provider returning instantly, three members, three rounds, long
+deterministic responses, baseline checkouts supplied as git worktrees via `-p:DeliberaCorePath=`.
+Full numbers and caveats in
+[performance-measurements.md](../performance-measurements.md#8-framework-overhead-and-retrieval-measured-across-checkouts-v1051).
+
+### W5-09 · indexing produces the same corpus regardless of run count
+
+| | v10.5.0 | v10.5.1 |
+|---|---|---|
+| 3 index runs of one document, live Qdrant | **360 points** | **120 points** |
+| Search median afterwards | 0.968 ms | 0.873 ms |
+
+**✅ Fixed** by W2-15's deterministic point ids. The latency win is modest at this scale because a
+few hundred vectors stay index-resident; the larger effect is on ranking quality, which is **not
+measured** — that needs a recall/precision comparison.
+
+### What the gate does not catch
+
+Wall-clock comparisons against the numbers in `docs/performance-measurements.md` are meaningless:
+those run against live cloud models through a proxy, where model latency dominates framework cost by
+orders of magnitude. The gate above isolates framework CPU with no network. Do not mix the two.
