@@ -159,7 +159,7 @@ public static class ModelContextWindowRegistry
          .. _windowsBuilder
             .OrderByDescending(kvp => kvp.Key.Length)
             .ThenBy(kvp => kvp.Key, StringComparer.Ordinal)
-            .Select(kvp => (kvp.Key, kvp.Value)),
+            .Select(kvp => (kvp.Key, kvp.Value))
       ];
 
       return _frozenWindows;
@@ -171,7 +171,7 @@ public static class ModelContextWindowRegistry
       [
          .. _visionPatternsBuilder
             .OrderByDescending(pattern => pattern.Length)
-            .ThenBy(pattern => pattern, StringComparer.Ordinal),
+            .ThenBy(pattern => pattern, StringComparer.Ordinal)
       ];
 
       return _sortedVisionPatterns;
@@ -208,14 +208,14 @@ public static class ModelContextWindowRegistry
    }
 
    /// <summary>
-   ///    Returns the <see cref="ModelCapabilities"/> for a model by name — combining
+   ///    Returns the <see cref="ModelCapabilities" /> for a model by name — combining
    ///    context-window lookup with vision-capability detection.
    /// </summary>
    /// <param name="modelName">Model name as reported by the provider.</param>
    /// <returns>
-   ///    A <see cref="ModelCapabilities"/> snapshot with <see cref="ModelCapabilities.ContextWindowTokens"/>
-   ///    from the registry (or <c>null</c> if unknown) and <see cref="ModelCapabilities.SupportsVision"/>
-   ///    from <see cref="SupportsVision(string)"/>.
+   ///    A <see cref="ModelCapabilities" /> snapshot with <see cref="ModelCapabilities.ContextWindowTokens" />
+   ///    from the registry (or <c>null</c> if unknown) and <see cref="ModelCapabilities.SupportsVision" />
+   ///    from <see cref="SupportsVision(string)" />.
    /// </returns>
    public static ModelCapabilities GetCapabilities(string modelName)
    {
@@ -243,7 +243,10 @@ public static class ModelContextWindowRegistry
    /// <summary>
    ///    Returns a read-only snapshot of all registered vision-capable model patterns.
    /// </summary>
-   public static IReadOnlyCollection<string> GetVisionPatterns() => SortedVisionPatterns;
+   public static IReadOnlyCollection<string> GetVisionPatterns()
+   {
+      return SortedVisionPatterns;
+   }
 
    /// <summary>
    ///    Looks up the context window size for a model by name.
@@ -284,8 +287,8 @@ public static class ModelContextWindowRegistry
       ArgumentOutOfRangeException.ThrowIfNegativeOrZero(contextWindowTokens);
 
       _windowsBuilder[modelNamePattern] = contextWindowTokens;
-      _frozenWindows = null;                // invalidate the exact-match fast path
-      _sortedWindows = [];                  // invalidate the substring scan
+      _frozenWindows = null; // invalidate the exact-match fast path
+      _sortedWindows = []; // invalidate the substring scan
    }
 
    /// <summary>

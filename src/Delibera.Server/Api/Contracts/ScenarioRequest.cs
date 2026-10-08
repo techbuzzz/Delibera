@@ -1,10 +1,10 @@
 namespace Delibera.Server.Api.Contracts;
 
 /// <summary>
-/// Fully self-describing council scenario. When submitted to POST /api/v1/scenarios
-/// the server builds a CouncilBuilder from this JSON without referencing any
-/// registered template. Useful for one-off councils, CI pipelines and SDK clients
-/// that want total control over the council composition.
+///    Fully self-describing council scenario. When submitted to POST /api/v1/scenarios
+///    the server builds a CouncilBuilder from this JSON without referencing any
+///    registered template. Useful for one-off councils, CI pipelines and SDK clients
+///    that want total control over the council composition.
 /// </summary>
 public sealed record ScenarioRequest
 {
@@ -19,8 +19,8 @@ public sealed record ScenarioRequest
    // ── Optional council configuration ────────────────────────────────────────
 
    /// <summary>
-   /// Debate strategy: Standard | Critique | Consensus.
-   /// Defaults to "Standard".
+   ///    Debate strategy: Standard | Critique | Consensus.
+   ///    Defaults to "Standard".
    /// </summary>
    public string Strategy { get; init; } = "Standard";
 
@@ -49,9 +49,9 @@ public sealed record ScenarioRequest
    public string[]? CorpusIds { get; init; }
 
    /// <summary>
-   /// JSON Schema string for structured output enforcement.
-   /// When provided, the chairman (or final synthesis) is instructed to
-   /// produce a verdict matching this schema.
+   ///    JSON Schema string for structured output enforcement.
+   ///    When provided, the chairman (or final synthesis) is instructed to
+   ///    produce a verdict matching this schema.
    /// </summary>
    public string? OutputSchema { get; init; }
 
@@ -65,21 +65,21 @@ public sealed record ScenarioRequest
    public string? Label { get; init; }
 }
 
-/// <summary>A single council member definition inside a <see cref="ScenarioRequest"/>.</summary>
+/// <summary>A single council member definition inside a <see cref="ScenarioRequest" />.</summary>
 public sealed record ScenarioMember
 {
    /// <summary>Display role name, e.g. "Architect" or "Devil's Advocate".</summary>
    public required string Role { get; init; }
 
    /// <summary>
-   /// LLM model identifier, e.g. "qwen2.5:7b" or "gpt-4o".
-   /// Defaults to the server's configured strong model when omitted.
+   ///    LLM model identifier, e.g. "qwen2.5:7b" or "gpt-4o".
+   ///    Defaults to the server's configured strong model when omitted.
    /// </summary>
    public string? Model { get; init; }
 
    /// <summary>
-   /// Provider type: Ollama | OpenAI | AzureOpenAI | Anthropic.
-   /// Defaults to the server's configured default provider.
+   ///    Provider type: Ollama | OpenAI | AzureOpenAI | Anthropic.
+   ///    Defaults to the server's configured default provider.
    /// </summary>
    public string? Provider { get; init; }
 
@@ -93,7 +93,7 @@ public sealed record ScenarioMember
    public string Capabilities { get; init; } = "Text";
 }
 
-/// <summary>Chairman configuration inside a <see cref="ScenarioRequest"/>.</summary>
+/// <summary>Chairman configuration inside a <see cref="ScenarioRequest" />.</summary>
 public sealed record ScenarioChairman
 {
    /// <summary>LLM model for the chairman. Defaults to strong model.</summary>
@@ -106,8 +106,8 @@ public sealed record ScenarioChairman
    public string? SystemPrompt { get; init; }
 
    /// <summary>
-   /// When true the chairman opens the debate with an orientation statement.
-   /// Defaults to false.
+   ///    When true the chairman opens the debate with an orientation statement.
+   ///    Defaults to false.
    /// </summary>
    public bool OpeningStatement { get; init; } = false;
 }

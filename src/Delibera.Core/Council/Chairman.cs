@@ -202,7 +202,9 @@ public static class Chairman
       ArgumentNullException.ThrowIfNull(rounds);
       var roundsSummary = string.Join("\n\n",
          rounds.Select(r => $"**Round {r.RoundNumber} ({r.RoundName}):**\n" +
-                            string.Join("\n", r.Responses.Select(kv => $"- {kv.Key}: {kv.Value[..Math.Min(200, kv.Value.Length)]}..."))));
+                            string.Join("\n",
+                               r.Responses.Select(kv =>
+                                  $"- {kv.Key}: {kv.Value[..Math.Min(200, kv.Value.Length)]}..."))));
 
       var prompt = $"""
                     As the Chairman, review the debate so far and formulate 2-3 targeted
@@ -275,7 +277,8 @@ public static class Chairman
             var header = $"### Round {r.RoundNumber}: {r.RoundName}";
             var body = string.Join("\n", r.Responses.Select(kv => $"**{kv.Key}:**\n{kv.Value}"));
             var ki = r.KnowledgeInteractions is { Count: > 0 }
-               ? "\n📚 Knowledge queries:\n" + string.Join("\n", r.KnowledgeInteractions.Select(k => $"Q: {k.Query}\nA: {k.Answer}"))
+               ? "\n📚 Knowledge queries:\n" + string.Join("\n",
+                  r.KnowledgeInteractions.Select(k => $"Q: {k.Query}\nA: {k.Answer}"))
                : "";
             return $"{header}\n{body}{ki}";
          }));

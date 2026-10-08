@@ -86,7 +86,8 @@ public static class AdaptiveStrategyExample
       executor.OnRoundCompleted += round =>
       {
          var stratName = round.StrategyUsed?.StrategyName ?? "(unknown)";
-         Console.WriteLine($"  ✅ Round {round.RoundNumber} ({round.RoundName}) — strategy: {stratName} ({round.Duration.TotalSeconds:F1}s)");
+         Console.WriteLine(
+            $"  ✅ Round {round.RoundNumber} ({round.RoundName}) — strategy: {stratName} ({round.Duration.TotalSeconds:F1}s)");
       };
 
       Console.WriteLine("  Starting debate…");

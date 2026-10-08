@@ -1,5 +1,3 @@
-using Delibera.Core.Models;
-
 namespace Delibera.Core.Debate;
 
 /// <summary>
@@ -45,7 +43,8 @@ public static class DebateResultExtensions
          var rightMembers = rightRound.Responses.Keys.ToHashSet(StringComparer.Ordinal);
 
          var memberDiffs = new List<MemberDiff>();
-         foreach (var member in leftMembers.Intersect(rightMembers, StringComparer.Ordinal).OrderBy(m => m, StringComparer.Ordinal))
+         foreach (var member in leftMembers.Intersect(rightMembers, StringComparer.Ordinal)
+                     .OrderBy(m => m, StringComparer.Ordinal))
          {
             var oldText = leftRound.Responses[member];
             var newText = rightRound.Responses[member];
@@ -64,12 +63,10 @@ public static class DebateResultExtensions
          // without re-reading every member diff.
          double? roundSimilarity = null;
          if (leftRound.Responses.Count > 0 && rightRound.Responses.Count > 0)
-         {
             roundSimilarity = TextSimilarity.Similarity(
                JoinResponses(leftRound.Responses),
                JoinResponses(rightRound.Responses),
                int.MaxValue);
-         }
 
          var roundName = string.IsNullOrWhiteSpace(rightRound.RoundName)
             ? leftRound.RoundName
@@ -114,9 +111,7 @@ public static class DebateResultExtensions
    {
       var sb = new StringBuilder();
       foreach (var (member, response) in responses.OrderBy(kv => kv.Key, StringComparer.Ordinal))
-      {
          sb.Append(member).Append('\n').Append(response).Append('\n');
-      }
 
       return sb.ToString();
    }
@@ -141,10 +136,8 @@ public static class DebateResultExtensions
       // LCS table is quadratic in what is left.
       var prefix = 0;
       while (prefix < oldWords.Count && prefix < newWords.Count
-             && string.Equals(oldWords[prefix], newWords[prefix], StringComparison.Ordinal))
-      {
+                                     && string.Equals(oldWords[prefix], newWords[prefix], StringComparison.Ordinal))
          prefix++;
-      }
 
       var suffix = 0;
       while (suffix < oldWords.Count - prefix
@@ -153,9 +146,7 @@ public static class DebateResultExtensions
                 oldWords[^(suffix + 1)],
                 newWords[^(suffix + 1)],
                 StringComparison.Ordinal))
-      {
          suffix++;
-      }
 
       var oldMiddle = oldWords.GetRange(prefix, oldWords.Count - prefix - suffix);
       var newMiddle = newWords.GetRange(prefix, newWords.Count - prefix - suffix);
@@ -171,7 +162,6 @@ public static class DebateResultExtensions
       {
          var script = DiffScript(oldMiddle, newMiddle);
          foreach (var (kind, word) in script)
-         {
             switch (kind)
             {
                case DiffKind.Unchanged:
@@ -184,7 +174,6 @@ public static class DebateResultExtensions
                   sb.Append("**").Append(word).Append("** ");
                   break;
             }
-         }
       }
 
       // Re-attach the common suffix without diff markers.
@@ -198,13 +187,6 @@ public static class DebateResultExtensions
       return sb.ToString().TrimEnd();
    }
 
-   private enum DiffKind
-   {
-      Unchanged,
-      Removed,
-      Added
-   }
-
    /// <summary>
    ///    Longest-common-subsequence diff over token lists. Returns the edit script that turns
    ///    <paramref name="oldWords" /> into <paramref name="newWords" />.
@@ -216,20 +198,15 @@ public static class DebateResultExtensions
       var table = new int[rows, cols];
 
       for (var i = oldWords.Count - 1; i >= 0; i--)
-      {
-         for (var j = newWords.Count - 1; j >= 0; j--)
-         {
-            table[i, j] = string.Equals(oldWords[i], newWords[j], StringComparison.Ordinal)
-               ? table[i + 1, j + 1] + 1
-               : Math.Max(table[i + 1, j], table[i, j + 1]);
-         }
-      }
+      for (var j = newWords.Count - 1; j >= 0; j--)
+         table[i, j] = string.Equals(oldWords[i], newWords[j], StringComparison.Ordinal)
+            ? table[i + 1, j + 1] + 1
+            : Math.Max(table[i + 1, j], table[i, j + 1]);
 
       var script = new List<(DiffKind, string)>((oldWords.Count + newWords.Count) / 2 + 4);
       var x = 0;
       var y = 0;
       while (x < oldWords.Count && y < newWords.Count)
-      {
          if (string.Equals(oldWords[x], newWords[y], StringComparison.Ordinal))
          {
             script.Add((DiffKind.Unchanged, oldWords[x]));
@@ -246,7 +223,6 @@ public static class DebateResultExtensions
             script.Add((DiffKind.Added, newWords[y]));
             y++;
          }
-      }
 
       while (x < oldWords.Count) script.Add((DiffKind.Removed, oldWords[x++]));
       while (y < newWords.Count) script.Add((DiffKind.Added, newWords[y++]));
@@ -281,5 +257,12 @@ public static class DebateResultExtensions
       if (start < text.Length) tokens.Add(text[start..]);
 
       return tokens;
+   }
+
+   private enum DiffKind
+   {
+      Unchanged,
+      Removed,
+      Added
    }
 }

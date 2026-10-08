@@ -1,4 +1,3 @@
-using Delibera.Core.Caching;
 using Delibera.Core.Chunking;
 using Delibera.Core.Telemetry;
 
@@ -348,11 +347,14 @@ public sealed class McpServerOptions
       return string.Equals(Transport, "Http", StringComparison.OrdinalIgnoreCase)
          ? McpServerConfig.Http(
             Name,
-            new Uri(Endpoint ?? throw new InvalidOperationException($"MCP server '{Name}' uses Http transport but has no Endpoint.")),
+            new Uri(Endpoint ??
+                    throw new InvalidOperationException(
+                       $"MCP server '{Name}' uses Http transport but has no Endpoint.")),
             AdditionalHeaders)
          : McpServerConfig.Stdio(
             Name,
-            Command ?? throw new InvalidOperationException($"MCP server '{Name}' uses Stdio transport but has no Command."),
+            Command ?? throw new InvalidOperationException(
+               $"MCP server '{Name}' uses Stdio transport but has no Command."),
             Arguments,
             EnvironmentVariables,
             WorkingDirectory);
@@ -456,12 +458,17 @@ public sealed class CacheOptions
    /// <summary>TTL for <c>RedisDebateCache</c> (in hours). Default is 24.</summary>
    public int RedisTtlHours { get; set; } = 24;
 
-   /// <summary>Default cache behavior for debates: <c>"Disabled"</c>, <c>"ReadWrite"</c>, <c>"ReadOnly"</c>, <c>"WriteThrough"</c>, or <c>"Bypass"</c>.</summary>
+   /// <summary>
+   ///    Default cache behavior for debates: <c>"Disabled"</c>, <c>"ReadWrite"</c>, <c>"ReadOnly"</c>,
+   ///    <c>"WriteThrough"</c>, or <c>"Bypass"</c>.
+   /// </summary>
    public string Behavior { get; set; } = "ReadWrite";
 
    /// <summary>Parses <see cref="Behavior" /> into a <see cref="CacheBehavior" /> enum value.</summary>
-   public CacheBehavior GetBehavior() =>
-      Enum.TryParse<CacheBehavior>(Behavior, true, out var b)
+   public CacheBehavior GetBehavior()
+   {
+      return Enum.TryParse<CacheBehavior>(Behavior, true, out var b)
          ? b
          : CacheBehavior.Disabled;
+   }
 }

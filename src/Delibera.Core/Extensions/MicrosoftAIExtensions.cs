@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using Delibera.Core.Providers.LLM;
-using Microsoft.Extensions.AI;
+using Delibera.Core.Tools;
 
 #pragma warning disable IDE1006 // 'LLM' acronym kept all-caps by convention; renaming is a breaking API change
 
@@ -33,7 +33,8 @@ public static class MicrosoftAIExtensions
    /// <param name="chatClient">The chat client to wrap.</param>
    /// <param name="providerName">Optional friendly provider name (defaults to client metadata).</param>
    /// <param name="ownsClient">Whether disposing the provider also disposes the client.</param>
-   public static ILLMProvider AsLLMProvider(this IChatClient chatClient, string? providerName = null, bool ownsClient = true)
+   public static ILLMProvider AsLLMProvider(this IChatClient chatClient, string? providerName = null,
+      bool ownsClient = true)
    {
       return new ChatClientLLMProvider(chatClient, providerName, ownsClient);
    }
@@ -94,9 +95,9 @@ public static class MicrosoftAIExtensions
    /// </summary>
    /// <remarks>
    ///    <para>
-   ///    A provider that returns plain strings cannot emit a
-   ///    <see cref="FunctionCallContent" />, and <c>FunctionInvokingChatClient</c> only reacts to
-   ///    one. So this adapter translates in both directions:
+   ///       A provider that returns plain strings cannot emit a
+   ///       <see cref="FunctionCallContent" />, and <c>FunctionInvokingChatClient</c> only reacts to
+   ///       one. So this adapter translates in both directions:
    ///    </para>
    ///    <list type="bullet">
    ///       <item>
@@ -112,8 +113,8 @@ public static class MicrosoftAIExtensions
    ///       </item>
    ///    </list>
    ///    <para>
-   ///    Without this the middleware was silently inert: it saw no tool request, so it never
-   ///    invoked anything, and the caller got an ordinary text answer with no error to explain why.
+   ///       Without this the middleware was silently inert: it saw no tool request, so it never
+   ///       invoked anything, and the caller got an ordinary text answer with no error to explain why.
    ///    </para>
    /// </remarks>
    private sealed class LLMProviderChatClient(ILLMProvider provider, string? defaultModel) : IChatClient
@@ -136,7 +137,7 @@ public static class MicrosoftAIExtensions
             cancellationToken).ConfigureAwait(false);
 
          var contents = new List<AIContent>();
-         var markerStream = new Tools.ToolMarkerStream();
+         var markerStream = new ToolMarkerStream();
 
          var visible = markerStream.Append(text ?? string.Empty, out var request);
          if (visible.Length > 0)
@@ -161,10 +162,10 @@ public static class MicrosoftAIExtensions
 
          // One marker stream for the whole call: a marker may straddle any chunk boundary, so the
          // parser has to hold the tail across chunks rather than resetting per chunk.
-         var markerStream = new Tools.ToolMarkerStream();
+         var markerStream = new ToolMarkerStream();
 
          await foreach (var chunk in provider.ChatStreamAsync(
-                           ResolveModel(options), system, user, options?.Temperature ?? 0.7f, cancellationToken)
+                              ResolveModel(options), system, user, options?.Temperature ?? 0.7f, cancellationToken)
                            .ConfigureAwait(false))
          {
             var visible = markerStream.Append(chunk ?? string.Empty, out var request);
@@ -172,10 +173,7 @@ public static class MicrosoftAIExtensions
             if (visible.Length > 0)
                yield return new ChatResponseUpdate(ChatRole.Assistant, visible);
 
-            if (request is not null)
-            {
-               yield return new ChatResponseUpdate(ChatRole.Assistant, [ToFunctionCall(request)]);
-            }
+            if (request is not null) yield return new ChatResponseUpdate(ChatRole.Assistant, [ToFunctionCall(request)]);
          }
 
          // A response that ends mid-marker still has to deliver its text rather than swallow it.
@@ -197,11 +195,11 @@ public static class MicrosoftAIExtensions
          provider.Dispose();
       }
 
-      private static FunctionCallContent ToFunctionCall(Tools.ToolCallParser.Request request)
+      private static FunctionCallContent ToFunctionCall(ToolCallParser.Request request)
       {
          // A call id is what pairs a request with its result. It is generated here because a
          // text-protocol provider has no wire-level id to reuse.
-         var arguments = Tools.ToolCallParser.TryParseArguments(request.ArgumentsJson);
+         var arguments = ToolCallParser.TryParseArguments(request.ArgumentsJson);
          return new FunctionCallContent(Guid.NewGuid().ToString("N"), request.ToolName, arguments);
       }
 
@@ -223,13 +221,13 @@ public static class MicrosoftAIExtensions
       }
 
       /// <summary>
-      ///   Flattens the conversation into the (system, user) pair the string-only provider accepts,
-      ///   carrying tool traffic across instead of dropping it.
+      ///    Flattens the conversation into the (system, user) pair the string-only provider accepts,
+      ///    carrying tool traffic across instead of dropping it.
       /// </summary>
       /// <remarks>
-      ///   Function-call and function-result content have no <c>Text</c>, so reading
-      ///   <c>message.Text</c> alone silently discarded every tool exchange. They are rendered
-      ///   explicitly here.
+      ///    Function-call and function-result content have no <c>Text</c>, so reading
+      ///    <c>message.Text</c> alone silently discarded every tool exchange. They are rendered
+      ///    explicitly here.
       /// </remarks>
       private static (string System, string User) FlattenMessages(
          IEnumerable<ChatMessage> messages,
@@ -239,18 +237,18 @@ public static class MicrosoftAIExtensions
          var user = new StringBuilder();
 
          if (tools.Count > 0)
-            system.Append(Tools.ToolCallParser.BuildBriefing(tools));
+            system.Append(ToolCallParser.BuildBriefing(tools));
 
          foreach (var message in messages)
          {
             var target = message.Role == ChatRole.System ? system : user;
 
             foreach (var content in message.Contents)
-            {
                switch (content)
                {
                   case FunctionCallContent call:
-                     AppendLine(target, $"[tool call] {call.Name}({Tools.ToolCallParser.SerializeArguments(call.Arguments)})");
+                     AppendLine(target,
+                        $"[tool call] {call.Name}({ToolCallParser.SerializeArguments(call.Arguments)})");
                      break;
 
                   case FunctionResultContent result:
@@ -262,7 +260,6 @@ public static class MicrosoftAIExtensions
                         AppendLine(target, text.Text);
                      break;
                }
-            }
          }
 
          return (system.ToString(), user.ToString());

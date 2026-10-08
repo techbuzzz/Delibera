@@ -1,6 +1,4 @@
 using System.Collections.Concurrent;
-using Delibera.Core.Models;
-using Delibera.Server.Api.Contracts;
 
 namespace Delibera.Server.Services;
 
@@ -45,6 +43,7 @@ public sealed class DebateRecord
    ///    and make it indistinguishable from <see cref="CompletedAt" />.
    /// </summary>
    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
    public DateTimeOffset? CompletedAt { get; set; }
    public string Label { get; set; } = string.Empty;
 
@@ -53,7 +52,10 @@ public sealed class DebateRecord
    ///    Readers should use this rather than enumerating <see cref="Rounds" /> directly so
    ///    that a page is not taken from a collection that is still growing.
    /// </summary>
-   public DebateRound[] RoundsSnapshot() => Rounds.ToArray();
+   public DebateRound[] RoundsSnapshot()
+   {
+      return Rounds.ToArray();
+   }
 
    /// <summary>Records every round of a completed result, preserving order.</summary>
    public void AddRounds(IEnumerable<DebateRound> rounds)

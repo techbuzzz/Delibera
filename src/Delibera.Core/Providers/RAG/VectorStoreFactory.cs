@@ -6,7 +6,8 @@ namespace Delibera.Core.Providers.RAG;
 ///    Factory for creating <see cref="IRagProvider" /> instances from configuration.
 ///    Register custom builders to support additional vector databases.
 /// </summary>
-public sealed class VectorStoreFactory : CachingFactory<Func<IConfigurationSection, IEmbeddingProvider, IRagProvider>, IRagProvider>, IVectorStoreFactory
+public sealed class VectorStoreFactory :
+   CachingFactory<Func<IConfigurationSection, IEmbeddingProvider, IRagProvider>, IRagProvider>, IVectorStoreFactory
 {
    /// <summary>
    ///    Creates a new factory with the built-in Qdrant and PgVector builders registered.
@@ -27,7 +28,9 @@ public sealed class VectorStoreFactory : CachingFactory<Func<IConfigurationSecti
 
       RegisterBuilder("PgVector", (config, embeddings) =>
       {
-         var connectionString = config["ConnectionString"] ?? throw new InvalidOperationException("PgVector requires a 'ConnectionString' configuration key.");
+         var connectionString = config["ConnectionString"] ??
+                                throw new InvalidOperationException(
+                                   "PgVector requires a 'ConnectionString' configuration key.");
          return new PgVectorRagProvider(embeddings, connectionString);
       });
    }
@@ -44,7 +47,8 @@ public sealed class VectorStoreFactory : CachingFactory<Func<IConfigurationSecti
    /// <summary>
    ///    Creates (or returns cached) a RAG provider instance.
    /// </summary>
-   public IRagProvider Create(string name, string providerType, IConfigurationSection config, IEmbeddingProvider embeddingProvider)
+   public IRagProvider Create(string name, string providerType, IConfigurationSection config,
+      IEmbeddingProvider embeddingProvider)
    {
       return GetOrCreate(name, providerType, b => b(config, embeddingProvider));
    }
@@ -99,7 +103,8 @@ public sealed class VectorStoreFactory : CachingFactory<Func<IConfigurationSecti
    ///    Optional logger. Supplying one lets the provider report a collection that still holds
    ///    legacy random-id points from Delibera 10.5.0 or earlier.
    /// </param>
-   public IRagProvider CreatePgVector(IEmbeddingProvider embeddingProvider, string connectionString, ILogger? logger = null)
+   public IRagProvider CreatePgVector(IEmbeddingProvider embeddingProvider, string connectionString,
+      ILogger? logger = null)
    {
       var key = $"pgvector:{connectionString.GetHashCode():X8}";
       if (GetInstance(key) is { } existing) return existing;

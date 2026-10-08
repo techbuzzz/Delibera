@@ -14,7 +14,10 @@ public sealed record CostGateDecision(
    string? Reason)
 {
    /// <summary>Allows the call, unconditionally.</summary>
-   public static CostGateDecision Allow(decimal spentSoFar) => new(true, spentSoFar, null, null);
+   public static CostGateDecision Allow(decimal spentSoFar)
+   {
+      return new CostGateDecision(true, spentSoFar, null, null);
+   }
 
    /// <summary>
    ///    Denies the call. The caller keeps a degraded result rather than throwing, because a
@@ -22,11 +25,13 @@ public sealed record CostGateDecision(
    /// </summary>
    /// <param name="spentSoFar">Spend accumulated at the moment of the decision.</param>
    /// <param name="limit">
-   ///   The ceiling that was crossed, or <c>null</c> for a token gate, which has no money figure.
+   ///    The ceiling that was crossed, or <c>null</c> for a token gate, which has no money figure.
    /// </param>
    /// <param name="reason">Operator-facing explanation.</param>
    public static CostGateDecision Deny(decimal spentSoFar, decimal? limit, string reason)
-      => new(false, spentSoFar, limit, reason);
+   {
+      return new CostGateDecision(false, spentSoFar, limit, reason);
+   }
 }
 
 /// <summary>

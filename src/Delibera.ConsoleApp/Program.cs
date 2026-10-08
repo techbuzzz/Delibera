@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Text;
-using Delibera.ConsoleApp.Examples;
 using Delibera.Core.Compression;
 using Delibera.Core.Council;
 using Delibera.Core.Debate;
@@ -22,6 +21,21 @@ namespace Delibera.ConsoleApp;
 /// </summary>
 public static class Program
 {
+   private static bool IsInteractiveConsole
+   {
+      get
+      {
+         try
+         {
+            return !Console.IsInputRedirected && !Console.IsOutputRedirected;
+         }
+         catch
+         {
+            return false;
+         }
+      }
+   }
+
    public static async Task Main(string[] args)
    {
       Console.OutputEncoding = Encoding.UTF8;
@@ -54,11 +68,11 @@ public static class Program
       catch (Exception ex)
       {
          PrintFatalError(ex);
-         WaitForKeyOnExit("[red]Press any key to exit…[/]", isError: true);
+         WaitForKeyOnExit("[red]Press any key to exit…[/]", true);
          return;
       }
 
-      WaitForKeyOnExit("\n[green]🏁 Delibera session complete. Press any key to exit…[/]", isError: false);
+      WaitForKeyOnExit("\n[green]🏁 Delibera session complete. Press any key to exit…[/]", false);
    }
 
    private static async Task RunAsync(string[] args, CancellationToken ct)
@@ -298,7 +312,8 @@ public static class Program
                AnsiConsole.MarkupLine("\n📚 [bold]Setting up RAG with pgvector...[/]");
                try
                {
-                  var connStr = pgCfg["ConnectionString"] ?? "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres";
+                  var connStr = pgCfg["ConnectionString"] ??
+                                "Host=localhost;Database=council_vectors;Username=postgres;Password=postgres";
                   var ragFactory = new VectorStoreFactory();
                   activeRagProvider = ragFactory.CreatePgVector(embeddingProvider, connStr);
                   AnsiConsole.MarkupLine("  [green]✅ pgvector RAG ready[/]");
@@ -353,10 +368,6 @@ public static class Program
             catch (FileNotFoundException)
             {
                AnsiConsole.MarkupLine($"  [yellow]⚠️  Not found: {file}[/]");
-            }
-            catch (OperationCanceledException)
-            {
-               throw;
             }
 
          if (kb.DocumentCount > 0)
@@ -435,7 +446,8 @@ public static class Program
       var maxRounds = debateCfg.GetValue<int?>("MaxRounds") ?? 4;
       var temperature = debateCfg.GetValue<float?>("Temperature") ?? 0.7f;
 
-      var systemPrompt = cfg["Prompts:SystemPrompt"] ?? "You are a helpful AI assistant participating in a council debate.";
+      var systemPrompt = cfg["Prompts:SystemPrompt"] ??
+                         "You are a helpful AI assistant participating in a council debate.";
       var userPrompt = cfg["Prompts:UserPrompt"] ?? "What is the different between Microservices vs Monolith?";
       var responseLanguage = debateCfg["ResponseLanguage"];
       var maxDegreeOfParallelism = debateCfg.GetValue<int?>("MaxDegreeOfParallelism") ?? 0;
@@ -531,21 +543,24 @@ public static class Program
 
       executor.OnRoundCompleted += round =>
       {
-         AnsiConsole.MarkupLine($"\n[green]✅ Round {round.RoundNumber}: {round.RoundName}[/] [dim]({round.Duration.TotalSeconds:F1}s)[/]");
+         AnsiConsole.MarkupLine(
+            $"\n[green]✅ Round {round.RoundNumber}: {round.RoundName}[/] [dim]({round.Duration.TotalSeconds:F1}s)[/]");
          AnsiConsole.Write(new Rule().RuleStyle(Style.Parse("grey dim")));
 
          if (round.KnowledgeInteractions.Count > 0)
          {
             AnsiConsole.MarkupLine("  📚 Knowledge Keeper interactions:");
             foreach (var ki in round.KnowledgeInteractions)
-               AnsiConsole.MarkupLine($"    Q: {Markup.Escape(ki.Query[..Math.Min(80, ki.Query.Length)])}… → {ki.SourceChunks} chunks");
+               AnsiConsole.MarkupLine(
+                  $"    Q: {Markup.Escape(ki.Query[..Math.Min(80, ki.Query.Length)])}… → {ki.SourceChunks} chunks");
          }
 
          if (round.OperatorInteractions.Count > 0)
          {
             AnsiConsole.MarkupLine("  🛠️  Operator interactions:");
             foreach (var oi in round.OperatorInteractions)
-               AnsiConsole.MarkupLine($"    {oi.RequesterName}: {Markup.Escape(oi.Task[..Math.Min(80, oi.Task.Length)])}… → {oi.ToolCallCount} tool call(s)");
+               AnsiConsole.MarkupLine(
+                  $"    {oi.RequesterName}: {Markup.Escape(oi.Task[..Math.Min(80, oi.Task.Length)])}… → {oi.ToolCallCount} tool call(s)");
          }
 
          foreach (var (member, response) in round.Responses)
@@ -586,7 +601,8 @@ public static class Program
          {
             AnsiConsole.MarkupLine($"  🗜️  Compression ops: {result.CompressionLogs.Count}");
             foreach (var log in result.CompressionLogs)
-               AnsiConsole.MarkupLine($"    R{log.RoundNumber}: {log.Description} — {log.Ratio:P0} ({log.Duration.TotalMilliseconds:F0}ms)");
+               AnsiConsole.MarkupLine(
+                  $"    R{log.RoundNumber}: {log.Description} — {log.Ratio:P0} ({log.Duration.TotalMilliseconds:F0}ms)");
          }
 
          // Cache stats
@@ -612,7 +628,7 @@ public static class Program
          try
          {
             var separateDir = Path.Combine(outputDir, $"debate_{DateTime.UtcNow:yyyyMMdd_HHmmss}");
-            var (rp, sp, lp) = await result.SaveAllAsync(separateDir, filePrefix: null, ct: ct);
+            var (rp, sp, lp) = await result.SaveAllAsync(separateDir, null, ct);
             AnsiConsole.MarkupLine($"    Result:      {rp}");
             AnsiConsole.MarkupLine($"    Statistics:  {sp}");
             AnsiConsole.MarkupLine($"    Logs:        {lp}");
@@ -767,21 +783,6 @@ public static class Program
          : 0;
    }
 
-   private static bool IsInteractiveConsole
-   {
-      get
-      {
-         try
-         {
-            return !Console.IsInputRedirected && !Console.IsOutputRedirected;
-         }
-         catch
-         {
-            return false;
-         }
-      }
-   }
-
    private static bool FirstLineIsMeaningful(string? frame)
    {
       if (string.IsNullOrWhiteSpace(frame))
@@ -789,6 +790,7 @@ public static class Program
 
       var trimmed = frame.Trim();
       // Filter out noise from runtime/compiler-emitted frames.
-      return !trimmed.StartsWith("at System.", StringComparison.Ordinal) || trimmed.Contains("Delibera", StringComparison.Ordinal);
+      return !trimmed.StartsWith("at System.", StringComparison.Ordinal) ||
+             trimmed.Contains("Delibera", StringComparison.Ordinal);
    }
 }

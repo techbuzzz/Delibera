@@ -1,7 +1,4 @@
 using System.ComponentModel;
-using Delibera.Server.Api.Contracts;
-using Delibera.Server.Services;
-using Delibera.Server.Templates.Registry;
 using ModelContextProtocol.Server;
 
 namespace Delibera.Server.Mcp;
@@ -45,7 +42,7 @@ public sealed class DeliberaMcpTools(
       {
          TemplateId = templateId,
          Question = question,
-         KnowledgeText = context,
+         KnowledgeText = context
       };
 
       var record = await orchestration.RunAsync(request, McpTenantId, ct);
@@ -83,7 +80,8 @@ public sealed class DeliberaMcpTools(
       ScenarioMember[] members;
       try
       {
-         members = System.Text.Json.JsonSerializer.Deserialize<ScenarioMember[]>(membersJson) ?? throw new InvalidOperationException("membersJson deserialised to null.");
+         members = JsonSerializer.Deserialize<ScenarioMember[]>(membersJson) ??
+                   throw new InvalidOperationException("membersJson deserialised to null.");
       }
       catch (Exception ex)
       {
@@ -108,7 +106,7 @@ public sealed class DeliberaMcpTools(
          Chairman = chairmanPrompt is null
             ? null
             : new ScenarioChairman { SystemPrompt = chairmanPrompt },
-         KnowledgeText = knowledgeText,
+         KnowledgeText = knowledgeText
       };
 
       var record = await orchestration.RunScenarioAsync(scenario, McpTenantId, ct);
@@ -161,14 +159,14 @@ public sealed class DeliberaMcpTools(
          Status = r.Status.ToString(),
          r.CreatedAt,
          r.CompletedAt,
-         Verdict = r.Result?.FinalVerdict,
+         Verdict = r.Result?.FinalVerdict
       });
 
-      return System.Text.Json.JsonSerializer.Serialize(summaries,
-         new System.Text.Json.JsonSerializerOptions
+      return JsonSerializer.Serialize(summaries,
+         new JsonSerializerOptions
          {
             WriteIndented = false,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
          });
    }
 
@@ -181,7 +179,7 @@ public sealed class DeliberaMcpTools(
       string debateId)
    {
       var cancelled = orchestration.Cancel(debateId, McpTenantId);
-      return System.Text.Json.JsonSerializer.Serialize(new { debateId, cancelled });
+      return JsonSerializer.Serialize(new { debateId, cancelled });
    }
 
    // ── 6. list_templates ─────────────────────────────────────────────────────
@@ -197,11 +195,11 @@ public sealed class DeliberaMcpTools(
       {
          t.TemplateId,
          t.DisplayName,
-         t.Description,
+         t.Description
       });
 
-      return System.Text.Json.JsonSerializer.Serialize(list,
-         new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+      return JsonSerializer.Serialize(list,
+         new JsonSerializerOptions { WriteIndented = true });
    }
 
    // ── Helpers ───────────────────────────────────────────────────────────────
@@ -210,10 +208,12 @@ public sealed class DeliberaMcpTools(
    ///    Builds an <c>{ "error": … }</c> payload. Real serialisation, so a message
    ///    containing quotes, backslashes or newlines cannot produce invalid JSON.
    /// </summary>
-   private static string ErrorPayload(string message) =>
-      System.Text.Json.JsonSerializer.Serialize(
+   private static string ErrorPayload(string message)
+   {
+      return JsonSerializer.Serialize(
          new { error = message },
-         new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+         new JsonSerializerOptions { WriteIndented = true });
+   }
 
    private static string SerialiseRecord(DebateRecord record)
    {
@@ -237,19 +237,19 @@ public sealed class DeliberaMcpTools(
             Speeches = r.Responses.Select(s => new
             {
                MemberRole = s.Key,
-               Content = s.Value,
-            }),
+               Content = s.Value
+            })
          }),
          record.CreatedAt,
          record.CompletedAt,
-         record.ErrorMessage,
+         record.ErrorMessage
       };
 
-      return System.Text.Json.JsonSerializer.Serialize(payload,
-         new System.Text.Json.JsonSerializerOptions
+      return JsonSerializer.Serialize(payload,
+         new JsonSerializerOptions
          {
             WriteIndented = true,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
          });
    }
 }

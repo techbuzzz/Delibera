@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 
 namespace Delibera.Core.Tools;
@@ -8,21 +9,21 @@ namespace Delibera.Core.Tools;
 /// </summary>
 /// <remarks>
 ///    <para>
-///    <b>Security.</b> Every path is resolved against a root and the result is checked to still
-///    be inside it, which rejects <c>../</c> traversal, rooted paths and, on Windows, alternate
-///    data streams and 8.3 short names that could otherwise slip past a naive prefix check.
-///    A member that could read <c>/etc/shadow</c> or the host key would turn a debate into an
-///    exfiltration channel.
+///       <b>Security.</b> Every path is resolved against a root and the result is checked to still
+///       be inside it, which rejects <c>../</c> traversal, rooted paths and, on Windows, alternate
+///       data streams and 8.3 short names that could otherwise slip past a naive prefix check.
+///       A member that could read <c>/etc/shadow</c> or the host key would turn a debate into an
+///       exfiltration channel.
 ///    </para>
 ///    <para>
-///    Reads are size-capped: a member asking for a multi-gigabyte file would otherwise turn a
-///    tool call into an out-of-memory condition in the host process.
+///       Reads are size-capped: a member asking for a multi-gigabyte file would otherwise turn a
+///       tool call into an out-of-memory condition in the host process.
 ///    </para>
 /// </remarks>
-public sealed partial class FileSystemToolProvider : IToolProvider
+public sealed class FileSystemToolProvider : IToolProvider
 {
-   private readonly string _root;
    private readonly int _maxBytes;
+   private readonly string _root;
 
    /// <summary>
    ///    Creates a provider rooted at <paramref name="rootDirectory" />.
@@ -72,7 +73,8 @@ public sealed partial class FileSystemToolProvider : IToolProvider
 
       if (!info.Exists) return $"[error] No such file: {path}";
       if (info.Length > _maxBytes)
-         return $"[error] '{path}' is {info.Length:N0} bytes, over the {_maxBytes:N0}-byte limit. Read part of it instead.";
+         return
+            $"[error] '{path}' is {info.Length:N0} bytes, over the {_maxBytes:N0}-byte limit. Read part of it instead.";
 
       var text = await File.ReadAllTextAsync(resolved, ct).ConfigureAwait(false);
       return text;
@@ -95,11 +97,9 @@ public sealed partial class FileSystemToolProvider : IToolProvider
          : _root + Path.DirectorySeparatorChar;
 
       if (!combined.StartsWith(rootWithSeparator, StringComparison.Ordinal)
-         && !string.Equals(combined, _root, StringComparison.Ordinal))
-      {
+          && !string.Equals(combined, _root, StringComparison.Ordinal))
          throw new UnauthorizedAccessException(
             $"'{path}' resolves outside the permitted root. Only paths under {_root} may be read.");
-      }
 
       return combined;
    }
@@ -116,9 +116,9 @@ public sealed partial class FileSystemToolProvider : IToolProvider
 /// </remarks>
 public sealed class HttpToolProvider : IToolProvider
 {
-   private readonly HttpClient _http;
    private readonly IReadOnlySet<string> _allowedHosts;
    private readonly bool _allowInsecureHttp;
+   private readonly HttpClient _http;
    private readonly int _maxCharacters;
 
    /// <summary>
@@ -218,7 +218,9 @@ public sealed class McpToolProvider : IToolProvider
    /// <summary>Creates a provider over an MCP client.</summary>
    /// <param name="client">The connected MCP client.</param>
    public McpToolProvider(IMcpClient client)
-      => _client = client ?? throw new ArgumentNullException(nameof(client));
+   {
+      _client = client ?? throw new ArgumentNullException(nameof(client));
+   }
 
    /// <inheritdoc />
    public string Name => "mcp";
@@ -249,9 +251,9 @@ public sealed class McpToolProvider : IToolProvider
    }
 
    /// <summary>
-   ///   Turns the model's raw JSON argument object into the dictionary the MCP client expects.
-   ///   A malformed payload becomes an empty argument set rather than an exception, because a
-   ///   model emitting bad JSON is a routine event, not a fault in the host.
+   ///    Turns the model's raw JSON argument object into the dictionary the MCP client expects.
+   ///    A malformed payload becomes an empty argument set rather than an exception, because a
+   ///    model emitting bad JSON is a routine event, not a fault in the host.
    /// </summary>
    private static IReadOnlyDictionary<string, object?> ParseArguments(string? argumentsJson)
    {
@@ -285,7 +287,7 @@ internal static class ToolJson
    {
       PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
       WriteIndented = false,
-      TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver()
+      TypeInfoResolver = new DefaultJsonTypeInfoResolver()
    };
 }
 
@@ -294,26 +296,26 @@ internal static class ToolJson
 /// </summary>
 /// <remarks>
 ///    <para>
-///    This is the fallback transport for providers that return plain strings and cannot carry
-///    structured function-call traffic. It mirrors the Operator's existing
-///    <c>[[OPERATOR: …]]</c> convention rather than inventing a second dialect.
+///       This is the fallback transport for providers that return plain strings and cannot carry
+///       structured function-call traffic. It mirrors the Operator's existing
+///       <c>[[OPERATOR: …]]</c> convention rather than inventing a second dialect.
 ///    </para>
 ///    <para>
-///    Source-generated rather than <c>RegexOptions.Compiled</c>: the pattern is a literal, so the
-///    generator emits it at build time and it stays AOT- and trim-safe.
+///       Source-generated rather than <c>RegexOptions.Compiled</c>: the pattern is a literal, so the
+///       generator emits it at build time and it stays AOT- and trim-safe.
 ///    </para>
 /// </remarks>
 public static partial class ToolCallParser
 {
    /// <summary>
-   ///   Builds the instructions appended to a system prompt when tools are available.
+   ///    Builds the instructions appended to a system prompt when tools are available.
    /// </summary>
    /// <remarks>
-   ///   This is the tool wire format for providers that return plain strings: the model is told
-   ///   the marker, and <c>LLMProviderChatClient</c> parses the marker back out of the response
-   ///   into a real <see cref="FunctionCallContent" />. That translation is what lets the standard
-   ///   <c>FunctionInvokingChatClient</c> middleware drive the loop for every provider, instead of
-   ///   this library maintaining a second copy of it.
+   ///    This is the tool wire format for providers that return plain strings: the model is told
+   ///    the marker, and <c>LLMProviderChatClient</c> parses the marker back out of the response
+   ///    into a real <see cref="FunctionCallContent" />. That translation is what lets the standard
+   ///    <c>FunctionInvokingChatClient</c> middleware drive the loop for every provider, instead of
+   ///    this library maintaining a second copy of it.
    /// </remarks>
    /// <param name="tools">The tools the member may call.</param>
    /// <returns>A directive block, or an empty string when there are no tools.</returns>
@@ -402,13 +404,13 @@ public static partial class ToolCallParser
    }
 
    /// <summary>
-   ///   Renders an already-bound argument dictionary as JSON, for putting a tool call back into a
-   ///   text prompt.
+   ///    Renders an already-bound argument dictionary as JSON, for putting a tool call back into a
+   ///    text prompt.
    /// </summary>
    /// <remarks>
-   ///   The result is never null and never throws: this runs while flattening a conversation, and a
-   ///   model-supplied payload that cannot be serialized must not cost the whole turn its tool
-   ///   history.
+   ///    The result is never null and never throws: this runs while flattening a conversation, and a
+   ///    model-supplied payload that cannot be serialized must not cost the whole turn its tool
+   ///    history.
    /// </remarks>
    /// <param name="arguments">The bound arguments, possibly null or empty.</param>
    public static string SerializeArguments(IDictionary<string, object?>? arguments)
@@ -424,12 +426,6 @@ public static partial class ToolCallParser
          return $"<{arguments.Count} argument(s), unserializable>";
       }
    }
-
-   /// <summary>A tool request parsed out of a response.</summary>
-   /// <param name="ToolName">Requested tool name.</param>
-   /// <param name="ArgumentsJson">Raw JSON argument object.</param>
-   /// <param name="Marker">The full marker text, so it can be stripped from the response.</param>
-   public sealed record Request(string ToolName, string ArgumentsJson, string Marker);
 
    [GeneratedRegex(
       @"\[\[\s*TOOL\s*:\s*(?<name>[A-Za-z0-9_.\-]+)\s*(?<args>\{.*?\})?\s*\]\]",
@@ -458,4 +454,10 @@ public static partial class ToolCallParser
 
       return requests;
    }
+
+   /// <summary>A tool request parsed out of a response.</summary>
+   /// <param name="ToolName">Requested tool name.</param>
+   /// <param name="ArgumentsJson">Raw JSON argument object.</param>
+   /// <param name="Marker">The full marker text, so it can be stripped from the response.</param>
+   public sealed record Request(string ToolName, string ArgumentsJson, string Marker);
 }

@@ -109,19 +109,48 @@ public abstract class BaseRagProvider : IRagProvider
       // so they survive alongside the new deterministic ones and keep skewing search results.
       var existingCount = await TryCountAsync(collectionName, ct).ConfigureAwait(false);
 
-      var indexed = await IndexDocumentAsync(collectionName, text, meta, chunkSize, chunkOverlap, ct).ConfigureAwait(false);
+      var indexed = await IndexDocumentAsync(collectionName, text, meta, chunkSize, chunkOverlap, ct)
+         .ConfigureAwait(false);
 
       if (Logger is not null && existingCount > indexed)
-      {
          Logger.LogWarning(
             "Collection '{Collection}' held {ExistingCount} points before indexing '{File}', but this document contributes only {IndexedCount}. Delibera 10.5.0 and earlier assigned a random point id per chunk, so those points are never replaced by re-indexing and keep diluting search results. Delete the collection through IVectorStore.DeleteCollectionAsync and re-index once to remove them.",
             collectionName,
             existingCount,
             fullPath,
             indexed);
-      }
 
       return indexed;
+   }
+
+   /// <inheritdoc />
+   public virtual async Task<IReadOnlyList<VectorSearchResult>> SearchAsync(
+      string collectionName,
+      string query,
+      int limit = 5,
+      float scoreThreshold = 0.0f,
+      CancellationToken ct = default)
+   {
+      var queryVector = await EmbeddingProvider.EmbedAsync(query, ct).ConfigureAwait(false);
+      return await VectorStore.SearchAsync(collectionName, queryVector, limit, scoreThreshold, ct)
+         .ConfigureAwait(false);
+   }
+
+   /// <inheritdoc />
+   public virtual async Task<string> GetContextAsync(
+      string collectionName,
+      string query,
+      int limit = 5,
+      CancellationToken ct = default)
+   {
+      var results = await SearchAsync(collectionName, query, limit, ct: ct);
+      return RagContextFormatter.Format(results);
+   }
+
+   /// <inheritdoc />
+   public virtual ValueTask DisposeAsync()
+   {
+      return VectorStore.DisposeAsync();
    }
 
    /// <summary>
@@ -188,34 +217,5 @@ public abstract class BaseRagProvider : IRagProvider
          return source;
 
       return string.Empty;
-   }
-
-   /// <inheritdoc />
-   public virtual async Task<IReadOnlyList<VectorSearchResult>> SearchAsync(
-      string collectionName,
-      string query,
-      int limit = 5,
-      float scoreThreshold = 0.0f,
-      CancellationToken ct = default)
-   {
-      var queryVector = await EmbeddingProvider.EmbedAsync(query, ct).ConfigureAwait(false);
-      return await VectorStore.SearchAsync(collectionName, queryVector, limit, scoreThreshold, ct).ConfigureAwait(false);
-   }
-
-   /// <inheritdoc />
-   public virtual async Task<string> GetContextAsync(
-      string collectionName,
-      string query,
-      int limit = 5,
-      CancellationToken ct = default)
-   {
-      var results = await SearchAsync(collectionName, query, limit, ct: ct);
-      return RagContextFormatter.Format(results);
-   }
-
-   /// <inheritdoc />
-   public virtual ValueTask DisposeAsync()
-   {
-      return VectorStore.DisposeAsync();
    }
 }

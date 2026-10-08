@@ -1,5 +1,3 @@
-using ModelContextProtocol.AspNetCore;
-
 namespace Delibera.Server.Mcp;
 
 /// <summary>

@@ -164,10 +164,8 @@ public sealed class AdaptiveStrategySelector : IStrategySelector
       var responses = lastRound.Responses.Values.ToList();
       for (var i = 0; i < responses.Count; i++)
       for (var j = i + 1; j < responses.Count; j++)
-      {
          if (TextSimilarity.AreNearIdentical(responses[i], responses[j]))
             return true;
-      }
 
       return false;
    }

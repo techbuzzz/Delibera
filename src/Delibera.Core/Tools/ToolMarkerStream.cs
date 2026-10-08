@@ -1,6 +1,3 @@
-using System.Text;
-using System.Text.RegularExpressions;
-
 namespace Delibera.Core.Tools;
 
 /// <summary>
@@ -8,16 +5,16 @@ namespace Delibera.Core.Tools;
 /// </summary>
 /// <remarks>
 ///    <para>
-///    A streaming response delivers text in arbitrary chunks, so a marker can straddle a chunk
-///    boundary. Buffering the tail from the last <c>[[</c> until the marker either completes or
-///    the stream ends is what makes detection correct rather than merely usually-right: emitting
-///    on the first incomplete match would truncate the arguments and, worse, emit a call the model
-///    never finished writing.
+///       A streaming response delivers text in arbitrary chunks, so a marker can straddle a chunk
+///       boundary. Buffering the tail from the last <c>[[</c> until the marker either completes or
+///       the stream ends is what makes detection correct rather than merely usually-right: emitting
+///       on the first incomplete match would truncate the arguments and, worse, emit a call the model
+///       never finished writing.
 ///    </para>
 ///    <para>
-///    The buffer is bounded. A model that emits an unterminated <c>[[</c> and then megabytes of
-///    prose would otherwise accumulate the whole response in memory — the tool path is exactly
-///    where an adversarial or confused model is most likely to produce one.
+///       The buffer is bounded. A model that emits an unterminated <c>[[</c> and then megabytes of
+///       prose would otherwise accumulate the whole response in memory — the tool path is exactly
+///       where an adversarial or confused model is most likely to produce one.
 ///    </para>
 /// </remarks>
 public sealed class ToolMarkerStream
@@ -26,8 +23,8 @@ public sealed class ToolMarkerStream
    private const string MarkerStart = "[[";
 
    /// <summary>
-   ///   Largest tail held while waiting for a marker to complete. Beyond this the text is emitted
-   ///   as-is, on the grounds that no plausible tool marker is that long.
+   ///    Largest tail held while waiting for a marker to complete. Beyond this the text is emitted
+   ///    as-is, on the grounds that no plausible tool marker is that long.
    /// </summary>
    private const int MaxCarryLength = 8_192;
 
@@ -59,10 +56,7 @@ public sealed class ToolMarkerStream
             break;
          }
 
-         if (start > 0)
-         {
-            emit.Append(buffer, 0, start);
-         }
+         if (start > 0) emit.Append(buffer, 0, start);
 
          var candidate = buffer[start..];
 
@@ -110,8 +104,8 @@ public sealed class ToolMarkerStream
    }
 
    /// <summary>
-   ///   Emits whatever is still buffered once the stream ends, so a response that ends mid-marker
-   ///   still delivers its text rather than silently swallowing the tail.
+   ///    Emits whatever is still buffered once the stream ends, so a response that ends mid-marker
+   ///    still delivers its text rather than silently swallowing the tail.
    /// </summary>
    public string Flush()
    {

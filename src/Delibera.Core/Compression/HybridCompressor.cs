@@ -58,7 +58,8 @@ public sealed class HybridCompressor : IContextCompressor
    public string Description => "Multi-stage: Deduplication → Semantic Ranking → Optional Summarization.";
 
    /// <inheritdoc />
-   public async Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null, CancellationToken ct = default)
+   public async Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null,
+      CancellationToken ct = default)
    {
       var sw = Stopwatch.StartNew();
       options ??= CompressionOptions.Default;
@@ -78,7 +79,8 @@ public sealed class HybridCompressor : IContextCompressor
 
       var currentTokens = counter.EstimateTokens(currentText);
       if (currentTokens <= targetTokens)
-         return CompressedContextFactory.Compressed(text, currentText, originalTokens, currentTokens, StrategyName, sw.Elapsed);
+         return CompressedContextFactory.Compressed(text, currentText, originalTokens, currentTokens, StrategyName,
+            sw.Elapsed);
 
       // ── Stage 2: Semantic Ranking (if embeddings available) ──
       if (_embeddingProvider is not null)
@@ -90,7 +92,8 @@ public sealed class HybridCompressor : IContextCompressor
 
          currentTokens = counter.EstimateTokens(currentText);
          if (currentTokens <= targetTokens)
-            return CompressedContextFactory.Compressed(text, currentText, originalTokens, currentTokens, StrategyName, sw.Elapsed);
+            return CompressedContextFactory.Compressed(text, currentText, originalTokens, currentTokens, StrategyName,
+               sw.Elapsed);
       }
 
       // ── Stage 3: LLM Summarization (if available and still over target) ──
@@ -104,11 +107,13 @@ public sealed class HybridCompressor : IContextCompressor
       }
 
       sw.Stop();
-      return CompressedContextFactory.Compressed(text, currentText, originalTokens, currentTokens, StrategyName, sw.Elapsed);
+      return CompressedContextFactory.Compressed(text, currentText, originalTokens, currentTokens, StrategyName,
+         sw.Elapsed);
    }
 
    /// <inheritdoc />
-   public async Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null, CancellationToken ct = default)
+   public async Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts,
+      CompressionOptions? options = null, CancellationToken ct = default)
    {
       ArgumentNullException.ThrowIfNull(texts);
       var merged = string.Join("\n\n", texts);

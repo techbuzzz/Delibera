@@ -1,5 +1,4 @@
 using Delibera.Core.Council;
-using Delibera.Core.Models;
 
 namespace Delibera.Core.Interfaces;
 

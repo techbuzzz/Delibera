@@ -1,15 +1,15 @@
 namespace Delibera.Core.Attachments;
 
 /// <summary>
-///    Reads the content of a file and returns a normalised <see cref="FileReadResult"/>.
+///    Reads the content of a file and returns a normalised <see cref="FileReadResult" />.
 ///    Register implementations per file extension via
-///    <see cref="Council.CouncilBuilder.WithFileReader(string, IFileContentReader)"/>.
+///    <see cref="Council.CouncilBuilder.WithFileReader(string, IFileContentReader)" />.
 /// </summary>
 /// <remarks>
 ///    <para>
 ///       This is the single extensibility point for document parsing in Delibera.Core.
-///       The core package ships <see cref="Readers.PlainTextFileReader"/>,
-///       <see cref="Readers.ImageFileReader"/>, and <see cref="Readers.FallbackFileReader"/>
+///       The core package ships <see cref="Readers.PlainTextFileReader" />,
+///       <see cref="Readers.ImageFileReader" />, and <see cref="Readers.FallbackFileReader" />
 ///       as built-ins (zero external dependencies). Format-specific readers
 ///       (PDF, DOCX, …) are provided by separate optional adapter packages
 ///       such as <c>Delibera.Adapters.PdfPig</c>.
@@ -24,10 +24,10 @@ public interface IFileContentReader
    IReadOnlyCollection<string> SupportedExtensions { get; }
 
    /// <summary>
-   ///    Reads the file at <paramref name="filePath"/> and returns a normalised
-   ///    <see cref="FileReadResult"/>. Implementations must handle missing files
+   ///    Reads the file at <paramref name="filePath" /> and returns a normalised
+   ///    <see cref="FileReadResult" />. Implementations must handle missing files
    ///    gracefully (return a result with an error message in
-   ///    <see cref="FileReadResult.TextContent"/> rather than throwing).
+   ///    <see cref="FileReadResult.TextContent" /> rather than throwing).
    /// </summary>
    /// <param name="filePath">Absolute or relative path to the file.</param>
    /// <param name="ct">Cancellation token.</param>
@@ -36,10 +36,10 @@ public interface IFileContentReader
 }
 
 /// <summary>
-///    Normalised output of an <see cref="IFileContentReader"/>.
-///    <see cref="TextContent"/> is used for text-only models and the AutoChunking
-///    pipeline; <see cref="BinaryParts"/> is used for vision-capable models via
-///    <see cref="Microsoft.Extensions.AI"/> <c>ImageContent</c>. Both can be non-null
+///    Normalised output of an <see cref="IFileContentReader" />.
+///    <see cref="TextContent" /> is used for text-only models and the AutoChunking
+///    pipeline; <see cref="BinaryParts" /> is used for vision-capable models via
+///    <see cref="Microsoft.Extensions.AI" /> <c>ImageContent</c>. Both can be non-null
 ///    (e.g. a PDF with embedded images).
 /// </summary>
 /// <param name="SourcePath">Original file path the result was read from.</param>
@@ -63,7 +63,7 @@ public sealed record FileReadResult(
 
 /// <summary>
 ///    A raw binary part — image bytes ready for vision-model consumption via
-///    <see cref="Microsoft.Extensions.AI"/> <c>ImageContent</c>.
+///    <see cref="Microsoft.Extensions.AI" /> <c>ImageContent</c>.
 /// </summary>
 /// <param name="Name">Human-readable name (e.g. "architecture-diagram.png").</param>
 /// <param name="MediaType">MIME type (e.g. "image/png", "image/jpeg", "image/webp").</param>
@@ -75,7 +75,7 @@ public sealed record BinaryAttachment(
 
 /// <summary>
 ///    A file attached to a council debate. The file is read lazily via the
-///    <see cref="FileContentReaderRegistry"/> when the debate starts, so the
+///    <see cref="FileContentReaderRegistry" /> when the debate starts, so the
 ///    attachment can be configured before the reader is registered.
 /// </summary>
 /// <param name="FilePath">Absolute or relative path to the file.</param>

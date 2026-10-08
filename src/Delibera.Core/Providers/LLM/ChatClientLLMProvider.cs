@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using Microsoft.Extensions.AI;
 
 #pragma warning disable IDE1006 // 'LLM' acronym kept all-caps by convention; renaming is a breaking API change
 

@@ -1,10 +1,11 @@
 using System.Text.Json;
-using Delibera.Core.Caching;
+using System.Text.Json.Serialization;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
 using Delibera.Core.Voting;
 using Delibera.Redis.Serialization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
@@ -17,17 +18,17 @@ namespace Delibera.Redis;
 /// </summary>
 public sealed class RedisDebateCache : IDebateCache
 {
-   private readonly RedisOrchestratorOptions _options;
-   private readonly TimeSpan _defaultTtl;
-   private readonly ILogger<RedisDebateCache> _logger;
-   private readonly IConnectionMultiplexer _redis;
-   private readonly IDatabase _db;
-
    private static readonly JsonSerializerOptions _json = new()
    {
       PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-      DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+      DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
    };
+
+   private readonly IDatabase _db;
+   private readonly TimeSpan _defaultTtl;
+   private readonly ILogger<RedisDebateCache> _logger;
+   private readonly RedisOrchestratorOptions _options;
+   private readonly IConnectionMultiplexer _redis;
 
    public RedisDebateCache(
       IConnectionMultiplexer redis,
@@ -38,9 +39,11 @@ public sealed class RedisDebateCache : IDebateCache
       _redis = redis;
       _options = options.Value;
       _defaultTtl = defaultTtl ?? TimeSpan.FromHours(24);
-      _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<RedisDebateCache>.Instance;
+      _logger = logger ?? NullLogger<RedisDebateCache>.Instance;
       _db = redis.GetDatabase();
    }
+
+   private string CacheKeyPrefix => _options.StateKeyPrefix + "cache:";
 
    public async ValueTask<DebateResult?> GetAsync(string cacheKey, CancellationToken ct = default)
    {
@@ -83,7 +86,8 @@ public sealed class RedisDebateCache : IDebateCache
       }
    }
 
-   public async ValueTask SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null, CancellationToken ct = default)
+   public async ValueTask SetAsync(string cacheKey, DebateResult result, TimeSpan? ttl = null,
+      CancellationToken ct = default)
    {
       ct.ThrowIfCancellationRequested();
       try
@@ -146,37 +150,41 @@ public sealed class RedisDebateCache : IDebateCache
       }
    }
 
-   private string CacheKeyPrefix => _options.StateKeyPrefix + "cache:";
-
-   private static DebateResult MapFromRedis(RedisDebateResult redis) => new()
+   private static DebateResult MapFromRedis(RedisDebateResult redis)
    {
-      DebateId = redis.DebateId,
-      StrategyName = redis.StrategyName,
-      Context = new PromptContext(),
-      FinalVerdict = redis.FinalVerdict,
-      ChairmanName = redis.ChairmanName,
-      OpeningStatement = redis.OpeningStatement,
-      StartedAt = redis.StartedAt,
-      CompletedAt = redis.CompletedAt,
-      Participants = redis.Rounds?.SelectMany(r => (r.Responses ?? []).Keys).Distinct().ToList() ?? [],
-      Rounds = redis.Rounds?.Select(MapRound).ToList() ?? [],
-      VotingTally = redis.WinningOption is not null
-         ? new VotingResult(
-            redis.WinningOption,
-            redis.WinningScore ?? 0,
-            redis.VotingTally?.ToDictionary(kv => kv.Key, kv => kv.Value) ?? new Dictionary<string, double>(),
-            redis.VotingMethod ?? "unknown")
-         : null,
-   };
+      return new DebateResult
+      {
+         DebateId = redis.DebateId,
+         StrategyName = redis.StrategyName,
+         Context = new PromptContext(),
+         FinalVerdict = redis.FinalVerdict,
+         ChairmanName = redis.ChairmanName,
+         OpeningStatement = redis.OpeningStatement,
+         StartedAt = redis.StartedAt,
+         CompletedAt = redis.CompletedAt,
+         Participants = redis.Rounds?.SelectMany(r => (r.Responses ?? []).Keys).Distinct().ToList() ?? [],
+         Rounds = redis.Rounds?.Select(MapRound).ToList() ?? [],
+         VotingTally = redis.WinningOption is not null
+            ? new VotingResult(
+               redis.WinningOption,
+               redis.WinningScore ?? 0,
+               redis.VotingTally?.ToDictionary(kv => kv.Key, kv => kv.Value) ?? new Dictionary<string, double>(),
+               redis.VotingMethod ?? "unknown")
+            : null
+      };
+   }
 
-   private static DebateRound MapRound(RedisRoundEvent r) => new()
+   private static DebateRound MapRound(RedisRoundEvent r)
    {
-      RoundNumber = r.RoundNumber,
-      RoundName = r.RoundName ?? string.Empty,
-      Description = r.Description,
-      Responses = r.Responses ?? new Dictionary<string, string>(),
-      RoundPrompt = r.RoundPrompt,
-      StartedAt = r.StartedAt,
-      CompletedAt = r.CompletedAt,
-   };
+      return new DebateRound
+      {
+         RoundNumber = r.RoundNumber,
+         RoundName = r.RoundName ?? string.Empty,
+         Description = r.Description,
+         Responses = r.Responses ?? new Dictionary<string, string>(),
+         RoundPrompt = r.RoundPrompt,
+         StartedAt = r.StartedAt,
+         CompletedAt = r.CompletedAt
+      };
+   }
 }

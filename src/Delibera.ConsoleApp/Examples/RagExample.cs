@@ -57,7 +57,8 @@ public static class RagExample
                     - When the domain is not well understood
                     """;
 
-      var chunks = await keeper.IndexDocumentAsync(docText, new Dictionary<string, string> { ["topic"] = "microservices" });
+      var chunks =
+         await keeper.IndexDocumentAsync(docText, new Dictionary<string, string> { ["topic"] = "microservices" });
       Console.WriteLine($"  ✅ Indexed {chunks} chunks");
 
       // ── 6. Build council with Knowledge Keeper ──

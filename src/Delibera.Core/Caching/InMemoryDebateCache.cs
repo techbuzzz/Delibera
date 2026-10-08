@@ -1,8 +1,5 @@
-using System.Collections.Concurrent;
-using Delibera.Core.Interfaces;
-using Delibera.Core.Models;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Delibera.Core.Caching;
 
@@ -22,11 +19,12 @@ public sealed class InMemoryDebateCache : IDebateCache
    /// <param name="cache">The underlying memory cache.</param>
    /// <param name="defaultTtl">Default TTL for cache entries. Defaults to 1 hour.</param>
    /// <param name="logger">Optional logger.</param>
-   public InMemoryDebateCache(IMemoryCache cache, TimeSpan? defaultTtl = null, ILogger<InMemoryDebateCache>? logger = null)
+   public InMemoryDebateCache(IMemoryCache cache, TimeSpan? defaultTtl = null,
+      ILogger<InMemoryDebateCache>? logger = null)
    {
       _cache = cache;
       _defaultTtl = defaultTtl ?? TimeSpan.FromHours(1);
-      _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<InMemoryDebateCache>.Instance;
+      _logger = logger ?? NullLogger<InMemoryDebateCache>.Instance;
    }
 
    /// <inheritdoc />
@@ -48,7 +46,7 @@ public sealed class InMemoryDebateCache : IDebateCache
       var options = new MemoryCacheEntryOptions
       {
          AbsoluteExpirationRelativeToNow = effectiveTtl,
-         Size = 1,
+         Size = 1
       };
 
       _cache.Set(cacheKey, result, options);

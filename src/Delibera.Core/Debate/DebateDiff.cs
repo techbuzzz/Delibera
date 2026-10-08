@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace Delibera.Core.Debate;
 
 /// <summary>
@@ -68,6 +70,8 @@ public sealed record DebateDiff(
    IReadOnlyList<string> MembersOnlyInOld,
    IReadOnlyList<string> MembersOnlyInNew)
 {
+   private static readonly char[] MarkerChars = ['*', '~'];
+
    /// <summary><c>true</c> when the two runs produced nothing worth reporting.</summary>
    public bool IsEmpty =>
       !VerdictChanged
@@ -108,7 +112,7 @@ public sealed record DebateDiff(
       if (MembersOnlyInNew.Count > 0)
          sb.AppendLine($"> ⚠️ Members only in the comparison: {string.Join(", ", MembersOnlyInNew)}");
       if (MissingRoundNumbers.Count > 0 || AddedRoundNumbers.Count > 0
-          || MembersOnlyInOld.Count > 0 || MembersOnlyInNew.Count > 0)
+                                        || MembersOnlyInOld.Count > 0 || MembersOnlyInNew.Count > 0)
          sb.AppendLine();
 
       if (VerdictChanged)
@@ -151,18 +155,22 @@ public sealed record DebateDiff(
       sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
       sb.AppendLine("<title>Delibera — Debate Comparison</title>");
       sb.AppendLine("<style>");
-      sb.AppendLine("body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;margin:2rem auto;max-width:60rem;padding:0 1rem;line-height:1.6;color:#1c1c1c}");
-      sb.AppendLine("h1{margin-bottom:.25rem}h2{margin-top:2rem;border-bottom:1px solid #e3e3e3;padding-bottom:.25rem}");
+      sb.AppendLine(
+         "body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;margin:2rem auto;max-width:60rem;padding:0 1rem;line-height:1.6;color:#1c1c1c}");
+      sb.AppendLine(
+         "h1{margin-bottom:.25rem}h2{margin-top:2rem;border-bottom:1px solid #e3e3e3;padding-bottom:.25rem}");
       sb.AppendLine("h3{margin-top:1.5rem;font-size:1.05rem}");
       sb.AppendLine("code{background:#f4f4f5;padding:.1rem .3rem;border-radius:3px;font-size:.9em}");
       sb.AppendLine("del{background:#fee2e2;color:#991b1b;text-decoration:line-through;padding:0 .15rem}");
       sb.AppendLine("ins{background:#dcfce7;color:#14532d;text-decoration:none;padding:0 .15rem}");
       sb.AppendLine(".meta{color:#52525b;font-size:.9rem}");
       sb.AppendLine(".warn{background:#fef3c7;border-left:3px solid #f59e0b;padding:.5rem .75rem;margin:.5rem 0}");
-      sb.AppendLine(".diff{background:#fafafa;border:1px solid #e3e3e3;border-radius:6px;padding:.75rem;white-space:pre-wrap;word-break:break-word}");
+      sb.AppendLine(
+         ".diff{background:#fafafa;border:1px solid #e3e3e3;border-radius:6px;padding:.75rem;white-space:pre-wrap;word-break:break-word}");
       sb.AppendLine("</style></head><body>");
       sb.AppendLine("<h1>Debate Comparison</h1>");
-      sb.AppendLine($"<p class=\"meta\">Baseline <code>{HtmlEncode(OldDebateId)}</code> &rarr; comparison <code>{HtmlEncode(NewDebateId)}</code><br>Verdict similarity: {VerdictSimilarity:P1}</p>");
+      sb.AppendLine(
+         $"<p class=\"meta\">Baseline <code>{HtmlEncode(OldDebateId)}</code> &rarr; comparison <code>{HtmlEncode(NewDebateId)}</code><br>Verdict similarity: {VerdictSimilarity:P1}</p>");
 
       if (IsEmpty)
       {
@@ -171,13 +179,17 @@ public sealed record DebateDiff(
       else
       {
          if (MissingRoundNumbers.Count > 0)
-            sb.AppendLine($"<div class=\"warn\">Rounds missing from the comparison: {string.Join(", ", MissingRoundNumbers)}</div>");
+            sb.AppendLine(
+               $"<div class=\"warn\">Rounds missing from the comparison: {string.Join(", ", MissingRoundNumbers)}</div>");
          if (AddedRoundNumbers.Count > 0)
-            sb.AppendLine($"<div class=\"warn\">Rounds only in the comparison: {string.Join(", ", AddedRoundNumbers)}</div>");
+            sb.AppendLine(
+               $"<div class=\"warn\">Rounds only in the comparison: {string.Join(", ", AddedRoundNumbers)}</div>");
          if (MembersOnlyInOld.Count > 0)
-            sb.AppendLine($"<div class=\"warn\">Members only in the baseline: {string.Join(", ", MembersOnlyInOld.Select(HtmlEncode))}</div>");
+            sb.AppendLine(
+               $"<div class=\"warn\">Members only in the baseline: {string.Join(", ", MembersOnlyInOld.Select(HtmlEncode))}</div>");
          if (MembersOnlyInNew.Count > 0)
-            sb.AppendLine($"<div class=\"warn\">Members only in the comparison: {string.Join(", ", MembersOnlyInNew.Select(HtmlEncode))}</div>");
+            sb.AppendLine(
+               $"<div class=\"warn\">Members only in the comparison: {string.Join(", ", MembersOnlyInNew.Select(HtmlEncode))}</div>");
 
          foreach (var round in Rounds)
          {
@@ -222,7 +234,10 @@ public sealed record DebateDiff(
       return File.WriteAllTextAsync(filePath, ToHtml(), ct);
    }
 
-   private static string HtmlEncode(string value) => System.Net.WebUtility.HtmlEncode(value);
+   private static string HtmlEncode(string value)
+   {
+      return WebUtility.HtmlEncode(value);
+   }
 
    /// <summary>
    ///    Converts the Markdown inline diff produced by <see cref="DebateResultExtensions" />
@@ -276,6 +291,4 @@ public sealed record DebateDiff(
 
       return sb.ToString();
    }
-
-   private static readonly char[] MarkerChars = ['*', '~'];
 }

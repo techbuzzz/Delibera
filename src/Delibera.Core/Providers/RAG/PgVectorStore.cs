@@ -3,7 +3,6 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Npgsql;
 using NpgsqlTypes;
-using Pgvector;
 
 namespace Delibera.Core.Providers.RAG;
 
@@ -102,7 +101,8 @@ public sealed partial class PgVectorStore : IVectorStore
    }
 
    /// <inheritdoc />
-   public async Task UpsertAsync(string collectionName, IReadOnlyList<VectorPoint> points, CancellationToken ct = default)
+   public async Task UpsertAsync(string collectionName, IReadOnlyList<VectorPoint> points,
+      CancellationToken ct = default)
    {
       if (points.Count == 0) return;
 

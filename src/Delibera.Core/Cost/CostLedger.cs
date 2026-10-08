@@ -7,16 +7,16 @@ namespace Delibera.Core.Cost;
 /// </summary>
 /// <remarks>
 ///    <para>
-///    One instance is shared by reference across every round, exactly like
-///    <see cref="DebateExecutionOptions.CompressionLogs" />: the fan-out collects member
-///    responses concurrently, so each completed call has to be recorded from inside its own
-///    task.
+///       One instance is shared by reference across every round, exactly like
+///       <see cref="DebateExecutionOptions.CompressionLogs" />: the fan-out collects member
+///       responses concurrently, so each completed call has to be recorded from inside its own
+///       task.
 ///    </para>
 ///    <para>
-///    Prompt tokens are approximated, because the framework sends its own prompts and only the
-///    provider sees the exact billed count. Completion tokens are counted from the response
-///    text. Both are estimates; <see cref="CostEstimate.IsEstimate" /> marks the result so a
-///    caller can tell a real invoice from a projection.
+///       Prompt tokens are approximated, because the framework sends its own prompts and only the
+///       provider sees the exact billed count. Completion tokens are counted from the response
+///       text. Both are estimates; <see cref="CostEstimate.IsEstimate" /> marks the result so a
+///       caller can tell a real invoice from a projection.
 ///    </para>
 /// </remarks>
 public sealed class CostLedger
@@ -34,14 +34,20 @@ public sealed class CostLedger
    ///    cost falls back to zero and <see cref="CostEstimate.IsEstimate" /> is set — a silent
    ///    zero would read as "this model was free".
    /// </param>
-   public CostLedger(IModelPricingRegistry? registry = null) => _registry = registry;
+   public CostLedger(IModelPricingRegistry? registry = null)
+   {
+      _registry = registry;
+   }
 
    /// <summary>Whether a cost gate stopped the debate before every planned call ran.</summary>
    public bool WasTruncated
    {
       get
       {
-         lock (_gate) return _truncated;
+         lock (_gate)
+         {
+            return _truncated;
+         }
       }
    }
 
@@ -61,14 +67,14 @@ public sealed class CostLedger
       var promptTokens = TokenCounter.Default.EstimateTokens(promptText);
       var completionTokens = TokenCounter.Default.EstimateTokens(completionText);
 
-      decimal cost = 0m;
+      var cost = 0m;
       var isEstimate = true;
 
       if (_registry is not null && _registry.TryGetPricing(model, out var pricing))
       {
          isEstimate = !IsExactMatch(model, pricing);
-         cost = (promptTokens / 1_000_000m * pricing.InputPerMillionTokens)
-              + (completionTokens / 1_000_000m * pricing.OutputPerMillionTokens);
+         cost = promptTokens / 1_000_000m * pricing.InputPerMillionTokens
+                + completionTokens / 1_000_000m * pricing.OutputPerMillionTokens;
       }
 
       lock (_gate)
@@ -91,7 +97,10 @@ public sealed class CostLedger
    /// <summary>Marks the debate as stopped by a cost gate.</summary>
    public void MarkTruncated()
    {
-      lock (_gate) _truncated = true;
+      lock (_gate)
+      {
+         _truncated = true;
+      }
    }
 
    /// <summary>
@@ -132,7 +141,9 @@ public sealed class CostLedger
    ///    or its fallback price.
    /// </summary>
    private bool IsExactMatch(string model, ModelPricing pricing)
-      => string.Equals(model, pricing.ModelName, StringComparison.OrdinalIgnoreCase);
+   {
+      return string.Equals(model, pricing.ModelName, StringComparison.OrdinalIgnoreCase);
+   }
 
    private sealed class MemberAccumulator(string memberName, string provider, string model)
    {
@@ -145,7 +156,9 @@ public sealed class CostLedger
       public decimal Cost { get; set; }
       public bool IsEstimate { get; set; }
 
-      public MemberCostBreakdown ToBreakdown() =>
-         new(MemberName, Model, CallCount, PromptTokens, CompletionTokens, Cost, IsEstimate);
+      public MemberCostBreakdown ToBreakdown()
+      {
+         return new MemberCostBreakdown(MemberName, Model, CallCount, PromptTokens, CompletionTokens, Cost, IsEstimate);
+      }
    }
 }

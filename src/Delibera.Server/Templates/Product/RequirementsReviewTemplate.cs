@@ -1,32 +1,29 @@
-﻿using Delibera.Core.Council;
-using Delibera.Core.Interfaces;
-using Delibera.Core.Models;
+﻿using Delibera.Core.Interfaces;
 using Delibera.Core.Providers;
 using Delibera.Core.Voting;
-using Delibera.Server.Api.Contracts;
 using Delibera.Server.Templates.Engineering;
-using Delibera.Server.Templates.Registry;
 
 namespace Delibera.Server.Templates.Product;
 
 /// <summary>
-/// Requirements Review Council â€” Vertical 3: Requirements Engineering &amp; Product Discovery.
-///
-/// Members:
-///   ProductManager  â€” user value, business goals, prioritisation
-///   Architect       â€” technical feasibility, constraints, dependencies
-///   UXDesigner      â€” usability, accessibility, user journey
-///   QA              â€” testability, acceptance criteria, edge cases
-///   SecurityOfficer â€” data privacy, compliance, threat model
-///
-/// Strategy : ConsensusDebate â†’ MajorityVoting â†’ Chairman produces RequirementsVerdict.
-/// Output   : RequirementsVerdict (Assessment, Summary, Gaps[], Risks[], Recommendations[])
+///    Requirements Review Council â€” Vertical 3: Requirements Engineering &amp; Product Discovery.
+///    Members:
+///    ProductManager  â€” user value, business goals, prioritisation
+///    Architect       â€” technical feasibility, constraints, dependencies
+///    UXDesigner      â€” usability, accessibility, user journey
+///    QA              â€” testability, acceptance criteria, edge cases
+///    SecurityOfficer â€” data privacy, compliance, threat model
+///    Strategy : ConsensusDebate â†’ MajorityVoting â†’ Chairman produces RequirementsVerdict.
+///    Output   : RequirementsVerdict (Assessment, Summary, Gaps[], Risks[], Recommendations[])
 /// </summary>
 public sealed class RequirementsReviewTemplate : IServerTemplate
 {
    public string TemplateId => "requirements-review";
    public string DisplayName => "Requirements Review Council";
-   public string? Description => "AI council for validating and improving product requirements, user stories and acceptance criteria.";
+
+   public string? Description =>
+      "AI council for validating and improving product requirements, user stories and acceptance criteria.";
+
    public string Strategy => "ConsensusDebate";
    public int DefaultMaxRounds => 4;
    public string[] MemberRoles => ["ProductManager", "Architect", "UXDesigner", "QA", "SecurityOfficer"];
@@ -53,21 +50,21 @@ public sealed class RequirementsReviewTemplate : IServerTemplate
 
       var builder = new CouncilBuilder()
          .AddMember(strongModel, llm, "ProductManager",
-            persona: "Experienced product manager. Champion of user value and business outcomes. " +
-                     "Identify missing acceptance criteria, unclear scope and priority conflicts. " +
-                     "Think in terms of Jobs-to-be-Done and measurable outcomes.")
+            "Experienced product manager. Champion of user value and business outcomes. " +
+            "Identify missing acceptance criteria, unclear scope and priority conflicts. " +
+            "Think in terms of Jobs-to-be-Done and measurable outcomes.")
          .AddMember(strongModel, llm, "Architect",
-            persona: "Senior solution architect. Assess technical feasibility, identify hidden dependencies, " +
-                     "integration complexity and non-functional requirements (performance, scalability, resilience).")
+            "Senior solution architect. Assess technical feasibility, identify hidden dependencies, " +
+            "integration complexity and non-functional requirements (performance, scalability, resilience).")
          .AddMember(fastModel, llm, "UXDesigner",
-            persona: "UX and accessibility specialist. Evaluate whether requirements address real user journeys, " +
-                     "flag usability risks and missing accessibility considerations.")
+            "UX and accessibility specialist. Evaluate whether requirements address real user journeys, " +
+            "flag usability risks and missing accessibility considerations.")
          .AddMember(fastModel, llm, "QA",
-            persona: "Quality assurance lead. Focus on testability: are requirements verifiable? " +
-                     "Identify missing edge cases, ambiguous acceptance criteria and regression risks.")
+            "Quality assurance lead. Focus on testability: are requirements verifiable? " +
+            "Identify missing edge cases, ambiguous acceptance criteria and regression risks.")
          .AddMember(fastModel, llm, "SecurityOfficer",
-            persona: "Security and compliance officer. Evaluate data privacy implications, GDPR/CCPA compliance, " +
-                     "authentication/authorisation requirements and threat model gaps.")
+            "Security and compliance officer. Evaluate data privacy implications, GDPR/CCPA compliance, " +
+            "authentication/authorisation requirements and threat model gaps.")
          .SetChairman(Chairman.CreateCustom(strongModel, llm,
             """
             You are the Requirements Review Chair.

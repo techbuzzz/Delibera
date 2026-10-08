@@ -3,7 +3,11 @@ namespace Delibera.Core.Models;
 /// <summary>
 ///    A council participant — an LLM model bound to a specific provider.
 /// </summary>
-public sealed class CouncilMember(string modelName, ILLMProvider provider, string? role = null, string? personaPrompt = null)
+public sealed class CouncilMember(
+   string modelName,
+   ILLMProvider provider,
+   string? role = null,
+   string? personaPrompt = null)
 {
    private readonly string? _personaPrompt = personaPrompt;
 
@@ -27,9 +31,9 @@ public sealed class CouncilMember(string modelName, ILLMProvider provider, strin
 
    /// <summary>
    ///    Member capabilities (Text, Vision) used by F-06 Multi-Modal attachment routing.
-   ///    Defaults to <see cref="MemberCapabilities.Text"/>. Set explicitly via the
-   ///    <c>AddMember</c> overload that accepts <see cref="MemberCapabilities"/>, or
-   ///    auto-detected from the model name by <see cref="ModelContextWindowRegistry"/>.
+   ///    Defaults to <see cref="MemberCapabilities.Text" />. Set explicitly via the
+   ///    <c>AddMember</c> overload that accepts <see cref="MemberCapabilities" />, or
+   ///    auto-detected from the model name by <see cref="ModelContextWindowRegistry" />.
    /// </summary>
    public MemberCapabilities Capabilities { get; set; } = MemberCapabilities.Text;
 

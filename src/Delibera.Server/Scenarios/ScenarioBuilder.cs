@@ -1,9 +1,7 @@
+using Delibera.Core.Debate;
 using Delibera.Core.Interfaces;
-using Delibera.Core.Models;
 using Delibera.Core.Providers;
-using Delibera.Core.Providers.LLM;
 using Delibera.Core.Voting;
-using Delibera.Server.Api.Contracts;
 
 namespace Delibera.Server.Scenarios;
 
@@ -22,27 +20,35 @@ public static class ScenarioBuilder
       var strongModel = configuration["Delibera:Models:Strong"] ?? "qwen2.5:7b";
       using var factory = new ProviderFactory();
 
-      ILLMProvider DefaultProvider() =>
-         string.IsNullOrEmpty(apiKey)
+      ILLMProvider DefaultProvider()
+      {
+         return string.IsNullOrEmpty(apiKey)
             ? factory.CreateLocalOllama(endpoint)
             : factory.CreateCloudOllama(endpoint, apiKey);
+      }
 
-      ILLMProvider ResolveProvider(string? providerType) =>
-         providerType?.ToLowerInvariant() switch
+      ILLMProvider ResolveProvider(string? providerType)
+      {
+         return providerType?.ToLowerInvariant() switch
          {
-            _ => DefaultProvider(),
+            _ => DefaultProvider()
          };
+      }
 
-      string ResolveModel(string? model, bool preferStrong = true) =>
-         !string.IsNullOrWhiteSpace(model) ? model
-         : preferStrong ? strongModel : fastModel;
+      string ResolveModel(string? model, bool preferStrong = true)
+      {
+         return !string.IsNullOrWhiteSpace(model) ? model
+            : preferStrong ? strongModel : fastModel;
+      }
 
       var builder = new CouncilBuilder()
          .WithMaxRounds(request.MaxRounds)
          .WithTemperature(request.Temperature);
 
       if (!string.IsNullOrWhiteSpace(request.SystemPrompt))
+      {
          builder.WithSystemPrompt(request.SystemPrompt);
+      }
       else
       {
          var ctx = request.InputData.HasValue
@@ -64,22 +70,22 @@ public static class ScenarioBuilder
          {
             "vision" => MemberCapabilities.Vision,
             "both" => MemberCapabilities.Text | MemberCapabilities.Vision,
-            _ => MemberCapabilities.Text,
+            _ => MemberCapabilities.Text
          };
          builder.AddMember(model, provider, m.Role, caps, m.Persona);
       }
 
       _ = request.Strategy?.ToLowerInvariant() switch
       {
-         "critique" => builder.WithStrategy(new Delibera.Core.Debate.CritiqueDebate()),
-         "consensus" => builder.WithStrategy(new Delibera.Core.Debate.ConsensusDebate()),
-         _ => builder.WithStrategy(new Delibera.Core.Debate.StandardDebate()),
+         "critique" => builder.WithStrategy(new CritiqueDebate()),
+         "consensus" => builder.WithStrategy(new ConsensusDebate()),
+         _ => builder.WithStrategy(new StandardDebate())
       };
 
       // ── Chairman ──────────────────────────────────────────────────────────
       if (request.Chairman is { } ch)
       {
-         var chModel = ResolveModel(ch.Model, preferStrong: true);
+         var chModel = ResolveModel(ch.Model, true);
          var chProvider = ResolveProvider(ch.Provider);
          // CreateWithOpening не существует — используем CreateStandard
          var chairman = Chairman.CreateStandard(chModel, chProvider);
@@ -100,9 +106,9 @@ public static class ScenarioBuilder
                {
                   MemberWeights = request.MemberWeights is { Count: > 0 }
                      ? request.MemberWeights.ToDictionary(kv => kv.Key, kv => (double)kv.Value)
-                     : request.Members.ToDictionary(m => m.Role, m => (double)m.Weight),
+                     : request.Members.ToDictionary(m => m.Role, m => (double)m.Weight)
                },
-            _ => new MajorityVotingStrategy(),
+            _ => new MajorityVotingStrategy()
          };
          builder.WithVotingChairman(chModel, chProvider, voting);
       }

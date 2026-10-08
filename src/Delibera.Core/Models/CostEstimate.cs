@@ -24,7 +24,7 @@ public sealed record CostEstimate(
 {
    /// <summary>An empty estimate — no calls were billed.</summary>
    public static CostEstimate Empty { get; } = new(
-      0m, 0, 0, [], IsEstimate: false, WasTruncated: false);
+      0m, 0, 0, [], false, false);
 
    /// <summary>Average spend per billed member call.</summary>
    public decimal AveragePerMember => Members.Count == 0 ? 0m : TotalCost / Members.Count;

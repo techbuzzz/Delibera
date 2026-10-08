@@ -1,30 +1,27 @@
-﻿using Delibera.Core.Council;
-using Delibera.Core.Interfaces;
-using Delibera.Core.Models;
+﻿using Delibera.Core.Interfaces;
 using Delibera.Core.Providers;
 using Delibera.Core.Voting;
-using Delibera.Server.Api.Contracts;
-using Delibera.Server.Templates.Registry;
 
 namespace Delibera.Server.Templates.Legal;
 
 /// <summary>
-/// Legal Contract Review Council â€” Vertical 4: Legal / Policy / Compliance Analysis.
-///
-/// Members:
-///   ContractLawyer   (weight 2.0) â€” clause-by-clause legal risk analysis
-///   BusinessCounsel  (weight 2.0) â€” commercial terms, liability, SLA
-///   PrivacyOfficer   (weight 1.5) â€” GDPR/CCPA, data processing, DPA clauses
-///   RiskManager      (weight 1.0) â€” operational and financial risk
-///
-/// Strategy : CritiqueDebate â†’ WeightedVoting â†’ Chairman produces LegalContractVerdict.
-/// Output   : LegalContractVerdict (Recommendation, RiskLevel, Issues[], PrivacyFlags[], Confidence)
+///    Legal Contract Review Council â€” Vertical 4: Legal / Policy / Compliance Analysis.
+///    Members:
+///    ContractLawyer   (weight 2.0) â€” clause-by-clause legal risk analysis
+///    BusinessCounsel  (weight 2.0) â€” commercial terms, liability, SLA
+///    PrivacyOfficer   (weight 1.5) â€” GDPR/CCPA, data processing, DPA clauses
+///    RiskManager      (weight 1.0) â€” operational and financial risk
+///    Strategy : CritiqueDebate â†’ WeightedVoting â†’ Chairman produces LegalContractVerdict.
+///    Output   : LegalContractVerdict (Recommendation, RiskLevel, Issues[], PrivacyFlags[], Confidence)
 /// </summary>
 public sealed class LegalContractReviewTemplate : IServerTemplate
 {
    public string TemplateId => "legal-contract-review";
    public string DisplayName => "Legal Contract Review Council";
-   public string? Description => "AI council for contract and policy analysis: risk identification, clause review and compliance check.";
+
+   public string? Description =>
+      "AI council for contract and policy analysis: risk identification, clause review and compliance check.";
+
    public string Strategy => "CritiqueDebate";
    public int DefaultMaxRounds => 4;
    public string[] MemberRoles => ["ContractLawyer", "BusinessCounsel", "PrivacyOfficer", "RiskManager"];
@@ -55,23 +52,23 @@ public sealed class LegalContractReviewTemplate : IServerTemplate
                        ["ContractLawyer"] = 2.0f,
                        ["BusinessCounsel"] = 2.0f,
                        ["PrivacyOfficer"] = 1.5f,
-                       ["RiskManager"] = 1.0f,
+                       ["RiskManager"] = 1.0f
                     };
 
       var builder = new CouncilBuilder()
          .AddMember(strongModel, llm, "ContractLawyer",
-            persona: "Experienced contract lawyer specialising in commercial and technology law. " +
-                     "Analyse each clause for enforceability, ambiguity, unfair terms and legal risk. " +
-                     "Reference relevant jurisdiction and applicable law where possible.")
+            "Experienced contract lawyer specialising in commercial and technology law. " +
+            "Analyse each clause for enforceability, ambiguity, unfair terms and legal risk. " +
+            "Reference relevant jurisdiction and applicable law where possible.")
          .AddMember(strongModel, llm, "BusinessCounsel",
-            persona: "Commercial legal counsel. Focus on liability caps, indemnification, IP ownership, " +
-                     "SLA obligations, termination rights and commercial risk balance.")
+            "Commercial legal counsel. Focus on liability caps, indemnification, IP ownership, " +
+            "SLA obligations, termination rights and commercial risk balance.")
          .AddMember(fastModel, llm, "PrivacyOfficer",
-            persona: "Data privacy and compliance officer. Evaluate GDPR, CCPA and local data protection law compliance. " +
-                     "Identify missing DPA clauses, sub-processor controls and data retention obligations.")
+            "Data privacy and compliance officer. Evaluate GDPR, CCPA and local data protection law compliance. " +
+            "Identify missing DPA clauses, sub-processor controls and data retention obligations.")
          .AddMember(fastModel, llm, "RiskManager",
-            persona: "Operational and financial risk manager. Identify contractual obligations that create " +
-                     "financial exposure, operational dependencies or reputational risk.")
+            "Operational and financial risk manager. Identify contractual obligations that create " +
+            "financial exposure, operational dependencies or reputational risk.")
          .SetChairman(Chairman.CreateCustom(strongModel, llm,
             """
             You are the Legal Review Chair.
@@ -90,7 +87,8 @@ public sealed class LegalContractReviewTemplate : IServerTemplate
             """)
          )
          .WithCritiqueDebate()
-         .WithVoting(new WeightedVotingStrategy { MemberWeights = weights.ToDictionary(kv => kv.Key, kv => (double)kv.Value) })
+         .WithVoting(new WeightedVotingStrategy
+            { MemberWeights = weights.ToDictionary(kv => kv.Key, kv => (double)kv.Value) })
          .WithSystemPrompt(
             $"""Legal Contract Review Council\n\nContract / Clause to Review:\n{request.Question}\n\nContract Text:\n{request.InputData?.ToString() ?? "(no contract text provided)"}""")
          .WithUserPrompt(request.Question)

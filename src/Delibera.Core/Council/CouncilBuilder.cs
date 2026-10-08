@@ -1,5 +1,4 @@
 using Delibera.Core.Attachments;
-using Delibera.Core.Caching;
 using Delibera.Core.Chunking;
 using Delibera.Core.Compression;
 using Delibera.Core.Cost;
@@ -23,34 +22,37 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private const int DefaultMaxRounds = 4;
    private const float DefaultTemperature = 0.7f;
    private const string DefaultSystemPrompt = "You are a helpful AI assistant participating in a council debate.";
+   private readonly List<FileAttachment> _attachments = [];
+   private readonly FileContentReaderRegistry _fileReaders = new();
    private readonly List<CouncilMember> _members = [];
    private IAgentMemory? _agentMemory;
    private AutoChunkingOptions? _autoChunkingOptions;
+   private IDebateCache? _cache;
+   private CacheBehavior _cacheBehavior;
    private CouncilMember? _chairman;
-   private ICostGate? _costGate;
    private CompressionCache? _compressionCache;
    private CompressionOptions? _compressionOptions;
+   private int _compressionThresholdTokens = 1_200;
    private IContextCompressor? _compressor;
+   private ICostGate? _costGate;
    private IDebateStore? _debateStore;
    private TimeSpan? _debateTimeout;
    private IKnowledgeBase? _knowledgeBase;
    private KnowledgeKeeper? _knowledgeKeeper;
    private ILogger? _logger;
-   private IModelPricingRegistry? _pricingRegistry;
-   private IRateLimiter? _rateLimiter;
-   private RateLimitPolicy? _rateLimitPolicy;
-   private IToolProvider? _toolProvider;
-   private IReadOnlyList<AIFunction>? _memberTools;
-   private int _maxToolIterations = 3;
-   private int _compressionThresholdTokens = 1_200;
    private int _maxDegreeOfParallelism;
    private int? _maxParticipants;
    private int _maxRounds = 4;
+   private int _maxToolIterations = 3;
+   private IReadOnlyList<AIFunction>? _memberTools;
    private Operator? _operator;
    private CouncilMember? _operatorModel;
    private bool _operatorReuseCompression;
    private IReadOnlyList<McpServerConfig>? _operatorServers;
    private string? _outputPath;
+   private IModelPricingRegistry? _pricingRegistry;
+   private IRateLimiter? _rateLimiter;
+   private RateLimitPolicy? _rateLimitPolicy;
    private string? _responseLanguage;
    private string? _resumeFromDebateId;
    private IDebateStrategy _strategy = new StandardDebate();
@@ -60,12 +62,9 @@ public sealed class CouncilBuilder : ICouncilBuilder
    private string _systemPrompt = "You are a helpful AI assistant participating in a council debate.";
    private TelemetryOptions? _telemetryOptions;
    private float _temperature = 0.7f;
+   private IToolProvider? _toolProvider;
    private string _userPrompt = string.Empty;
    private IVotingStrategy? _votingStrategy;
-   private CacheBehavior _cacheBehavior;
-   private IDebateCache? _cache;
-   private readonly List<FileAttachment> _attachments = [];
-   private readonly FileContentReaderRegistry _fileReaders = new();
 
    /// <summary>
    ///    Creates an empty builder. Use <see cref="WithOptions(CouncilOptions)" /> or
@@ -97,7 +96,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
    }
 
    /// <inheritdoc />
-   public ICouncilBuilder AddMember(string modelName, ILLMProvider provider, string? role = null, string? persona = null)
+   public ICouncilBuilder AddMember(string modelName, ILLMProvider provider, string? role = null,
+      string? persona = null)
    {
       var member = new CouncilMember(modelName, provider, role, persona);
       // Auto-detect capabilities from model name.
@@ -110,8 +110,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
    // ── Members with capabilities (F-06 Multi-Modal) ──
 
    /// <summary>
-   ///    Adds a participant with explicit <see cref="MemberCapabilities"/>. When
-   ///    <see cref="MemberCapabilities.Vision"/> is set, the member receives image
+   ///    Adds a participant with explicit <see cref="MemberCapabilities" />. When
+   ///    <see cref="MemberCapabilities.Vision" /> is set, the member receives image
    ///    attachments as <c>ImageContent</c> via Microsoft.Extensions.AI; text-only
    ///    members receive a textual placeholder for binary attachments.
    /// </summary>
@@ -119,8 +119,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
    /// <param name="provider">LLM provider instance.</param>
    /// <param name="role">Role label.</param>
    /// <param name="capabilities">
-   ///    Member capabilities. Pass <see cref="MemberCapabilities.Vision"/> |
-   ///    <see cref="MemberCapabilities.Text"/> for a vision-capable member.
+   ///    Member capabilities. Pass <see cref="MemberCapabilities.Vision" /> |
+   ///    <see cref="MemberCapabilities.Text" /> for a vision-capable member.
    ///    Vision is auto-detected from the model name when not set here.
    /// </param>
    /// <param name="persona">Optional persona prompt.</param>
@@ -384,7 +384,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
    public ICouncilBuilder WithTimeout(TimeSpan timeout)
    {
       if (timeout == TimeSpan.Zero)
-         throw new ArgumentOutOfRangeException(nameof(timeout), "Use Timeout.InfiniteTimeSpan to disable the timeout, not TimeSpan.Zero.");
+         throw new ArgumentOutOfRangeException(nameof(timeout),
+            "Use Timeout.InfiniteTimeSpan to disable the timeout, not TimeSpan.Zero.");
       _debateTimeout = timeout;
       return this;
    }
@@ -482,7 +483,8 @@ public sealed class CouncilBuilder : ICouncilBuilder
    ///    with default options.
    /// </param>
    /// <returns>This builder for fluent chaining.</returns>
-   public ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null) where TVerdict : class
+   public ICouncilBuilder WithStructuredOutput<TVerdict>(IStructuredOutputSerializer? serializer = null)
+      where TVerdict : class
    {
       _structuredOutputSerializer = serializer ?? new JsonSchemaOutputSerializer();
       _structuredOutputType = typeof(TVerdict);
@@ -527,16 +529,6 @@ public sealed class CouncilBuilder : ICouncilBuilder
       return this;
    }
 
-   /// <summary>
-   ///    Sets the caching behavior and cache backend for this debate.
-   /// </summary>
-   public ICouncilBuilder WithCache(CacheBehavior behavior, IDebateCache cache)
-   {
-      _cacheBehavior = behavior;
-      _cache = cache;
-      return this;
-   }
-
    // ── Agent memory (F-04) ──
 
    /// <summary>
@@ -557,7 +549,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
 
    /// <summary>
    ///    Attaches a file to the debate. The file is read lazily by the
-   ///    <see cref="FileContentReaderRegistry"/> when the debate starts.
+   ///    <see cref="FileContentReaderRegistry" /> when the debate starts.
    ///    Vision-capable members receive image attachments as
    ///    <c>ImageContent</c>; text-only members receive a textual placeholder.
    /// </summary>
@@ -586,7 +578,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
    }
 
    /// <summary>
-   ///    Registers a custom <see cref="IFileContentReader"/> for a specific file
+   ///    Registers a custom <see cref="IFileContentReader" /> for a specific file
    ///    extension (e.g. <c>.pdf</c>). Overwrites any existing reader for the extension.
    /// </summary>
    /// <param name="extension">File extension including the leading dot (e.g. ".pdf").</param>
@@ -606,9 +598,10 @@ public sealed class CouncilBuilder : ICouncilBuilder
    ///    class needed.
    /// </summary>
    /// <param name="extension">File extension including the leading dot.</param>
-   /// <param name="handler">Delegate that reads the file and returns a <see cref="FileReadResult"/>.</param>
+   /// <param name="handler">Delegate that reads the file and returns a <see cref="FileReadResult" />.</param>
    /// <returns>This builder for fluent chaining.</returns>
-   public ICouncilBuilder WithFileReader(string extension, Func<string, CancellationToken, Task<FileReadResult>> handler)
+   public ICouncilBuilder WithFileReader(string extension,
+      Func<string, CancellationToken, Task<FileReadResult>> handler)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(extension);
       ArgumentNullException.ThrowIfNull(handler);
@@ -652,6 +645,16 @@ public sealed class CouncilBuilder : ICouncilBuilder
    }
 
    /// <summary>
+   ///    Sets the caching behavior and cache backend for this debate.
+   /// </summary>
+   public ICouncilBuilder WithCache(CacheBehavior behavior, IDebateCache cache)
+   {
+      _cacheBehavior = behavior;
+      _cache = cache;
+      return this;
+   }
+
+   /// <summary>
    ///    Applies a <see cref="CouncilOptions" /> snapshot to the builder.
    ///    Only sets fields that have non-default values — explicit builder calls
    ///    made before or after <c>WithOptions</c> take precedence.
@@ -682,10 +685,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
       {
          if (_compressor is null)
             _compressor = CompressionFactory.Create(
-               options.Compression.Strategy,
-               null,
-               null,
-               null);
+               options.Compression.Strategy);
 
          _compressionOptions ??= new CompressionOptions
          {
@@ -742,13 +742,11 @@ public sealed class CouncilBuilder : ICouncilBuilder
       // turns a silent misconfiguration into a startup error the caller can act on. A token budget
       // has no such dependency, so it is exempt.
       if (_costGate is BudgetCostGate && _pricingRegistry is null)
-      {
          throw new InvalidOperationException(
             "A cost limit was configured without a pricing registry. Tokens are only priced when a "
             + "registry supplies rates, so the limit would never be enforced. Call "
             + "WithPricingRegistry(...) alongside WithCostLimit(...), or use WithTokenBudget(...) "
             + "for a bound that needs no prices.");
-      }
       if (_maxParticipants is { } limit && _members.Count > limit)
          throw new InvalidOperationException(
             $"Participant limit exceeded: {_members.Count} members added, but limit is {limit}. " +
@@ -953,15 +951,15 @@ public sealed class CouncilBuilder : ICouncilBuilder
    /// </summary>
    /// <remarks>
    ///    <para>
-   ///    A provider whose members run on <c>ChatClientLLMProvider</c> gets native function
-   ///    calling. Any other provider gets the <c>[[TOOL: name {json}]]</c> marker protocol,
-   ///    because the string-only adapter cannot carry structured tool traffic. Both write the
-   ///    same <see cref="ToolCallLog" />, so the audit trail is identical either way.
+   ///       A provider whose members run on <c>ChatClientLLMProvider</c> gets native function
+   ///       calling. Any other provider gets the <c>[[TOOL: name {json}]]</c> marker protocol,
+   ///       because the string-only adapter cannot carry structured tool traffic. Both write the
+   ///       same <see cref="ToolCallLog" />, so the audit trail is identical either way.
    ///    </para>
    ///    <para>
-   ///    Granting members tools grants them the tool's authority. A filesystem provider is
-   ///    rooted at one directory; an HTTP provider is limited to an allow-list and refuses
-   ///    plain HTTP. Neither is safe by accident.
+   ///       Granting members tools grants them the tool's authority. A filesystem provider is
+   ///       rooted at one directory; an HTTP provider is limited to an allow-list and refuses
+   ///       plain HTTP. Neither is safe by accident.
    ///    </para>
    /// </remarks>
    /// <param name="provider">Supplies the tools members may call.</param>

@@ -29,7 +29,7 @@ public sealed class McpClientAdapter : IMcpClient
    /// <summary>Creates a standalone adapter for the given MCP server configuration (no DI, no resilience).</summary>
    /// <param name="config">Server connection configuration.</param>
    public McpClientAdapter(McpServerConfig config)
-      : this(config, null, null, null)
+      : this(config, null)
    {
    }
 

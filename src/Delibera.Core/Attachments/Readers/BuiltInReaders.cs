@@ -1,10 +1,8 @@
-using System.Text;
-
 namespace Delibera.Core.Attachments.Readers;
 
 /// <summary>
 ///    Built-in reader for plain-text file formats: <c>.txt .md .json .xml .cs .yml .csv .html</c>.
-///    Zero external dependencies — uses in-box <see cref="File.ReadAllTextAsync(string, CancellationToken)"/>.
+///    Zero external dependencies — uses in-box <see cref="File.ReadAllTextAsync(string, CancellationToken)" />.
 /// </summary>
 public sealed class PlainTextFileReader : IFileContentReader
 {
@@ -22,8 +20,8 @@ public sealed class PlainTextFileReader : IFileContentReader
 
       if (!File.Exists(filePath))
          return new FileReadResult(filePath,
-            TextContent: $"[Attachment: {Path.GetFileName(filePath)} — file not found]",
-            BinaryParts: null, Metadata: null);
+            $"[Attachment: {Path.GetFileName(filePath)} — file not found]",
+            null, null);
 
       try
       {
@@ -33,22 +31,22 @@ public sealed class PlainTextFileReader : IFileContentReader
             ["sizeBytes"] = new FileInfo(filePath).Length.ToString(),
             ["extension"] = Path.GetExtension(filePath).ToLowerInvariant()
          };
-         return new FileReadResult(filePath, text, BinaryParts: null, meta);
+         return new FileReadResult(filePath, text, null, meta);
       }
       catch (Exception ex)
       {
          return new FileReadResult(filePath,
-            TextContent: $"[Attachment: {Path.GetFileName(filePath)} — read error: {ex.Message}]",
-            BinaryParts: null, Metadata: null);
+            $"[Attachment: {Path.GetFileName(filePath)} — read error: {ex.Message}]",
+            null, null);
       }
    }
 }
 
 /// <summary>
 ///    Built-in reader for image files: <c>.png .jpg .jpeg .webp .gif</c>.
-///    Returns the raw bytes as a <see cref="BinaryAttachment"/> with the correct
+///    Returns the raw bytes as a <see cref="BinaryAttachment" /> with the correct
 ///    MIME type, ready for vision models via
-///    <see cref="Microsoft.Extensions.AI"/> <c>ImageContent</c>. Zero external dependencies.
+///    <see cref="Microsoft.Extensions.AI" /> <c>ImageContent</c>. Zero external dependencies.
 /// </summary>
 public sealed class ImageFileReader : IFileContentReader
 {
@@ -72,8 +70,8 @@ public sealed class ImageFileReader : IFileContentReader
 
       if (!File.Exists(filePath))
          return new FileReadResult(filePath,
-            TextContent: $"[Attachment: {Path.GetFileName(filePath)} — file not found]",
-            BinaryParts: null, Metadata: null);
+            $"[Attachment: {Path.GetFileName(filePath)} — file not found]",
+            null, null);
 
       try
       {
@@ -89,13 +87,13 @@ public sealed class ImageFileReader : IFileContentReader
             ["mediaType"] = mediaType,
             ["extension"] = ext
          };
-         return new FileReadResult(filePath, TextContent: null, BinaryParts: [attachment], meta);
+         return new FileReadResult(filePath, null, [attachment], meta);
       }
       catch (Exception ex)
       {
          return new FileReadResult(filePath,
-            TextContent: $"[Attachment: {Path.GetFileName(filePath)} — read error: {ex.Message}]",
-            BinaryParts: null, Metadata: null);
+            $"[Attachment: {Path.GetFileName(filePath)} — read error: {ex.Message}]",
+            null, null);
       }
    }
 
@@ -121,14 +119,14 @@ public sealed class ImageFileReader : IFileContentReader
 /// </summary>
 public sealed class FallbackFileReader : IFileContentReader
 {
+   private FallbackFileReader()
+   {
+   }
+
    /// <summary>
    ///    Singleton instance — stateless, safe to share.
    /// </summary>
    public static FallbackFileReader Instance { get; } = new();
-
-   private FallbackFileReader()
-   {
-   }
 
    /// <inheritdoc />
    public IReadOnlyCollection<string> SupportedExtensions { get; } = []; // matches nothing — used directly
@@ -144,13 +142,14 @@ public sealed class FallbackFileReader : IFileContentReader
                   No reader is registered for extension '{ext}'.
                   Register one with: .WithFileReader("{ext}", yourReader)
                   """;
-      return Task.FromResult(new FileReadResult(filePath, text, BinaryParts: null, Metadata: null));
+      return Task.FromResult(new FileReadResult(filePath, text, null, null));
    }
 }
 
 /// <summary>
-///    Adapter that wraps a delegate as an <see cref="IFileContentReader"/>.
-///    Used by <see cref="FileContentReaderRegistry.Register(string, Func{string, CancellationToken, Task{FileReadResult}})"/>
+///    Adapter that wraps a delegate as an <see cref="IFileContentReader" />.
+///    Used by
+///    <see cref="FileContentReaderRegistry.Register(string, Func{string, CancellationToken, Task{FileReadResult}})" />
 ///    so callers can register a lambda without writing a class.
 /// </summary>
 public sealed class DelegateFileContentReader : IFileContentReader
@@ -161,7 +160,7 @@ public sealed class DelegateFileContentReader : IFileContentReader
    ///    Creates a delegate-based reader handling a single extension.
    /// </summary>
    /// <param name="extension">The extension this reader handles (including the leading dot).</param>
-   /// <param name="handler">Delegate that reads the file and returns a <see cref="FileReadResult"/>.</param>
+   /// <param name="handler">Delegate that reads the file and returns a <see cref="FileReadResult" />.</param>
    public DelegateFileContentReader(string extension, Func<string, CancellationToken, Task<FileReadResult>> handler)
    {
       ArgumentException.ThrowIfNullOrWhiteSpace(extension);

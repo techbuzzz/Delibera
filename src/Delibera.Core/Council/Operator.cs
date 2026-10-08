@@ -235,7 +235,8 @@ public sealed class Operator : IOperator
    {
       var toolsText = new StringBuilder();
       foreach (var tool in _tools)
-         toolsText.AppendLine($"- server=\"{tool.ServerName}\" tool=\"{tool.Name}\" description=\"{tool.Description}\" input_schema={tool.InputSchemaJson}");
+         toolsText.AppendLine(
+            $"- server=\"{tool.ServerName}\" tool=\"{tool.Name}\" description=\"{tool.Description}\" input_schema={tool.InputSchemaJson}");
 
       var userPrompt = $"""
                         ### Available tools:

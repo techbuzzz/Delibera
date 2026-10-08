@@ -64,7 +64,8 @@ public static class DependencyInjectionExample
          Console.WriteLine($"   Strategy:     {opts.Strategy}");
          Console.WriteLine($"   MaxRounds:    {opts.MaxRounds}");
          Console.WriteLine($"   Temperature:  {opts.Temperature:F2}");
-         Console.WriteLine($"   Compression:  {(opts.Compression.Enabled ? "Enabled" : "Disabled")} ({opts.Compression.Strategy})");
+         Console.WriteLine(
+            $"   Compression:  {(opts.Compression.Enabled ? "Enabled" : "Disabled")} ({opts.Compression.Strategy})");
          Console.WriteLine($"   Output:       {opts.Output.Directory} (Separate: {opts.Output.SeparateFiles})");
       }
 

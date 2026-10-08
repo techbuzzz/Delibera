@@ -1,6 +1,5 @@
 using Delibera.Core.Interfaces;
 using Delibera.Core.Providers.LLM;
-using Delibera.Core.Providers.RAG;
 
 namespace Delibera.Server.Services;
 
@@ -28,8 +27,8 @@ public sealed class ServerRagProviderFactory(
    ILoggerFactory loggerFactory) : IDisposable
 {
    private readonly Lock _gate = new();
-   private IRagProvider? _rag;
    private OllamaProvider? _embeddingSource;
+   private IRagProvider? _rag;
 
    /// <summary>Whether <c>Delibera:Rag:Enabled</c> is set.</summary>
    public bool Enabled => configuration.GetValue("Delibera:Rag:Enabled", false);
@@ -37,11 +36,18 @@ public sealed class ServerRagProviderFactory(
    /// <summary>Provider type, e.g. <c>Qdrant</c> or <c>PgVector</c>.</summary>
    public string ProviderType => configuration["Delibera:Rag:ProviderType"] ?? "Qdrant";
 
+   public void Dispose()
+   {
+      _rag = null;
+      _embeddingSource?.Dispose();
+      _embeddingSource = null;
+   }
+
    /// <summary>Collection name for a corpus with the given id.</summary>
    /// <remarks>
-   ///   One collection per corpus rather than one shared collection: <see cref="IRagProvider" />
-   ///   search takes a single collection and offers no filter argument, so a single collection
-   ///   could not keep two corpora from leaking into each other's retrieval.
+   ///    One collection per corpus rather than one shared collection: <see cref="IRagProvider" />
+   ///    search takes a single collection and offers no filter argument, so a single collection
+   ///    could not keep two corpora from leaking into each other's retrieval.
    /// </remarks>
    public static string CollectionForCorpus(string corpusId)
    {
@@ -50,8 +56,8 @@ public sealed class ServerRagProviderFactory(
    }
 
    /// <summary>
-   ///   Returns the shared provider, or <c>null</c> when RAG is disabled. Cached so that the
-   ///   embedding client — and therefore the embedding model — stays stable for the process.
+   ///    Returns the shared provider, or <c>null</c> when RAG is disabled. Cached so that the
+   ///    embedding client — and therefore the embedding model — stays stable for the process.
    /// </summary>
    public IRagProvider? Get()
    {
@@ -64,7 +70,8 @@ public sealed class ServerRagProviderFactory(
             return _rag;
 
          var endpoint = configuration["Delibera:Providers:DefaultEndpoint"]
-            ?? throw new InvalidOperationException("Delibera:Providers:DefaultEndpoint is required for RAG.");
+                        ?? throw new InvalidOperationException(
+                           "Delibera:Providers:DefaultEndpoint is required for RAG.");
          var apiKey = configuration["Delibera:Providers:ApiKey"];
          var embeddingModel = configuration["Delibera:Providers:EmbeddingModel"] ?? "nomic-embed-text";
 
@@ -85,12 +92,5 @@ public sealed class ServerRagProviderFactory(
 
          return _rag;
       }
-   }
-
-   public void Dispose()
-   {
-      _rag = null;
-      _embeddingSource?.Dispose();
-      _embeddingSource = null;
    }
 }

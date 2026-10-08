@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
-using Delibera.Core.Council;
-using Delibera.Core.Interfaces;
-using Delibera.Core.Models;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 
 namespace Delibera.Core.Council;
 
@@ -16,16 +15,16 @@ namespace Delibera.Core.Council;
 /// </summary>
 public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
 {
-   private readonly ConcurrentDictionary<string, DebateEntry> _entries = new();
-   private readonly TimeSpan _completedEntryLifetime;
-   private Timer? _evictionTimer;
-
    /// <summary>
    ///    Default lifetime for completed debate entries before they are evicted
    ///    from the in-memory dictionary. Set to <see cref="TimeSpan.Zero" /> to
    ///    disable eviction (entries remain indefinitely).
    /// </summary>
    public static readonly TimeSpan CompletedEntryLifetime = TimeSpan.FromMinutes(30);
+
+   private readonly TimeSpan _completedEntryLifetime;
+   private readonly ConcurrentDictionary<string, DebateEntry> _entries = new();
+   private readonly Timer? _evictionTimer;
 
    /// <summary>
    ///    Creates a new <see cref="LocalDebateOrchestrator" />.
@@ -38,7 +37,8 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
    {
       _completedEntryLifetime = completedEntryLifetime ?? CompletedEntryLifetime;
       if (_completedEntryLifetime > TimeSpan.Zero)
-         _evictionTimer = new(EvictCompletedEntries, new WeakReference<LocalDebateOrchestrator>(this), _completedEntryLifetime, _completedEntryLifetime);
+         _evictionTimer = new Timer(EvictCompletedEntries, new WeakReference<LocalDebateOrchestrator>(this),
+            _completedEntryLifetime, _completedEntryLifetime);
    }
 
    /// <inheritdoc />
@@ -87,8 +87,7 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
    /// <inheritdoc />
    public async IAsyncEnumerable<DebateRoundEvent> StreamAsync(
       string debateId,
-      [System.Runtime.CompilerServices.EnumeratorCancellation]
-      CancellationToken ct = default)
+      [EnumeratorCancellation] CancellationToken ct = default)
    {
       if (!_entries.TryGetValue(debateId, out var entry))
          yield break;
@@ -145,6 +144,24 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
       return Task.FromResult(true);
    }
 
+   // ── IDisposable ──────────────────────────────────────────────────────────────
+
+   /// <summary>
+   ///    Disposes the eviction timer and all remaining debate entries.
+   ///    Active debates are cancelled via their <see cref="CancellationTokenSource" />.
+   /// </summary>
+   public void Dispose()
+   {
+      _evictionTimer?.Dispose();
+      foreach (var kvp in _entries)
+      {
+         kvp.Value.Cancel();
+         kvp.Value.Dispose();
+      }
+
+      _entries.Clear();
+   }
+
    // ── Eviction ──────────────────────────────────────────────────────────────────
 
    /// <summary>
@@ -163,31 +180,9 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
    {
       var cutoff = DateTimeOffset.UtcNow - _completedEntryLifetime;
       foreach (var kvp in _entries)
-      {
          if (kvp.Value.Status is not DebateOrchestrationStatus.Running && kvp.Value.CompletedAt < cutoff)
-         {
             if (_entries.TryRemove(kvp.Key, out var entry))
                entry.Dispose();
-         }
-      }
-   }
-
-   // ── IDisposable ──────────────────────────────────────────────────────────────
-
-   /// <summary>
-   ///    Disposes the eviction timer and all remaining debate entries.
-   ///    Active debates are cancelled via their <see cref="CancellationTokenSource" />.
-   /// </summary>
-   public void Dispose()
-   {
-      _evictionTimer?.Dispose();
-      foreach (var kvp in _entries)
-      {
-         kvp.Value.Cancel();
-         kvp.Value.Dispose();
-      }
-
-      _entries.Clear();
    }
 
    // ── Private ──────────────────────────────────────────────────────────────────
@@ -227,8 +222,8 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
 
    private sealed class DebateEntry(ICouncilBuilder builder) : IDisposable
    {
-      public ICouncilBuilder Builder { get; } = builder;
       public volatile int _status; // DebateOrchestrationStatus cast — volatile for cross-thread reads
+      public ICouncilBuilder Builder { get; } = builder;
 
       public DebateOrchestrationStatus Status
       {
@@ -241,27 +236,29 @@ public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
       public DebateResult? Result { get; set; }
       public string? ErrorMessage { get; set; }
       public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
+
       public DateTimeOffset? CompletedAt { get; set; }
+
       // ConcurrentQueue, not List<T>: the round-completed handler appends from the debate
       // loop's thread while StreamAsync enumerates from a request thread. Enumerating a
       // List<T> under concurrent writes throws "Collection was modified".
       public ConcurrentQueue<DebateRound> CompletedRounds { get; } = new();
 
-      public System.Threading.Channels.Channel<DebateRound> Channel { get; } =
+      public Channel<DebateRound> Channel { get; } =
          System.Threading.Channels.Channel.CreateUnbounded<DebateRound>();
 
       public CancellationTokenSource Cts { get; } = new();
-
-      public void Cancel()
-      {
-         Status = DebateOrchestrationStatus.Cancelled;
-         Cts.Cancel();
-      }
 
       public void Dispose()
       {
          Cts.Dispose();
          Channel.Writer.TryComplete();
+      }
+
+      public void Cancel()
+      {
+         Status = DebateOrchestrationStatus.Cancelled;
+         Cts.Cancel();
       }
    }
 }

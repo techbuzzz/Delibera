@@ -21,7 +21,9 @@ public static class DeliberaResilienceServiceCollectionExtensions
    /// </remarks>
    public static IServiceCollection AddDeliberaResilienceCore(
       this IServiceCollection services,
-      IEnumerable<KeyValuePair<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>>? customPipelines = null)
+      IEnumerable<KeyValuePair<string,
+            Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>>?
+         customPipelines = null)
    {
       ArgumentNullException.ThrowIfNull(services);
 
@@ -33,7 +35,9 @@ public static class DeliberaResilienceServiceCollectionExtensions
       {
          var monitor = sp.GetRequiredService<IOptionsMonitor<ResilienceOptions>>();
          var collection = sp.GetRequiredService<DeliberaResiliencePipelineCollection>();
-         var sequences = new List<KeyValuePair<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>>(collection.Snapshot());
+         var sequences =
+            new List<KeyValuePair<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>,
+               ResiliencePipeline<HttpResponseMessage>>>>(collection.Snapshot());
          if (customPipelines is not null)
             foreach (var kvp in customPipelines)
                sequences.Add(kvp);
@@ -95,18 +99,25 @@ internal sealed record DeliberaResiliencePipelineRegistration(string Name);
 /// </summary>
 internal sealed class DeliberaResiliencePipelineCollection
 {
-   private readonly List<KeyValuePair<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>> _entries = [];
+   private readonly
+      List<KeyValuePair<string,
+         Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>> _entries = [];
+
    private readonly object _gate = new();
 
-   public void Add(string name, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>> build)
+   public void Add(string name,
+      Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>> build)
    {
       lock (_gate)
       {
-         _entries.Add(new KeyValuePair<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>(name, build));
+         _entries.Add(
+            new KeyValuePair<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>,
+               ResiliencePipeline<HttpResponseMessage>>>(name, build));
       }
    }
 
-   public IReadOnlyList<KeyValuePair<string, Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>> Snapshot()
+   public IReadOnlyList<KeyValuePair<string,
+      Func<ResiliencePipelineBuilder<HttpResponseMessage>, ResiliencePipeline<HttpResponseMessage>>>> Snapshot()
    {
       lock (_gate)
       {

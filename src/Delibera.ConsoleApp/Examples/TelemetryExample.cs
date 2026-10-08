@@ -118,7 +118,8 @@ public static class TelemetryExample
       Console.WriteLine();
 
       executor.OnRoundCompleted += round =>
-         Console.WriteLine($"  ✅ Round {round.RoundNumber} ({round.RoundName}) in {round.Duration.TotalMilliseconds:F0}ms");
+         Console.WriteLine(
+            $"  ✅ Round {round.RoundNumber} ({round.RoundName}) in {round.Duration.TotalMilliseconds:F0}ms");
 
       var sw = Stopwatch.StartNew();
       var result = await executor.ExecuteAsync(ct);

@@ -18,7 +18,8 @@ namespace Delibera.Core.Compression;
 /// </remarks>
 public sealed class SemanticCompressor(IEmbeddingProvider embeddingProvider) : IContextCompressor
 {
-   private readonly IEmbeddingProvider _embeddingProvider = embeddingProvider ?? throw new ArgumentNullException(nameof(embeddingProvider));
+   private readonly IEmbeddingProvider _embeddingProvider =
+      embeddingProvider ?? throw new ArgumentNullException(nameof(embeddingProvider));
 
    /// <inheritdoc />
    public string StrategyName => "Semantic";
@@ -27,7 +28,8 @@ public sealed class SemanticCompressor(IEmbeddingProvider embeddingProvider) : I
    public string Description => "Ranks sentences by semantic relevance and keeps the most important ones.";
 
    /// <inheritdoc />
-   public async Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null, CancellationToken ct = default)
+   public async Task<CompressedContext> CompressAsync(string text, CompressionOptions? options = null,
+      CancellationToken ct = default)
    {
       var sw = Stopwatch.StartNew();
       options ??= CompressionOptions.Default;
@@ -66,11 +68,13 @@ public sealed class SemanticCompressor(IEmbeddingProvider embeddingProvider) : I
       var compressedTokens = counter.EstimateTokens(compressedText);
 
       sw.Stop();
-      return CompressedContextFactory.Compressed(text, compressedText, originalTokens, compressedTokens, StrategyName, sw.Elapsed);
+      return CompressedContextFactory.Compressed(text, compressedText, originalTokens, compressedTokens, StrategyName,
+         sw.Elapsed);
    }
 
    /// <inheritdoc />
-   public async Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts, CompressionOptions? options = null, CancellationToken ct = default)
+   public async Task<CompressedContext> CompressBatchAsync(IReadOnlyList<string> texts,
+      CompressionOptions? options = null, CancellationToken ct = default)
    {
       ArgumentNullException.ThrowIfNull(texts);
       var merged = string.Join("\n\n", texts);

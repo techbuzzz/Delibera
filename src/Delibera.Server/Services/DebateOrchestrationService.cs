@@ -1,8 +1,6 @@
 using System.Collections.Concurrent;
 using Delibera.Core.Interfaces;
-using Delibera.Core.Models;
 using Delibera.Server.Scenarios;
-using Delibera.Server.Templates.Registry;
 
 namespace Delibera.Server.Services;
 
@@ -17,20 +15,20 @@ namespace Delibera.Server.Services;
 /// </summary>
 public sealed class DebateOrchestrationService : IDebateOrchestrationService, IDisposable
 {
-   private readonly ILogger<DebateOrchestrationService> _logger;
-   private readonly ITemplateRegistry _templates;
-   private readonly IServiceProvider _services;
-   private readonly IConfiguration _configuration;
-   private readonly IDebateOrchestrator _orchestrator;
-
-   private readonly ConcurrentDictionary<string, DebateRecord> _records = new();
-   private readonly TimeSpan _completedRecordLifetime;
-   private readonly Timer _evictionTimer;
-
    /// <summary>
    ///    Default lifetime for completed debate records before eviction.
    /// </summary>
    public static readonly TimeSpan CompletedRecordLifetime = TimeSpan.FromMinutes(30);
+
+   private readonly TimeSpan _completedRecordLifetime;
+   private readonly IConfiguration _configuration;
+   private readonly Timer _evictionTimer;
+   private readonly ILogger<DebateOrchestrationService> _logger;
+   private readonly IDebateOrchestrator _orchestrator;
+
+   private readonly ConcurrentDictionary<string, DebateRecord> _records = new();
+   private readonly IServiceProvider _services;
+   private readonly ITemplateRegistry _templates;
 
    public DebateOrchestrationService(
       ILogger<DebateOrchestrationService> logger,
@@ -46,7 +44,7 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
       _configuration = configuration;
       _orchestrator = orchestrator;
       _completedRecordLifetime = completedRecordLifetime ?? CompletedRecordLifetime;
-      _evictionTimer = new(EvictCompletedRecords, null, _completedRecordLifetime, _completedRecordLifetime);
+      _evictionTimer = new Timer(EvictCompletedRecords, null, _completedRecordLifetime, _completedRecordLifetime);
    }
 
    // ── Template path ─────────────────────────────────────────────────────────
@@ -123,7 +121,7 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
    {
       // Filter by tenant BEFORE paginating: filtering afterwards would leak other
       // tenants' records through empty pages and shifting offsets.
-      IEnumerable<DebateRecord> query = _records.Values
+      var query = _records.Values
          .Where(r => string.Equals(r.TenantId, tenantId, StringComparison.Ordinal));
 
       if (!string.IsNullOrEmpty(templateId))
@@ -163,20 +161,6 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
       return true;
    }
 
-   // ── Eviction ──────────────────────────────────────────────────────────────
-
-   private void EvictCompletedRecords(object? state)
-   {
-      var cutoff = DateTimeOffset.UtcNow - _completedRecordLifetime;
-      foreach (var kvp in _records)
-      {
-         if (kvp.Value.Status is not DebateStatus.Running && kvp.Value.CompletedAt < cutoff)
-         {
-            _records.TryRemove(kvp.Key, out _);
-         }
-      }
-   }
-
    // ── IDisposable ───────────────────────────────────────────────────────────
 
    /// <summary>
@@ -185,6 +169,16 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
    public void Dispose()
    {
       _evictionTimer.Dispose();
+   }
+
+   // ── Eviction ──────────────────────────────────────────────────────────────
+
+   private void EvictCompletedRecords(object? state)
+   {
+      var cutoff = DateTimeOffset.UtcNow - _completedRecordLifetime;
+      foreach (var kvp in _records)
+         if (kvp.Value.Status is not DebateStatus.Running && kvp.Value.CompletedAt < cutoff)
+            _records.TryRemove(kvp.Key, out _);
    }
 
    // ── Private ───────────────────────────────────────────────────────────────
@@ -198,10 +192,10 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
    }
 
    /// <param name="createdAt">
-   ///   When the debate actually started. Must be stamped <i>before</i> execution begins: on the
-   ///   synchronous paths the record is created after the debate returns, so defaulting
-   ///   <c>CreatedAt</c> to the object initialiser made it identical to <c>CompletedAt</c> and
-   ///   reported a 41-second debate as zero-length.
+   ///    When the debate actually started. Must be stamped <i>before</i> execution begins: on the
+   ///    synchronous paths the record is created after the debate returns, so defaulting
+   ///    <c>CreatedAt</c> to the object initialiser made it identical to <c>CompletedAt</c> and
+   ///    reported a 41-second debate as zero-length.
    /// </param>
    private DebateRecord CreateRecord(string templateId, string tenantId, string label, DateTimeOffset? createdAt = null)
    {
@@ -211,7 +205,7 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
          TemplateId = templateId,
          TenantId = tenantId,
          Label = label,
-         CreatedAt = createdAt ?? DateTimeOffset.UtcNow,
+         CreatedAt = createdAt ?? DateTimeOffset.UtcNow
       };
 
       _records[record.DebateId] = record;
@@ -228,7 +222,6 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
          await _orchestrator.EnqueueAsync(record.DebateId, builder).ConfigureAwait(false);
 
          await foreach (var evt in _orchestrator.StreamAsync(record.DebateId).ConfigureAwait(false))
-         {
             switch (evt)
             {
                case DebateRoundEvent.RoundCompleted rc:
@@ -254,7 +247,6 @@ public sealed class DebateOrchestrationService : IDebateOrchestrationService, ID
                   _logger.LogInformation("Debate {DebateId} was cancelled.", record.DebateId);
                   return;
             }
-         }
       }
       catch (OperationCanceledException)
       {

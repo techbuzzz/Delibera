@@ -1,4 +1,4 @@
-using Delibera.Core.Interfaces;
+using Delibera.Core.Council;
 
 namespace Delibera.Core.Cost;
 
@@ -7,24 +7,24 @@ namespace Delibera.Core.Cost;
 /// </summary>
 /// <remarks>
 ///    <para>
-///    The fluent chain is typed to <see cref="ICouncilBuilder" />: every existing
-///    <c>With…</c> method returns the interface, so a method that only exists on the concrete
-///    <see cref="Council.CouncilBuilder" /> would be unreachable after the first call —
-///    <c>new CouncilBuilder().WithSystemPrompt(…).WithCostLimit(…)</c> would not compile.
+///       The fluent chain is typed to <see cref="ICouncilBuilder" />: every existing
+///       <c>With…</c> method returns the interface, so a method that only exists on the concrete
+///       <see cref="Council.CouncilBuilder" /> would be unreachable after the first call —
+///       <c>new CouncilBuilder().WithSystemPrompt(…).WithCostLimit(…)</c> would not compile.
 ///    </para>
 ///    <para>
-///    Extension methods fix that without touching the interface. Adding an abstract member to
-///    <see cref="ICouncilBuilder" /> would be a source-breaking change for anyone who
-///    implemented it, and 10.5.x is a backwards-compatible line; adding a member <em>to</em> the
-///    interface was ruled out for the same reason. An extension method is neither, so the
-///    interface stays byte-for-byte as it was and the chain keeps working.
+///       Extension methods fix that without touching the interface. Adding an abstract member to
+///       <see cref="ICouncilBuilder" /> would be a source-breaking change for anyone who
+///       implemented it, and 10.5.x is a backwards-compatible line; adding a member <em>to</em> the
+///       interface was ruled out for the same reason. An extension method is neither, so the
+///       interface stays byte-for-byte as it was and the chain keeps working.
 ///    </para>
 ///    <para>
-///    A builder that is not a <see cref="Council.CouncilBuilder" /> — a custom
-///    <see cref="ICouncilBuilder" /> implementation — reports a clear
-///    <see cref="NotSupportedException" /> rather than silently ignoring the setting. Silently
-///    dropping a cost ceiling is the one outcome that must never happen: the caller would
-///    believe they had bounded the spend.
+///       A builder that is not a <see cref="Council.CouncilBuilder" /> — a custom
+///       <see cref="ICouncilBuilder" /> implementation — reports a clear
+///       <see cref="NotSupportedException" /> rather than silently ignoring the setting. Silently
+///       dropping a cost ceiling is the one outcome that must never happen: the caller would
+///       believe they had bounded the spend.
 ///    </para>
 /// </remarks>
 public static class CostControlExtensions
@@ -49,7 +49,7 @@ public static class CostControlExtensions
       return AsConcrete(builder).WithTokenBudget(limit, behavior);
    }
 
-/// <inheritdoc cref="Council.CouncilBuilder.WithCostGate(ICostGate)" />
+   /// <inheritdoc cref="Council.CouncilBuilder.WithCostGate(ICostGate)" />
    public static ICouncilBuilder WithCostGate(this ICouncilBuilder builder, ICostGate gate)
    {
       ArgumentNullException.ThrowIfNull(builder);
@@ -110,10 +110,13 @@ public static class CostControlExtensions
       return AsConcrete(builder).WithMaxToolIterations(iterations);
    }
 
-   private static Council.CouncilBuilder AsConcrete(ICouncilBuilder builder) => builder as Council.CouncilBuilder
-      ?? throw new NotSupportedException(
-         $"{builder.GetType().Name} does not support cost control. Cost ceilings and rate limits are "
-         + "implemented by Delibera.Core's CouncilBuilder; a custom ICouncilBuilder has to apply "
-         + "them through DebateExecutionOptions instead. Ignoring the request would leave a cost "
-         + "ceiling that looks configured but is not enforced.");
+   private static CouncilBuilder AsConcrete(ICouncilBuilder builder)
+   {
+      return builder as CouncilBuilder
+             ?? throw new NotSupportedException(
+                $"{builder.GetType().Name} does not support cost control. Cost ceilings and rate limits are "
+                + "implemented by Delibera.Core's CouncilBuilder; a custom ICouncilBuilder has to apply "
+                + "them through DebateExecutionOptions instead. Ignoring the request would leave a cost "
+                + "ceiling that looks configured but is not enforced.");
+   }
 }

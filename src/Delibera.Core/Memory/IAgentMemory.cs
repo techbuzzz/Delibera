@@ -300,8 +300,8 @@ public sealed class PgVectorAgentMemory : IAgentMemory
          // Metadata is nullable on a search result: a vector store entry stored without
          // tags would have dereferenced null here and taken recall down with it.
          .Where(r => r.Metadata is not null
-            && r.Metadata.TryGetValue("agent_name", out var name)
-            && name == agentName)
+                     && r.Metadata.TryGetValue("agent_name", out var name)
+                     && name == agentName)
          .Take(Math.Max(1, limit))
          .Select(r => new MemoryEntry(r.Text, DateTimeOffset.UtcNow, r.Metadata ?? MemoryEntry.Empty))
          .ToList();

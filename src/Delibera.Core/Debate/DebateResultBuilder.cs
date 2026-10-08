@@ -22,9 +22,9 @@ internal sealed class DebateResultBuilder(
    // already stamped CompletedAt — so TotalDuration came out negative ("-0.0s") on every debate.
    private readonly DateTime _startedAt = DateTime.UtcNow;
    private DateTime? _completedAt;
+   private IReadOnlyList<MemberFailure> _failures = [];
    private string? _finalVerdict;
    private string? _openingStatement;
-   private IReadOnlyList<MemberFailure> _failures = [];
 
    public string StrategyName => strategy.StrategyName;
    public PromptContext Context => context;

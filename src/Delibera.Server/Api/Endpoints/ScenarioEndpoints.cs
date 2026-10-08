@@ -1,9 +1,6 @@
 using Delibera.Core.Interfaces;
-using Delibera.Server.Api.Contracts;
-using Delibera.Server.Api.Mapping;
 using Delibera.Server.Middleware;
 using Delibera.Server.Scenarios;
-using Delibera.Server.Services;
 using Delibera.Server.Sse;
 
 namespace Delibera.Server.Api.Endpoints;
@@ -36,7 +33,7 @@ public static class ScenarioEndpoints
       group.MapPost("/validate", ValidateScenarioAsync)
          .WithName("ValidateScenario")
          .WithSummary("Validate a scenario JSON without executing it. Returns the parsed council config.")
-         .Produces<ScenarioValidationResult>(StatusCodes.Status200OK)
+         .Produces<ScenarioValidationResult>()
          .ProducesProblem(StatusCodes.Status400BadRequest);
 
       // GET /api/v1/scenarios/{id}/stream  — SSE
@@ -101,7 +98,7 @@ public static class ScenarioEndpoints
             MaxRounds = scenario.MaxRounds,
             HasChairman = scenario.Chairman is not null,
             VotingStrategy = scenario.VotingStrategy,
-            Roles = scenario.Members.Select(m => m.Role).ToArray(),
+            Roles = scenario.Members.Select(m => m.Role).ToArray()
          };
          return TypedResults.Ok(result);
       }

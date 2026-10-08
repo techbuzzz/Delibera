@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Threading;
 
 namespace Delibera.Core.Compression;
 
@@ -35,19 +34,6 @@ public sealed class TokenCounter
 
    private readonly ConcurrentDictionary<string, MemoEntry> _memo = new();
    private ConcurrentQueue<string> _memoOrder = new(); // insertion order, re-queued on use
-
-   /// <summary>A memoized estimate plus its second-chance flag.</summary>
-   private sealed class MemoEntry(int value)
-   {
-      internal int Value { get; } = value;
-
-      /// <summary>
-      ///    Second-chance flag, set on every cache hit. Deliberately written without a
-      ///    lock: a lost or duplicated write only makes the eviction estimate slightly
-      ///    less precise, which for a token-count heuristic is not observable.
-      /// </summary>
-      internal bool Used;
-   }
 
    /// <summary>Gets the shared default <see cref="TokenCounter" /> instance.</summary>
    public static TokenCounter Default => DefaultInstance.Value;
@@ -261,5 +247,18 @@ public sealed class TokenCounter
          }
 
       return count;
+   }
+
+   /// <summary>A memoized estimate plus its second-chance flag.</summary>
+   private sealed class MemoEntry(int value)
+   {
+      /// <summary>
+      ///    Second-chance flag, set on every cache hit. Deliberately written without a
+      ///    lock: a lost or duplicated write only makes the eviction estimate slightly
+      ///    less precise, which for a token-count heuristic is not observable.
+      /// </summary>
+      internal bool Used;
+
+      internal int Value { get; } = value;
    }
 }

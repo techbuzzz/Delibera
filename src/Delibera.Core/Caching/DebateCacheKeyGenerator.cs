@@ -1,8 +1,7 @@
 using System.Buffers;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using Delibera.Core.Models;
+using System.Text.Json.Serialization;
 
 namespace Delibera.Core.Caching;
 
@@ -20,11 +19,19 @@ public static class DebateCacheKeyGenerator
    /// </summary>
    public const int KeyVersion = 2;
 
+   /// <summary>
+   ///    Knowledge bases can be megabytes, so the UTF-8 buffer is pooled rather than
+   ///    materialized on the heap — the same approach <c>CompressionCache.ComputeKey</c>
+   ///    uses. Above <see cref="MaxPooledKnowledgeChars" /> a rent would exceed the
+   ///    largest shared bucket and allocate anyway, so that case keeps the direct path.
+   /// </summary>
+   private const int MaxPooledKnowledgeChars = 1 << 20;
+
    private static readonly JsonSerializerOptions _json = new()
    {
       PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-      DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-      WriteIndented = false,
+      DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+      WriteIndented = false
    };
 
    /// <summary>
@@ -69,7 +76,7 @@ public static class DebateCacheKeyGenerator
          // outer hash covers the digest just as well.
          KnowledgeHash = context.KnowledgeContent is null
             ? null
-            : ComputeKnowledgeHash(context.KnowledgeContent),
+            : ComputeKnowledgeHash(context.KnowledgeContent)
       }, _json);
 
       // Truncate to the first 8 bytes = 16 hex chars. Formatting only those 8 bytes
@@ -79,14 +86,6 @@ public static class DebateCacheKeyGenerator
       SHA256.HashData(bytes, hash);
       return Convert.ToHexString(hash[..8]);
    }
-
-   /// <summary>
-   ///    Knowledge bases can be megabytes, so the UTF-8 buffer is pooled rather than
-   ///    materialized on the heap — the same approach <c>CompressionCache.ComputeKey</c>
-   ///    uses. Above <see cref="MaxPooledKnowledgeChars" /> a rent would exceed the
-   ///    largest shared bucket and allocate anyway, so that case keeps the direct path.
-   /// </summary>
-   private const int MaxPooledKnowledgeChars = 1 << 20;
 
    private static string ComputeKnowledgeHash(string knowledge)
    {

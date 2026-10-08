@@ -92,7 +92,8 @@ public static class StructuredOutputExample
       else
       {
          Console.WriteLine("  ❌ Failed to deserialise a structured verdict.");
-         Console.WriteLine($"  Raw FinalVerdict: {result.FinalVerdict?[..Math.Min(200, result.FinalVerdict?.Length ?? 0)]}…");
+         Console.WriteLine(
+            $"  Raw FinalVerdict: {result.FinalVerdict?[..Math.Min(200, result.FinalVerdict?.Length ?? 0)]}…");
       }
 
       Console.WriteLine();

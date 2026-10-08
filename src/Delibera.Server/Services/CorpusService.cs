@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using Delibera.Server.Api.Contracts;
 
 namespace Delibera.Server.Services;
 
@@ -20,6 +19,14 @@ namespace Delibera.Server.Services;
 public sealed class CorpusService : ICorpusService
 {
    private readonly ILogger<CorpusService> _logger;
+
+   /// <summary>
+   ///    Lower-cased corpus name → corpus id. Claimed with <c>TryAdd</c> so that "the name
+   ///    must be unique" is enforced by the dictionary itself rather than by a check that
+   ///    two concurrent requests could both pass.
+   /// </summary>
+   private readonly ConcurrentDictionary<string, string> _namesByLowerCase = new(StringComparer.Ordinal);
+
    private readonly ServerRagProviderFactory? _rag;
 
    /// <summary>
@@ -35,13 +42,6 @@ public sealed class CorpusService : ICorpusService
    /// </remarks>
    private readonly ConcurrentDictionary<string, CorpusEntry> _store = new();
 
-   /// <summary>
-   ///    Lower-cased corpus name → corpus id. Claimed with <c>TryAdd</c> so that "the name
-   ///    must be unique" is enforced by the dictionary itself rather than by a check that
-   ///    two concurrent requests could both pass.
-   /// </summary>
-   private readonly ConcurrentDictionary<string, string> _namesByLowerCase = new(StringComparer.Ordinal);
-
    public CorpusService(ILogger<CorpusService> logger, ServerRagProviderFactory? rag = null)
    {
       _logger = logger;
@@ -51,7 +51,9 @@ public sealed class CorpusService : ICorpusService
    // ── ICorpusService ────────────────────────────────────────────────────────
 
    public IReadOnlyCollection<CorpusDto> ListCorpora()
-      => _store.Values.Select(v => v.Meta).ToList();
+   {
+      return _store.Values.Select(v => v.Meta).ToList();
+   }
 
    public CorpusDto CreateCorpus(CreateCorpusRequest request)
    {
@@ -68,7 +70,7 @@ public sealed class CorpusService : ICorpusService
          Name = request.Name,
          Description = request.Description,
          DocumentCount = 0,
-         CreatedAt = DateTimeOffset.UtcNow,
+         CreatedAt = DateTimeOffset.UtcNow
       };
 
       _store[id] = new CorpusEntry(dto, []);
@@ -89,7 +91,7 @@ public sealed class CorpusService : ICorpusService
          DocumentId = Guid.NewGuid().ToString("N")[..12],
          Title = request.Title ?? "(untitled)",
          Chunks = 0,
-         IndexedAt = DateTimeOffset.UtcNow,
+         IndexedAt = DateTimeOffset.UtcNow
       };
 
       // Real indexing: chunk, embed and store. The chunk count reported on the way out is what the
@@ -102,7 +104,7 @@ public sealed class CorpusService : ICorpusService
          {
             ["corpusId"] = corpusId,
             ["documentId"] = doc.DocumentId,
-            ["title"] = doc.Title,
+            ["title"] = doc.Title
          };
 
          if (request.Source is { Length: > 0 } source)
@@ -159,7 +161,9 @@ public sealed class CorpusService : ICorpusService
    }
 
    public DocumentDto[]? ListDocuments(string corpusId)
-      => _store.TryGetValue(corpusId, out var entry) ? entry.Documents : null;
+   {
+      return _store.TryGetValue(corpusId, out var entry) ? entry.Documents : null;
+   }
 
    public void DeleteDocument(string corpusId, string documentId)
    {
@@ -183,11 +187,6 @@ public sealed class CorpusService : ICorpusService
       }
    }
 
-   // ── Helpers ───────────────────────────────────────────────────────────────
-
-   /// <summary>A corpus and its documents, replaced wholesale on every mutation.</summary>
-   private sealed record CorpusEntry(CorpusDto Meta, DocumentDto[] Documents);
-
    /// <summary>Rough chunk estimate: ~512 tokens per chunk, ~0.75 tokens per word.</summary>
    private static int EstimateChunks(string content)
    {
@@ -195,4 +194,9 @@ public sealed class CorpusService : ICorpusService
       var tokens = (int)(words / 0.75);
       return Math.Max(1, (int)Math.Ceiling(tokens / 512.0));
    }
+
+   // ── Helpers ───────────────────────────────────────────────────────────────
+
+   /// <summary>A corpus and its documents, replaced wholesale on every mutation.</summary>
+   private sealed record CorpusEntry(CorpusDto Meta, DocumentDto[] Documents);
 }

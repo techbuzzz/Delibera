@@ -1,4 +1,4 @@
-using System.Text;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Delibera.Core.Compression;
 using Delibera.Core.Cost;
@@ -14,22 +14,6 @@ namespace Delibera.Core.Debate;
 /// </summary>
 public abstract partial class DebateScenario : IDebateStrategy
 {
-   // ──────────────────────────────────────────────
-   // Operator helpers
-   // ──────────────────────────────────────────────
-
-   /// <summary>
-   ///    Matches the marker participants use to delegate a task to the Operator,
-   ///    e.g.: <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
-   ///    <para>
-   ///    Source-generated rather than <c>RegexOptions.Compiled</c>: the pattern is a
-   ///    compile-time literal, so the generator emits it at build time — no runtime JIT,
-   ///    no static-initialisation cost, and it keeps the pattern AOT/trim-safe.
-   ///    </para>
-   /// </summary>
-   [GeneratedRegex(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
-   private static partial Regex OperatorRequestRegex();
-
    /// <inheritdoc />
    public abstract string StrategyName { get; }
 
@@ -48,6 +32,21 @@ public abstract partial class DebateScenario : IDebateStrategy
       float temperature = 0.7f,
       Func<DebateRound, CancellationToken, ValueTask>? onRoundCompleted = null,
       CancellationToken ct = default);
+   // ──────────────────────────────────────────────
+   // Operator helpers
+   // ──────────────────────────────────────────────
+
+   /// <summary>
+   ///    Matches the marker participants use to delegate a task to the Operator,
+   ///    e.g.: <c>[[OPERATOR: search the web for the latest .NET 10 release notes]]</c>.
+   ///    <para>
+   ///       Source-generated rather than <c>RegexOptions.Compiled</c>: the pattern is a
+   ///       compile-time literal, so the generator emits it at build time — no runtime JIT,
+   ///       no static-initialisation cost, and it keeps the pattern AOT/trim-safe.
+   ///    </para>
+   /// </summary>
+   [GeneratedRegex(@"\[\[\s*OPERATOR\s*:\s*(?<task>.+?)\]\]", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+   private static partial Regex OperatorRequestRegex();
 
    // ──────────────────────────────────────────────
    // Shared helpers
@@ -56,9 +55,9 @@ public abstract partial class DebateScenario : IDebateStrategy
    /// <summary>
    ///    Collects responses from all members in parallel.
    ///    <para>
-   ///    When <paramref name="executionOptions" /> carries a positive
-   ///    <c>MaxDegreeOfParallelism</c> it also bounds the fan-out; the operator and
-   ///    knowledge-keeper paths already honoured it, this one did not.
+   ///       When <paramref name="executionOptions" /> carries a positive
+   ///       <c>MaxDegreeOfParallelism</c> it also bounds the fan-out; the operator and
+   ///       knowledge-keeper paths already honoured it, this one did not.
    ///    </para>
    /// </summary>
    protected static async Task<Dictionary<string, string>> CollectResponsesAsync(
@@ -98,30 +97,30 @@ public abstract partial class DebateScenario : IDebateStrategy
             // throwing, so the debate still returns a degraded result carrying the spend so far.
             var admission = await AdmitAsync(member, executionOptions, ct).ConfigureAwait(false);
             if (!admission.IsAllowed)
-               return (member.Role, member.DisplayName, Response: (string?)null, Failed: true, Error: admission.DenialReason);
+               return (member.Role, member.DisplayName, Response: null, Failed: true, Error: admission.DenialReason);
 
             var tools = await ResolveToolsAsync(executionOptions, ct).ConfigureAwait(false);
 
-         string response;
-         IReadOnlyList<ToolCallLog> toolCalls = [];
-         if (tools.Count > 0)
-         {
-            // Tools change what a member call costs, so the ledger has to see the extra
-            // round-trips the tool loop makes, not just the final answer.
-            (response, toolCalls) = await ToolCallingMemberExecutor.AskAsync(
-               member, tools, systemPrompt, effectivePrompt, temperature,
-               executionOptions?.MaxToolIterations ?? 3, roundNumber, ct).ConfigureAwait(false);
+            string response;
+            IReadOnlyList<ToolCallLog> toolCalls = [];
+            if (tools.Count > 0)
+            {
+               // Tools change what a member call costs, so the ledger has to see the extra
+               // round-trips the tool loop makes, not just the final answer.
+               (response, toolCalls) = await ToolCallingMemberExecutor.AskAsync(
+                  member, tools, systemPrompt, effectivePrompt, temperature,
+                  executionOptions?.MaxToolIterations ?? 3, roundNumber, ct).ConfigureAwait(false);
 
-            if (toolCalls.Count > 0)
-               executionOptions?.GetOrCreateToolCalls().AddRange(toolCalls);
-         }
-         else
-         {
-            response = await member.AskAsync(systemPrompt, effectivePrompt, temperature, ct).ConfigureAwait(false);
-         }
+               if (toolCalls.Count > 0)
+                  executionOptions?.GetOrCreateToolCalls().AddRange(toolCalls);
+            }
+            else
+            {
+               response = await member.AskAsync(systemPrompt, effectivePrompt, temperature, ct).ConfigureAwait(false);
+            }
 
-         executionOptions?.RecordMemberCall(member, systemPrompt, effectivePrompt, response);
-            return (member.Role, member.DisplayName, Response: response, Failed: false, Error: (string?)null);
+            executionOptions?.RecordMemberCall(member, systemPrompt, effectivePrompt, response);
+            return (member.Role, member.DisplayName, Response: response, Failed: false, Error: null);
          }
          catch (Exception ex)
          {
@@ -177,7 +176,7 @@ public abstract partial class DebateScenario : IDebateStrategy
       DebateExecutionOptions? options,
       CancellationToken ct)
    {
-      if (options is null || options.ToolProvider is null && options.MemberTools is null)
+      if (options is null || (options.ToolProvider is null && options.MemberTools is null))
          return ValueTask.FromResult<IReadOnlyList<AIFunction>>([]);
 
       return options.GetOrCreateToolsAsync(ct);
@@ -202,7 +201,7 @@ public abstract partial class DebateScenario : IDebateStrategy
       // ValueTask` that returns immediately still allocates a state machine — so a debate with no
       // gate and no limiter paid that ten times over for nothing. Returning a completed ValueTask
       // costs nothing and keeps the default path allocation-free.
-      if (options is null || options.CostGate is null && options.RateLimiter is null)
+      if (options is null || (options.CostGate is null && options.RateLimiter is null))
          return ValueTask.FromResult((true, (string?)null));
 
       return AdmitSlowAsync(member, options, ct);
@@ -231,7 +230,6 @@ public abstract partial class DebateScenario : IDebateStrategy
       }
 
       if (options.RateLimiter is { } limiter)
-      {
          try
          {
             await limiter.AcquireAsync(member.Provider.ProviderName, member.ModelName, member.DisplayName, ct)
@@ -241,7 +239,6 @@ public abstract partial class DebateScenario : IDebateStrategy
          {
             return (false, ex.Message);
          }
-      }
 
       return (true, null);
    }
@@ -257,13 +254,13 @@ public abstract partial class DebateScenario : IDebateStrategy
    }
 
    /// <summary>
-   ///   Compresses a round prompt when the configured compressor would actually save something.
+   ///    Compresses a round prompt when the configured compressor would actually save something.
    /// </summary>
    /// <remarks>
-   ///   Compression is best-effort: a compressor that throws or returns nothing leaves the prompt
-   ///   untouched, because a debate is more valuable than a few saved tokens. Each attempt appends a
-   ///   <see cref="CompressionLog" /> so the saving is observable afterwards - which is how the
-   ///   long-standing "compression silently does nothing" defect became visible in the first place.
+   ///    Compression is best-effort: a compressor that throws or returns nothing leaves the prompt
+   ///    untouched, because a debate is more valuable than a few saved tokens. Each attempt appends a
+   ///    <see cref="CompressionLog" /> so the saving is observable afterwards - which is how the
+   ///    long-standing "compression silently does nothing" defect became visible in the first place.
    /// </remarks>
    protected static async Task<string> CompressPromptAsync(
       string prompt,
@@ -284,7 +281,7 @@ public abstract partial class DebateScenario : IDebateStrategy
       if (originalTokens < executionOptions!.CompressionThresholdTokens)
          return prompt;
 
-      var sw = System.Diagnostics.Stopwatch.StartNew();
+      var sw = Stopwatch.StartNew();
       try
       {
          var result = await compressor
@@ -501,7 +498,8 @@ public abstract partial class DebateScenario : IDebateStrategy
       IReadOnlyDictionary<string, string> responses,
       CancellationToken ct = default)
    {
-      return await ProcessOperatorRequestsAsync(@operator, responses, DebateExecutionOptions.Default, ct).ConfigureAwait(false);
+      return await ProcessOperatorRequestsAsync(@operator, responses, DebateExecutionOptions.Default, ct)
+         .ConfigureAwait(false);
    }
 
    /// <summary>

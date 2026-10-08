@@ -9,24 +9,24 @@ namespace Delibera.Core.Cost;
 /// </summary>
 /// <remarks>
 ///    <para>
-///    Buckets are kept per <see cref="RateLimitScope" /> so two members hitting the same model
-///    share one budget while different models do not throttle each other.
+///       Buckets are kept per <see cref="RateLimitScope" /> so two members hitting the same model
+///       share one budget while different models do not throttle each other.
 ///    </para>
 ///    <para>
-///    The wait is genuinely asynchronous — a member waiting for capacity suspends rather than
-///    pinning a thread-pool thread for the length of the window. That matters here because the
-///    caller fans out members in parallel: a blocking wait would turn "wait for the rate limit"
-///    into "occupy a thread until the window resets".
+///       The wait is genuinely asynchronous — a member waiting for capacity suspends rather than
+///       pinning a thread-pool thread for the length of the window. That matters here because the
+///       caller fans out members in parallel: a blocking wait would turn "wait for the rate limit"
+///       into "occupy a thread until the window resets".
 ///    </para>
 /// </remarks>
 public sealed class TokenBucketRateLimiter : IRateLimiter
 {
-   private readonly int _permitLimit;
-   private readonly TimeSpan _window;
    private readonly RateLimitBehavior _behavior;
-   private readonly RateLimitScope _scope;
    private readonly ConcurrentDictionary<string, Queue<long>> _buckets = new(StringComparer.Ordinal);
+   private readonly int _permitLimit;
+   private readonly RateLimitScope _scope;
    private readonly SemaphoreSlim _signal = new(0, int.MaxValue);
+   private readonly TimeSpan _window;
 
    /// <summary>
    ///    Creates a limiter from a policy.
@@ -59,7 +59,7 @@ public sealed class TokenBucketRateLimiter : IRateLimiter
       {
          ct.ThrowIfCancellationRequested();
 
-         long now = DateTime.UtcNow.Ticks;
+         var now = DateTime.UtcNow.Ticks;
          long waitTicks = 0;
          bool granted;
 
@@ -130,13 +130,16 @@ public sealed class TokenBucketRateLimiter : IRateLimiter
       ct.ThrowIfCancellationRequested();
    }
 
-   private string BuildKey(string provider, string model, string memberName) => _scope switch
+   private string BuildKey(string provider, string model, string memberName)
    {
-      RateLimitScope.Global => "global",
-      RateLimitScope.PerProvider => $"provider:{provider}",
-      RateLimitScope.PerMember => $"member:{memberName}",
-      _ => $"model:{provider}:{model}"
-   };
+      return _scope switch
+      {
+         RateLimitScope.Global => "global",
+         RateLimitScope.PerProvider => $"provider:{provider}",
+         RateLimitScope.PerMember => $"member:{memberName}",
+         _ => $"model:{provider}:{model}"
+      };
+   }
 }
 
 /// <summary>
@@ -144,19 +147,18 @@ public sealed class TokenBucketRateLimiter : IRateLimiter
 /// </summary>
 /// <remarks>
 ///    <para>
-///    This exists because a money ceiling needs a price list, and a price list is configuration the
-///    caller may not have. With <see cref="BudgetCostGate" /> and no registry, every call bills
-///    zero, the gate compares zero against the limit and never denies — a ceiling that is set,
-///    logged and completely inert.
+///       This exists because a money ceiling needs a price list, and a price list is configuration the
+///       caller may not have. With <see cref="BudgetCostGate" /> and no registry, every call bills
+///       zero, the gate compares zero against the limit and never denies — a ceiling that is set,
+///       logged and completely inert.
 ///    </para>
 ///    <para>
-///    Tokens are countable by the framework itself, so this gate works with no external input at
-///    all. Use it when you want a bound rather than a budget.
+///       Tokens are countable by the framework itself, so this gate works with no external input at
+///       all. Use it when you want a bound rather than a budget.
 ///    </para>
 /// </remarks>
 public sealed class TokenBudgetCostGate : ICostGate
 {
-   private readonly long _limit;
    private readonly CostLimitBehavior _behavior;
    private int _warned;
 
@@ -168,12 +170,12 @@ public sealed class TokenBudgetCostGate : ICostGate
       if (limit <= 0)
          throw new ArgumentOutOfRangeException(nameof(limit), limit, "Token limit must be positive.");
 
-      _limit = limit;
+      Limit = limit;
       _behavior = behavior;
    }
 
    /// <summary>The configured token ceiling.</summary>
-   public long Limit => _limit;
+   public long Limit { get; }
 
    /// <inheritdoc />
    public ValueTask<CostGateDecision> CheckAsync(CostEstimate current, CancellationToken ct = default)
@@ -182,11 +184,11 @@ public sealed class TokenBudgetCostGate : ICostGate
 
       var spent = (long)current.TotalPromptTokens + current.TotalCompletionTokens;
 
-      if (spent < _limit)
+      if (spent < Limit)
          return ValueTask.FromResult(CostGateDecision.Allow(current.TotalCost));
 
       var reason =
-         $"Token ceiling reached: {spent:N0} tokens spent against a limit of {_limit:N0}.";
+         $"Token ceiling reached: {spent:N0} tokens spent against a limit of {Limit:N0}.";
 
       return ValueTask.FromResult(_behavior switch
       {
@@ -206,7 +208,6 @@ public sealed class TokenBudgetCostGate : ICostGate
 /// </summary>
 public sealed class BudgetCostGate : ICostGate
 {
-   private readonly decimal _limit;
    private readonly CostLimitBehavior _behavior;
    private int _warned;
 
@@ -220,23 +221,23 @@ public sealed class BudgetCostGate : ICostGate
       if (limit <= 0m)
          throw new ArgumentOutOfRangeException(nameof(limit), limit, "Cost limit must be positive.");
 
-      _limit = limit;
+      Limit = limit;
       _behavior = behavior;
    }
 
    /// <summary>The configured ceiling.</summary>
-   public decimal Limit => _limit;
+   public decimal Limit { get; }
 
    /// <inheritdoc />
    public ValueTask<CostGateDecision> CheckAsync(CostEstimate current, CancellationToken ct = default)
    {
       ct.ThrowIfCancellationRequested();
 
-      if (current.TotalCost < _limit)
+      if (current.TotalCost < Limit)
          return ValueTask.FromResult(CostGateDecision.Allow(current.TotalCost));
 
       var reason =
-         $"Cost ceiling reached: {current.TotalCost:F4} spent against a limit of {_limit:F4}.";
+         $"Cost ceiling reached: {current.TotalCost:F4} spent against a limit of {Limit:F4}.";
 
       return ValueTask.FromResult(_behavior switch
       {
@@ -247,7 +248,7 @@ public sealed class BudgetCostGate : ICostGate
          CostLimitBehavior.Ignore or CostLimitBehavior.WarnAndContinue
             => CostGateDecision.Allow(current.TotalCost),
 
-         _ => CostGateDecision.Deny(current.TotalCost, _limit, reason)
+         _ => CostGateDecision.Deny(current.TotalCost, Limit, reason)
       });
    }
 }
@@ -265,9 +266,6 @@ public sealed class ModelPricingRegistry : IModelPricingRegistry
 {
    private readonly Dictionary<string, ModelPricing> _exact = new(StringComparer.OrdinalIgnoreCase);
    private readonly List<(string Pattern, ModelPricing Pricing)> _patterns = [];
-
-   /// <summary>Fallback price used when no pattern matches; the result is flagged as an estimate.</summary>
-   public ModelPricing Fallback { get; set; } = new("unknown", 0.001m, 0.003m);
 
    /// <summary>Creates an empty registry.</summary>
    public ModelPricingRegistry()
@@ -296,6 +294,9 @@ public sealed class ModelPricingRegistry : IModelPricingRegistry
          Register(new ModelPricing(entry.Model, entry.InputPerMillion, entry.OutputPerMillion));
       }
    }
+
+   /// <summary>Fallback price used when no pattern matches; the result is flagged as an estimate.</summary>
+   public ModelPricing Fallback { get; set; } = new("unknown", 0.001m, 0.003m);
 
    /// <inheritdoc />
    public bool TryGetPricing(string modelName, out ModelPricing pricing)

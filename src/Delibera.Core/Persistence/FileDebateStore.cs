@@ -74,7 +74,8 @@ public sealed class FileDebateStore : IDebateStore, IDisposable
       {
          // useAsync: a synchronous handle makes SerializeAsync fall back to blocking the
          // calling thread on every write instead of using async file I/O.
-         await using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true))
+         await using (var stream =
+                      new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true))
          {
             await JsonSerializer.SerializeAsync(stream, stamped, JsonOptions, ct).ConfigureAwait(false);
          }
@@ -111,7 +112,7 @@ public sealed class FileDebateStore : IDebateStore, IDisposable
       ArgumentException.ThrowIfNullOrWhiteSpace(debateId);
       var path = GetFilePath(debateId);
       if (!File.Exists(path)) return null;
-      await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true);
+      await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
       return await JsonSerializer.DeserializeAsync<DebateCheckpoint>(stream, JsonOptions, ct).ConfigureAwait(false);
    }
 
@@ -169,6 +170,12 @@ public sealed class FileDebateStore : IDebateStore, IDisposable
       return ValueTask.CompletedTask;
    }
 
+   /// <inheritdoc />
+   public void Dispose()
+   {
+      _writeLock.Dispose();
+   }
+
    private string GetFilePath(string id)
    {
       return Path.Combine(_directory, $"{id}.checkpoint.json");
@@ -177,11 +184,5 @@ public sealed class FileDebateStore : IDebateStore, IDisposable
    private static string TruncateForList(string s)
    {
       return string.IsNullOrEmpty(s) ? string.Empty : s.Length <= 80 ? s : s[..80] + "…";
-   }
-
-   /// <inheritdoc />
-   public void Dispose()
-   {
-      _writeLock.Dispose();
    }
 }

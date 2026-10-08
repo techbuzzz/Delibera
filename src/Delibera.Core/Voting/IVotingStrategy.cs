@@ -167,7 +167,8 @@ public sealed class WeightedVotingStrategy : IVotingStrategy
       // Validate weights: must be non-negative, and at least one must be > 0.
       foreach (var (member, w) in MemberWeights)
          if (w < 0)
-            throw new InvalidOperationException($"Member '{member}' has a negative weight {w}. Weights must be non-negative.");
+            throw new InvalidOperationException(
+               $"Member '{member}' has a negative weight {w}. Weights must be non-negative.");
       if (ballots.All(b => ResolveWeight(b) <= 0))
          throw new InvalidOperationException("At least one ballot must have a positive weight.");
 

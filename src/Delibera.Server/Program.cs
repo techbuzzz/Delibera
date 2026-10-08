@@ -48,9 +48,7 @@ builder.Services.AddProblemDetails(options =>
       if (context.HttpContext.Items.TryGetValue(
              ProblemDetailsExceptionHandler.CorrelationIdHeader, out var value)
           && value is string correlationId)
-      {
          context.ProblemDetails.Extensions["correlationId"] = correlationId;
-      }
    });
 builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
 
@@ -85,7 +83,7 @@ app.MapHealthChecks("/api/v1/health");
 
 // ── MCP endpoint (Model Context Protocol) ────────────────────────────────────
 // Claude Desktop / Cursor / any MCP client → http://localhost:5200/mcp
-app.MapDeliberaMcp("/mcp");
+app.MapDeliberaMcp();
 
 await app.RunAsync();
 

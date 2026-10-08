@@ -1,9 +1,5 @@
 using System.Text;
-using System.Text.Json;
 using Delibera.Core.Interfaces;
-using Delibera.Core.Models;
-using Delibera.Server.Api.Mapping;
-using Delibera.Server.Services;
 
 namespace Delibera.Server.Sse;
 
@@ -18,8 +14,23 @@ public static class SseDebateStreamWriter
    private static readonly JsonSerializerOptions _json = new()
    {
       PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-      DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+      DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
    };
+
+   /// <summary>
+   ///    How long the stream may stay silent before a keep-alive comment is sent. A
+   ///    parameter of <see cref="WriteAsync" /> rather than a static, so a test can prove a
+   ///    heartbeat exists without waiting 15 seconds and without mutating global state that
+   ///    other test classes running in parallel would observe.
+   /// </summary>
+   public static readonly TimeSpan DefaultHeartbeatInterval = TimeSpan.FromSeconds(15);
+
+   private static readonly byte[] CommentPrefix = ": "u8.ToArray();
+
+   private static readonly byte[] EventPrefix = "event: "u8.ToArray();
+   private static readonly byte[] DataPrefix = "data: "u8.ToArray();
+   private static readonly byte[] NewlineBytes = "\n"u8.ToArray();
+   private static readonly byte[] DoubleNewlineBytes = "\n\n"u8.ToArray();
 
    /// <summary>
    ///    Streams debate events from <see cref="IDebateOrchestrator.StreamAsync" /> as SSE.
@@ -171,7 +182,6 @@ public static class SseDebateStreamWriter
          // A client can otherwise just see the stream stop. Say how it ended, unless the
          // response has already been torn down.
          if (!terminalWritten && !ctx.Response.HasStarted)
-         {
             try
             {
                record.ErrorMessage ??= ct.IsCancellationRequested
@@ -183,7 +193,6 @@ public static class SseDebateStreamWriter
             {
                // The connection is gone; nothing left to report to.
             }
-         }
       }
    }
 
@@ -210,7 +219,6 @@ public static class SseDebateStreamWriter
       Task<bool>? pendingMove)
    {
       if (pendingMove is not null)
-      {
          try
          {
             await pendingMove.ConfigureAwait(false);
@@ -220,20 +228,9 @@ public static class SseDebateStreamWriter
             // The move is being abandoned, not consumed. Whoever wanted its outcome has
             // already been told; rethrowing from cleanup would mask the real failure.
          }
-      }
 
       await enumerator.DisposeAsync().ConfigureAwait(false);
    }
-
-   /// <summary>
-   ///    How long the stream may stay silent before a keep-alive comment is sent. A
-   ///    parameter of <see cref="WriteAsync" /> rather than a static, so a test can prove a
-   ///    heartbeat exists without waiting 15 seconds and without mutating global state that
-   ///    other test classes running in parallel would observe.
-   /// </summary>
-   public static readonly TimeSpan DefaultHeartbeatInterval = TimeSpan.FromSeconds(15);
-
-   private static readonly byte[] CommentPrefix = ": "u8.ToArray();
 
    /// <summary>
    ///    Writes a bare SSE comment line. Comments are ignored by event listeners but keep
@@ -266,24 +263,25 @@ public static class SseDebateStreamWriter
       await ctx.Response.Body.FlushAsync(ct);
    }
 
-   private static readonly byte[] EventPrefix = "event: "u8.ToArray();
-   private static readonly byte[] DataPrefix = "data: "u8.ToArray();
-   private static readonly byte[] NewlineBytes = "\n"u8.ToArray();
-   private static readonly byte[] DoubleNewlineBytes = "\n\n"u8.ToArray();
-
-   private static object BuildCompletedPayload(DebateRecord record) => new
+   private static object BuildCompletedPayload(DebateRecord record)
    {
-      debateId = record.DebateId,
-      status = record.Status.ToString(),
-      verdict = record.Result?.FinalVerdict,
-      completedAt = record.CompletedAt,
-      error = record.ErrorMessage
-   };
+      return new
+      {
+         debateId = record.DebateId,
+         status = record.Status.ToString(),
+         verdict = record.Result?.FinalVerdict,
+         completedAt = record.CompletedAt,
+         error = record.ErrorMessage
+      };
+   }
 
-   private static object BuildErrorPayload(DebateRecord record) => new
+   private static object BuildErrorPayload(DebateRecord record)
    {
-      debateId = record.DebateId,
-      status = record.Status.ToString(),
-      error = record.ErrorMessage
-   };
+      return new
+      {
+         debateId = record.DebateId,
+         status = record.Status.ToString(),
+         error = record.ErrorMessage
+      };
+   }
 }

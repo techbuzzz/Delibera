@@ -1,8 +1,3 @@
-using Delibera.Core.DependencyInjection;
-using Delibera.Server.Services;
-using Delibera.Server.Templates;
-using Delibera.Server.Templates.Registry;
-using FluentValidation;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -20,7 +15,7 @@ public static class ServerServiceExtensions
          configuration.GetSection(DeliberaServerOptions.SectionName));
 
       // Delibera.Core
-      services.AddDelibera(configuration, "Delibera");
+      services.AddDelibera(configuration);
 
       // Business services
       services.AddSingleton<ITemplateRegistry, TemplateRegistry>();
@@ -32,7 +27,7 @@ public static class ServerServiceExtensions
       services.AddSingleton<ICorpusService, CorpusService>();
 
       // Validators (auto-scan assembly)
-      services.AddValidatorsFromAssemblyContaining<Program>(lifetime: ServiceLifetime.Singleton);
+      services.AddValidatorsFromAssemblyContaining<Program>(ServiceLifetime.Singleton);
 
       // ── MCP Server (HTTP transport) ───────────────────────────────────────
       // Exposes Delibera council as MCP tools at /mcp.

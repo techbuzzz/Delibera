@@ -52,37 +52,50 @@ internal static class RedisSerializer
       Converters = { new JsonStringEnumConverter() }
    };
 
-   public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, _json);
-   public static T? Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json, _json);
-
-   public static RedisRoundEvent ToRedisEvent(this DebateRound round, string debateId) => new()
+   public static string Serialize<T>(T value)
    {
-      DebateId = debateId,
-      EventType = "round-completed",
-      RoundNumber = round.RoundNumber,
-      RoundName = round.RoundName,
-      Description = round.Description,
-      Responses = new Dictionary<string, string>(round.Responses),
-      RoundPrompt = round.RoundPrompt,
-      StartedAt = round.StartedAt,
-      CompletedAt = round.CompletedAt,
-   };
+      return JsonSerializer.Serialize(value, _json);
+   }
 
-   public static RedisDebateResult ToRedisResult(this DebateResult result) => new()
+   public static T? Deserialize<T>(string json)
    {
-      DebateId = result.DebateId,
-      StrategyName = result.StrategyName,
-      FinalVerdict = result.FinalVerdict,
-      ChairmanName = result.ChairmanName,
-      OpeningStatement = result.OpeningStatement,
-      StartedAt = result.StartedAt,
-      CompletedAt = result.CompletedAt,
-      Rounds = result.Rounds.Select(r => r.ToRedisEvent(result.DebateId)).ToList(),
-      VotingTally = result.VotingTally?.Scores.ToDictionary(kv => kv.Key, kv => kv.Value),
-      VotingMethod = result.VotingTally?.Method,
-      WinningOption = result.VotingTally?.WinningOption,
-      WinningScore = result.VotingTally?.Score,
-      TotalTokens = result.TokenStats?.GrandTotal,
-      TokensSaved = result.TokenStats?.TokensSaved,
-   };
+      return JsonSerializer.Deserialize<T>(json, _json);
+   }
+
+   public static RedisRoundEvent ToRedisEvent(this DebateRound round, string debateId)
+   {
+      return new RedisRoundEvent
+      {
+         DebateId = debateId,
+         EventType = "round-completed",
+         RoundNumber = round.RoundNumber,
+         RoundName = round.RoundName,
+         Description = round.Description,
+         Responses = new Dictionary<string, string>(round.Responses),
+         RoundPrompt = round.RoundPrompt,
+         StartedAt = round.StartedAt,
+         CompletedAt = round.CompletedAt
+      };
+   }
+
+   public static RedisDebateResult ToRedisResult(this DebateResult result)
+   {
+      return new RedisDebateResult
+      {
+         DebateId = result.DebateId,
+         StrategyName = result.StrategyName,
+         FinalVerdict = result.FinalVerdict,
+         ChairmanName = result.ChairmanName,
+         OpeningStatement = result.OpeningStatement,
+         StartedAt = result.StartedAt,
+         CompletedAt = result.CompletedAt,
+         Rounds = result.Rounds.Select(r => r.ToRedisEvent(result.DebateId)).ToList(),
+         VotingTally = result.VotingTally?.Scores.ToDictionary(kv => kv.Key, kv => kv.Value),
+         VotingMethod = result.VotingTally?.Method,
+         WinningOption = result.VotingTally?.WinningOption,
+         WinningScore = result.VotingTally?.Score,
+         TotalTokens = result.TokenStats?.GrandTotal,
+         TokensSaved = result.TokenStats?.TokensSaved
+      };
+   }
 }

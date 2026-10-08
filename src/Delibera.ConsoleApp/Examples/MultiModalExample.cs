@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using Delibera.Core.Attachments;
 using Delibera.Core.Council;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
@@ -9,7 +11,7 @@ namespace Delibera.ConsoleApp.Examples;
 /// <summary>
 ///    Demonstrates the F-06 Multi-Modal Council feature:
 ///    attachments (images, documents) are read via pluggable
-///    <see cref="Delibera.Core.Attachments.IFileContentReader"/>s
+///    <see cref="Delibera.Core.Attachments.IFileContentReader" />s
 ///    and injected into the debate context.
 /// </summary>
 public static class MultiModalExample
@@ -61,11 +63,11 @@ public static class MultiModalExample
       var executor = new CouncilBuilder()
          // Vision-capable member — explicit capability
          .AddMember("llava:13b", llm, "Visual Analyst",
-            capabilities: MemberCapabilities.Vision | MemberCapabilities.Text,
-            persona: "You are an expert in visual architecture diagrams.")
+            MemberCapabilities.Vision | MemberCapabilities.Text,
+            "You are an expert in visual architecture diagrams.")
          // Text-only member — capability auto-detected from model name
          .AddMember("qwen2.5:7b", llm, "Strategist",
-            persona: "You analyze requirements and propose architectural decisions.")
+            "You analyze requirements and propose architectural decisions.")
          // Attachments — single unified type, no PdfAttachment/ImageAttachment hierarchy
          .WithAttachment("./knowledge/architecture-overview.md", "Architecture overview document")
          // User-supplied reader for .pdf — library choice is yours (lambda style)
@@ -74,7 +76,7 @@ public static class MultiModalExample
             // Placeholder: in a real app, call your PDF library here (PdfPig, iText, etc.)
             var text = $"[PDF content extracted from {Path.GetFileName(path)} by custom reader]";
             var meta = new Dictionary<string, string> { ["pages"] = "1" };
-            return new Delibera.Core.Attachments.FileReadResult(path, text, null, meta);
+            return new FileReadResult(path, text, null, meta);
          })
          .WithUserPrompt("Review this architecture against the stated requirements. Propose improvements.")
          .WithMaxRounds(1)
@@ -90,7 +92,7 @@ public static class MultiModalExample
       executor.OnRoundCompleted += round =>
          Console.WriteLine($"  ✅ Round {round.RoundNumber} completed ({round.Responses.Count} responses)");
 
-      var sw = System.Diagnostics.Stopwatch.StartNew();
+      var sw = Stopwatch.StartNew();
       var result = await executor.ExecuteAsync(ct);
       sw.Stop();
 

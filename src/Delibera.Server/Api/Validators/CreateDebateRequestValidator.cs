@@ -1,7 +1,3 @@
-using Delibera.Server.Api.Contracts;
-using Delibera.Server.Templates.Registry;
-using FluentValidation;
-
 namespace Delibera.Server.Api.Validators;
 
 public sealed class CreateDebateRequestValidator : AbstractValidator<CreateDebateRequest>

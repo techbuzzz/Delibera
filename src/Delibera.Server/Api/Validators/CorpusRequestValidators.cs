@@ -1,6 +1,3 @@
-using Delibera.Server.Api.Contracts;
-using FluentValidation;
-
 namespace Delibera.Server.Api.Validators;
 
 /// <summary>

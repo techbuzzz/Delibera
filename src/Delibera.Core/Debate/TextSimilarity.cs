@@ -9,24 +9,24 @@ namespace Delibera.Core.Debate;
 /// </summary>
 /// <remarks>
 ///    <para>
-///    This lived as two private copies — one in <c>CouncilExecutor</c> and one in
-///    <c>IStrategySelector</c> — with nothing keeping them in step. It is a single
-///    implementation here so the two heuristics cannot drift apart.
+///       This lived as two private copies — one in <c>CouncilExecutor</c> and one in
+///       <c>IStrategySelector</c> — with nothing keeping them in step. It is a single
+///       implementation here so the two heuristics cannot drift apart.
 ///    </para>
 ///    <para>
-///    The heuristics score is a <em>heuristic</em>, not a metric anyone consumes: it decides
-///    whether a council looks stuck. Edit distance is quadratic in the input, and a participant
-///    response can be several thousand characters, so a 5-member round spent hundreds of
-///    millions of cell updates on the strategy's own thread between two LLM calls. Those
-///    callers therefore keep the default <see cref="MaxComparedLength" /> cap: the cost becomes
-///    bounded and constant, while the properties the heuristics rely on — identical texts score
-///    1.0, unrelated texts score low — are unaffected.
+///       The heuristics score is a <em>heuristic</em>, not a metric anyone consumes: it decides
+///       whether a council looks stuck. Edit distance is quadratic in the input, and a participant
+///       response can be several thousand characters, so a 5-member round spent hundreds of
+///       millions of cell updates on the strategy's own thread between two LLM calls. Those
+///       callers therefore keep the default <see cref="MaxComparedLength" /> cap: the cost becomes
+///       bounded and constant, while the properties the heuristics rely on — identical texts score
+///       1.0, unrelated texts score low — are unaffected.
 ///    </para>
 ///    <para>
-///    A caller that needs the score to mean something over the <em>whole</em> text passes an
-///    explicit maximum length (the debate diff passes <see cref="int.MaxValue" />).
-///    Quietly inheriting the heuristic cap there would report two long verdicts that differ at
-///    the end as "similar" purely because the comparison stopped early.
+///       A caller that needs the score to mean something over the <em>whole</em> text passes an
+///       explicit maximum length (the debate diff passes <see cref="int.MaxValue" />).
+///       Quietly inheriting the heuristic cap there would report two long verdicts that differ at
+///       the end as "similar" purely because the comparison stopped early.
 ///    </para>
 /// </remarks>
 public static class TextSimilarity
@@ -36,6 +36,11 @@ public static class TextSimilarity
    ///    2 × MaxComparedLength² cell updates per pair instead of scaling with the response.
    /// </summary>
    public const int MaxComparedLength = 1024;
+
+   /// <summary>
+   ///    Row length at or below which both rows are stack-allocated instead of rented.
+   /// </summary>
+   private const int StackallocRowThreshold = 128;
 
    /// <summary>
    ///    Normalised similarity in [0, 1], where 1.0 means the compared prefixes are
@@ -124,11 +129,6 @@ public static class TextSimilarity
          ArrayPool<int>.Shared.Return(curr);
       }
    }
-
-   /// <summary>
-   ///    Row length at or below which both rows are stack-allocated instead of rented.
-   /// </summary>
-   private const int StackallocRowThreshold = 128;
 
    private static int LevenshteinOnStack(ReadOnlySpan<char> a, ReadOnlySpan<char> b, int n)
    {

@@ -1,7 +1,6 @@
+using System.Runtime.CompilerServices;
 using Delibera.Core.Extensions;
-using Delibera.Core.Models;
 using Delibera.Core.Providers.LLM;
-using Microsoft.Extensions.AI;
 
 namespace Delibera.Core.Tools;
 
@@ -10,21 +9,21 @@ namespace Delibera.Core.Tools;
 /// </summary>
 /// <remarks>
 ///    <para>
-///    There is deliberately no loop here. <c>FunctionInvokingChatClient</c> owns the
-///    invoke-resume cycle, its iteration bound and its concurrency handling, and this library used
-///    to carry a second copy of that loop — which is how the two drifted.
+///       There is deliberately no loop here. <c>FunctionInvokingChatClient</c> owns the
+///       invoke-resume cycle, its iteration bound and its concurrency handling, and this library used
+///       to carry a second copy of that loop — which is how the two drifted.
 ///    </para>
 ///    <para>
-///    The member's provider is exposed through <c>AsChatClient()</c>. For a provider that already
-///    wraps a real <see cref="IChatClient" /> that returns the underlying client untouched, so tool
-///    requests travel as genuine structured function-call traffic. For a string-only provider the
-///    adapter translates them into the <c>[[TOOL: …]]</c> text protocol and back, so the same
-///    middleware drives the loop either way.
+///       The member's provider is exposed through <c>AsChatClient()</c>. For a provider that already
+///       wraps a real <see cref="IChatClient" /> that returns the underlying client untouched, so tool
+///       requests travel as genuine structured function-call traffic. For a string-only provider the
+///       adapter translates them into the <c>[[TOOL: …]]</c> text protocol and back, so the same
+///       middleware drives the loop either way.
 ///    </para>
 ///    <para>
-///    What this class still owns is the audit trail: <c>FunctionInvokingChatClient</c> invokes the
-///    tools itself and does not report what it ran, and a debate result whose tool usage rests on
-///    the model's own account is not evidence of anything.
+///       What this class still owns is the audit trail: <c>FunctionInvokingChatClient</c> invokes the
+///       tools itself and does not report what it ran, and a debate result whose tool usage rests on
+///       the model's own account is not evidence of anything.
 ///    </para>
 /// </remarks>
 public static class ToolCallingMemberExecutor
@@ -69,8 +68,8 @@ public static class ToolCallingMemberExecutor
       var client = inner
          .AsBuilder()
          .UseFunctionInvocation(
-            loggerFactory: null,
-            configure: options =>
+            null,
+            options =>
             {
                // A model that keeps requesting tools must not keep the debate alive.
                options.MaximumIterationsPerRequest = Math.Max(1, maxIterations);
@@ -121,23 +120,23 @@ public static class ToolCallingMemberExecutor
    /// </summary>
    /// <remarks>
    ///    <para>
-   ///    The middleware invokes the functions itself and does not report what it ran, so the audit
-   ///    trail has to be observed from the transport side. Reading it off the middleware's final
-   ///    response instead would report only the last iteration.
+   ///       The middleware invokes the functions itself and does not report what it ran, so the audit
+   ///       trail has to be observed from the transport side. Reading it off the middleware's final
+   ///       response instead would report only the last iteration.
    ///    </para>
-   /// <para>
-   ///    Results are paired by <c>CallId</c>, never by position: one turn can make several calls,
-   ///    and positional pairing would attribute a result to whichever call happened to be listed
-   ///    first.
-   /// </para>
    ///    <para>
-   ///    The call and its result arrive in <em>different</em> round-trips. The request leaves here
-   ///    as a <c>FunctionCallContent</c>; the tool is invoked afterwards, by the middleware, and the
-   ///    result only comes back on the <em>next</em> request this client receives. So a call is
-   ///    held pending until a matching result shows up in an inbound conversation, and anything
-   ///    still pending when the loop ends is reported as having produced nothing. Reading the pair
-   ///    out of a single response instead reports every call as failed — which is precisely the
-   ///    wrong answer for the only case worth auditing.
+   ///       Results are paired by <c>CallId</c>, never by position: one turn can make several calls,
+   ///       and positional pairing would attribute a result to whichever call happened to be listed
+   ///       first.
+   ///    </para>
+   ///    <para>
+   ///       The call and its result arrive in <em>different</em> round-trips. The request leaves here
+   ///       as a <c>FunctionCallContent</c>; the tool is invoked afterwards, by the middleware, and the
+   ///       result only comes back on the <em>next</em> request this client receives. So a call is
+   ///       held pending until a matching result shows up in an inbound conversation, and anything
+   ///       still pending when the loop ends is reported as having produced nothing. Reading the pair
+   ///       out of a single response instead reports every call as failed — which is precisely the
+   ///       wrong answer for the only case worth auditing.
    ///    </para>
    /// </remarks>
    private sealed class RecordingChatClient(
@@ -148,28 +147,6 @@ public static class ToolCallingMemberExecutor
       IReadOnlyList<AIFunction> catalogue) : IChatClient
    {
       private readonly Dictionary<string, PendingCall> _pending = new(StringComparer.Ordinal);
-
-      /// <summary>Hands the builder's inner client to the recording layer.</summary>
-      /// <param name="client">The client the middleware wraps.</param>
-      public IChatClient Wrap(IChatClient client)
-      {
-         inner = client;
-         return this;
-      }
-
-      /// <summary>
-      ///   Emits a log entry for every call that never received a result. Called once the
-      ///   middleware has returned, so a call the loop abandoned is not silently missing.
-      /// </summary>
-      public void FlushPending()
-      {
-         foreach (var pending in _pending.Values)
-         {
-            sink.Add(Build(pending, result: null));
-         }
-
-         _pending.Clear();
-      }
 
       public async Task<ChatResponse> GetResponseAsync(
          IEnumerable<ChatMessage> messages,
@@ -188,13 +165,13 @@ public static class ToolCallingMemberExecutor
       public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
          IEnumerable<ChatMessage> messages,
          ChatOptions? options = null,
-         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+         [EnumeratorCancellation] CancellationToken cancellationToken = default)
       {
          Settle(messages);
 
          await foreach (var update in inner
-            .GetStreamingResponseAsync(messages, options, cancellationToken)
-            .ConfigureAwait(false))
+                           .GetStreamingResponseAsync(messages, options, cancellationToken)
+                           .ConfigureAwait(false))
          {
             Track(update.Contents);
             yield return update;
@@ -202,9 +179,33 @@ public static class ToolCallingMemberExecutor
       }
 
       public object? GetService(Type serviceType, object? serviceKey = null)
-         => inner.GetService(serviceType, serviceKey);
+      {
+         return inner.GetService(serviceType, serviceKey);
+      }
 
-      public void Dispose() => inner.Dispose();
+      public void Dispose()
+      {
+         inner.Dispose();
+      }
+
+      /// <summary>Hands the builder's inner client to the recording layer.</summary>
+      /// <param name="client">The client the middleware wraps.</param>
+      public IChatClient Wrap(IChatClient client)
+      {
+         inner = client;
+         return this;
+      }
+
+      /// <summary>
+      ///    Emits a log entry for every call that never received a result. Called once the
+      ///    middleware has returned, so a call the loop abandoned is not silently missing.
+      /// </summary>
+      public void FlushPending()
+      {
+         foreach (var pending in _pending.Values) sink.Add(Build(pending, null));
+
+         _pending.Clear();
+      }
 
       /// <summary>Matches results in this request against calls still awaiting one.</summary>
       private void Settle(IEnumerable<ChatMessage> messages)
@@ -249,9 +250,9 @@ public static class ToolCallingMemberExecutor
          var succeeded = result is not null && result.Exception is null && known;
 
          var failure = result?.Exception?.Message
-            ?? (known
-               ? "The tool produced no result."
-               : $"No tool named '{pending.Name}' is available.");
+                       ?? (known
+                          ? "The tool produced no result."
+                          : $"No tool named '{pending.Name}' is available.");
 
          return new ToolCallLog(
             member.DisplayName,

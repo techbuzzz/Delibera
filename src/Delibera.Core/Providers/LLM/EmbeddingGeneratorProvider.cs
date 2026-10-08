@@ -1,5 +1,3 @@
-using Microsoft.Extensions.AI;
-
 namespace Delibera.Core.Providers.LLM;
 
 /// <summary>
@@ -74,7 +72,8 @@ public sealed class EmbeddingGeneratorProvider : IEmbeddingProvider, IDisposable
       ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
       var result = await Generator.GenerateAsync([text], cancellationToken: ct).ConfigureAwait(false);
-      var embedding = result.FirstOrDefault() ?? throw new InvalidOperationException($"No embedding returned by model '{EmbeddingModelName}'.");
+      var embedding = result.FirstOrDefault() ??
+                      throw new InvalidOperationException($"No embedding returned by model '{EmbeddingModelName}'.");
 
       var vector = embedding.Vector.ToArray();
       _cachedVectorSize ??= vector.Length;
@@ -82,7 +81,8 @@ public sealed class EmbeddingGeneratorProvider : IEmbeddingProvider, IDisposable
    }
 
    /// <inheritdoc />
-   public async Task<IReadOnlyList<float[]>> EmbedBatchAsync(IReadOnlyList<string> texts, CancellationToken ct = default)
+   public async Task<IReadOnlyList<float[]>> EmbedBatchAsync(IReadOnlyList<string> texts,
+      CancellationToken ct = default)
    {
       ArgumentNullException.ThrowIfNull(texts);
       if (texts.Count == 0) return [];

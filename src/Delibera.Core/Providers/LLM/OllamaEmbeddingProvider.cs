@@ -55,7 +55,8 @@ public sealed class OllamaEmbeddingProvider : IEmbeddingProvider
       var request = new EmbedRequest { Model = EmbeddingModelName, Input = [text] };
       var response = await _client.EmbedAsync(request, ct).ConfigureAwait(false);
 
-      var embedding = response.Embeddings.FirstOrDefault() ?? throw new InvalidOperationException($"No embedding returned by model '{EmbeddingModelName}'.");
+      var embedding = response.Embeddings.FirstOrDefault() ??
+                      throw new InvalidOperationException($"No embedding returned by model '{EmbeddingModelName}'.");
 
       var vector = embedding.Select(d => d).ToArray();
       _cachedVectorSize ??= vector.Length;
@@ -63,7 +64,8 @@ public sealed class OllamaEmbeddingProvider : IEmbeddingProvider
    }
 
    /// <inheritdoc />
-   public async Task<IReadOnlyList<float[]>> EmbedBatchAsync(IReadOnlyList<string> texts, CancellationToken ct = default)
+   public async Task<IReadOnlyList<float[]>> EmbedBatchAsync(IReadOnlyList<string> texts,
+      CancellationToken ct = default)
    {
       ArgumentNullException.ThrowIfNull(texts);
       if (texts.Count == 0) return [];

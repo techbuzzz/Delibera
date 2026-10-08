@@ -53,7 +53,8 @@ public static class ResilientHttpClientExtensions
             return await state.Http.SendAsync(clone, state.CompletionOption, token).ConfigureAwait(false);
          };
 
-         return await pipeline.ExecuteAsync(callback, context, new HttpState(http, request, completionOption)).ConfigureAwait(false);
+         return await pipeline.ExecuteAsync(callback, context, new HttpState(http, request, completionOption))
+            .ConfigureAwait(false);
       }
       finally
       {

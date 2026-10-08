@@ -6,8 +6,8 @@ using Delibera.Server.Templates.Product;
 namespace Delibera.Server.Templates.Registry;
 
 /// <summary>
-/// In-process registry of all server-side council templates.
-/// New templates are registered here; the DI container provides this as a singleton.
+///    In-process registry of all server-side council templates.
+///    New templates are registered here; the DI container provides this as a singleton.
 /// </summary>
 public sealed class TemplateRegistry : ITemplateRegistry
 {
@@ -29,13 +29,25 @@ public sealed class TemplateRegistry : ITemplateRegistry
          new RequirementsReviewTemplate(),
 
          // Vertical 4 — Legal / Policy / Compliance
-         new LegalContractReviewTemplate(),
+         new LegalContractReviewTemplate()
       };
       _templates = builtIn.ToDictionary(t => t.TemplateId, StringComparer.OrdinalIgnoreCase);
    }
 
    public int Count => _templates.Count;
-   public bool Exists(string id) => _templates.ContainsKey(id);
-   public IServerTemplate? Get(string id) => _templates.GetValueOrDefault(id);
-   public IEnumerable<IServerTemplate> GetAll() => _templates.Values;
+
+   public bool Exists(string id)
+   {
+      return _templates.ContainsKey(id);
+   }
+
+   public IServerTemplate? Get(string id)
+   {
+      return _templates.GetValueOrDefault(id);
+   }
+
+   public IEnumerable<IServerTemplate> GetAll()
+   {
+      return _templates.Values;
+   }
 }

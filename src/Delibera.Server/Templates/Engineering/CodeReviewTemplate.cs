@@ -1,25 +1,19 @@
-﻿using Delibera.Core.Council;
-using Delibera.Core.Interfaces;
-using Delibera.Core.Models;
+﻿using Delibera.Core.Interfaces;
 using Delibera.Core.Providers;
 using Delibera.Core.Voting;
-using Delibera.Server.Api.Contracts;
-using Delibera.Server.Templates.Registry;
 
 namespace Delibera.Server.Templates.Engineering;
 
 /// <summary>
-/// Code Review Council â€” Vertical 2: Software Engineering &amp; Code/Architecture Review.
-///
-/// Members:
-///   Reviewer         â€” code quality, patterns, readability
-///   Defender         â€” represents the author, explains intent
-///   QA               â€” edge cases, testability, regression risk
-///   SecurityEngineer â€” vulnerability, injection, secrets exposure
-///   TechLead         â€” overall judgement: merge / request changes / escalate
-///
-/// Strategy : CritiqueDebate â†’ BordaCountVoting â†’ Chairman produces structured verdict.
-/// Output   : CodeReviewVerdict (Decision, Summary, Issues[], Suggestions[], Confidence)
+///    Code Review Council â€” Vertical 2: Software Engineering &amp; Code/Architecture Review.
+///    Members:
+///    Reviewer         â€” code quality, patterns, readability
+///    Defender         â€” represents the author, explains intent
+///    QA               â€” edge cases, testability, regression risk
+///    SecurityEngineer â€” vulnerability, injection, secrets exposure
+///    TechLead         â€” overall judgement: merge / request changes / escalate
+///    Strategy : CritiqueDebate â†’ BordaCountVoting â†’ Chairman produces structured verdict.
+///    Output   : CodeReviewVerdict (Decision, Summary, Issues[], Suggestions[], Confidence)
 /// </summary>
 public sealed class CodeReviewTemplate : IServerTemplate
 {
@@ -52,20 +46,20 @@ public sealed class CodeReviewTemplate : IServerTemplate
 
       var builder = new CouncilBuilder()
          .AddMember(strongModel, llm, "Reviewer",
-            persona: "Senior code reviewer. Champion of clean code, SOLID principles, naming clarity, and maintainability. " +
-                     "You cite specific line numbers and patterns. You are thorough and objective.")
+            "Senior code reviewer. Champion of clean code, SOLID principles, naming clarity, and maintainability. " +
+            "You cite specific line numbers and patterns. You are thorough and objective.")
          .AddMember(fastModel, llm, "Defender",
-            persona: "You represent the author of the code change. Explain the intent and trade-offs of the implementation. " +
-                     "Defend reasonable decisions and concede where criticism is valid.")
+            "You represent the author of the code change. Explain the intent and trade-offs of the implementation. " +
+            "Defend reasonable decisions and concede where criticism is valid.")
          .AddMember(fastModel, llm, "QA",
-            persona: "Quality assurance and testing expert. Focus on testability, edge cases, error handling, " +
-                     "regression risk and missing test coverage.")
+            "Quality assurance and testing expert. Focus on testability, edge cases, error handling, " +
+            "regression risk and missing test coverage.")
          .AddMember(fastModel, llm, "SecurityEngineer",
-            persona: "Application security engineer. Identify injection risks, broken auth, secrets exposure, " +
-                     "dependency vulnerabilities and insecure defaults.")
+            "Application security engineer. Identify injection risks, broken auth, secrets exposure, " +
+            "dependency vulnerabilities and insecure defaults.")
          .AddMember(strongModel, llm, "TechLead",
-            persona: "Experienced tech lead. Balance quality bar with delivery pragmatism. " +
-                     "Make the final call: merge as-is, request changes, or escalate to architecture review.")
+            "Experienced tech lead. Balance quality bar with delivery pragmatism. " +
+            "Make the final call: merge as-is, request changes, or escalate to architecture review.")
          .SetChairman(Chairman.CreateCustom(strongModel, llm,
             """
             You are the Code Review Chair.

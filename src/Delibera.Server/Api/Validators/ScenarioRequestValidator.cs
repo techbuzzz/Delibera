@@ -1,6 +1,3 @@
-using Delibera.Server.Api.Contracts;
-using FluentValidation;
-
 namespace Delibera.Server.Api.Validators;
 
 /// <summary>
@@ -10,9 +7,9 @@ namespace Delibera.Server.Api.Validators;
 ///    This contract previously had no validator at all, so a request missing
 ///    <c>Members</c> reached <c>ScenarioBuilder</c> and came back as a 500 rather than a 400.
 ///    <para>
-///    <c>Strategy</c> is deliberately <b>not</b> restricted: the documented and tested
-///    behaviour for an unknown strategy is a graceful fallback to "Standard", and a
-///    validator here would turn that into a rejection.
+///       <c>Strategy</c> is deliberately <b>not</b> restricted: the documented and tested
+///       behaviour for an unknown strategy is a graceful fallback to "Standard", and a
+///       validator here would turn that into a rejection.
 ///    </para>
 /// </remarks>
 public sealed class ScenarioRequestValidator : AbstractValidator<ScenarioRequest>
