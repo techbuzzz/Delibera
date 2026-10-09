@@ -4,9 +4,15 @@ import { defineNuxtConfig } from 'nuxt/config'
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-01',
 
-  // SSR stays on: the BFF proxy runs server-side, which is the whole reason the browser
-  // never touches the API origin. Debates are a private, non-indexed tool surface, so the
-  // SEO argument for CSR does not apply here.
+  // SSR stays on for the container image: the BFF proxy runs server-side, which is the whole
+  // reason the browser never touches the API origin. Debates are a private, non-indexed tool
+  // surface, so the SEO argument for CSR does not apply here.
+  //
+  // The GITHUB PAGES build is the opposite case. `configure-pages` with
+  // `static_site_generator: nuxt` flips this to `target: 'static'` and injects `router.base` at
+  // build time — a static export has no Nitro server, so the BFF route does not exist there.
+  // That build therefore needs `NUXT_PUBLIC_DELIBERA_API_BASE` pointing at a reachable server
+  // origin that allows this one via CORS. See `resolveApiBase()` in app/composables/useDebates.ts.
   ssr: true,
 
   devtools: { enabled: false },
@@ -47,6 +53,16 @@ export default defineNuxtConfig({
 
   nitro: {
     preset: 'node-server',
+
+    // Needed ONLY by the static export (`nuxt generate` / GitHub Pages).
+    //
+    // Without an explicit route list, Nuxt 4 emits just the SPA fallback pair
+    // (200.html + 404.html) and no document for the real pages — a Pages deploy of that is a
+    // blank site. `/debates/[id]` is deliberately absent: its ids only exist at runtime, so it
+    // renders client-side from whatever the id in the URL is.
+    prerender: {
+      routes: ['/', '/debates/new'],
+    },
   },
 
   // Route rules are deliberately empty. Debate status is mutable: caching /debates/** with
