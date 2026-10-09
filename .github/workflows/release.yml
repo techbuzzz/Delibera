@@ -37,12 +37,22 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # On a dispatch, GITHUB_REF is the BRANCH. Without this the version cross-check below
+          # reads whatever is on the branch rather than at the tag being released.
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Resolve tag and cross-check the version
         id: meta
+        env:
+          # workflow_dispatch carries the requested tag as an INPUT, not as an environment
+          # variable. Reading only $TAG ignores it, falls through to GITHUB_REF (a branch,
+          # e.g. "main"), and dies on "Refusing to release a non-version tag" — which is
+          # precisely the backfill case this input exists for.
+          REQUESTED_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          tag="${TAG:-${GITHUB_REF#refs/tags/}}"
+          tag="${REQUESTED_TAG:-${GITHUB_REF#refs/tags/}}"
           [ -n "$tag" ] || { echo "No tag to release" >&2; exit 1; }
           case "$tag" in
             v*) version="${tag#v}" ;;
