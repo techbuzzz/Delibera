@@ -42,12 +42,15 @@ jobs:
           set -euo pipefail
           if [ -f "${{ github.workspace }}/src/Delibera.WebUI/pnpm-lock.yaml" ]; then
             echo "manager=pnpm" >> "$GITHUB_OUTPUT"
+            echo "lockfile=pnpm-lock.yaml" >> "$GITHUB_OUTPUT"
             echo "command=install" >> "$GITHUB_OUTPUT"
           elif [ -f "${{ github.workspace }}/src/Delibera.WebUI/yarn.lock" ]; then
             echo "manager=yarn" >> "$GITHUB_OUTPUT"
+            echo "lockfile=yarn.lock" >> "$GITHUB_OUTPUT"
             echo "command=install" >> "$GITHUB_OUTPUT"
           elif [ -f "${{ github.workspace }}/src/Delibera.WebUI/package-lock.json" ]; then
             echo "manager=npm" >> "$GITHUB_OUTPUT"
+            echo "lockfile=package-lock.json" >> "$GITHUB_OUTPUT"
             echo "command=ci" >> "$GITHUB_OUTPUT"
           else
             echo "::error::no lockfile found in src/Delibera.WebUI" >&2
@@ -59,7 +62,11 @@ jobs:
         with:
           node-version: '22'
           cache: ${{ steps.detect-package-manager.outputs.manager }}
-          cache-dependency-path: src/Delibera.WebUI/package-lock.json
+          # Must follow the manager the detect step chose. Hardcoding the npm lockfile works
+          # today because package-lock.json is the only one in the tree — but if this repo ever
+          # adopts pnpm, a pnpm cache keyed on a file that does not exist never invalidates, and
+          # a stale node_modules is restored forever under a green build.
+          cache-dependency-path: src/Delibera.WebUI/${{ steps.detect-package-manager.outputs.lockfile }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -116,4 +123,8 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        # v5 is current (5.0.1, Sep 2026) and is what GitHub's own sample pairs with
+        # upload-pages-artifact@v3. It stays on upload-artifact@v4 internals, so v3 artifacts
+        # are still the supported input — no reason to move the upload major and re-test a
+        # tarball format nobody here can reproduce locally.
+        uses: actions/deploy-pages@v5
