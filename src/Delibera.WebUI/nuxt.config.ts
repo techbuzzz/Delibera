@@ -11,6 +11,23 @@ export default defineNuxtConfig({
 
   devtools: { enabled: false },
 
+  // Required for the accessibility tree and for a usable browser tab title — Lighthouse
+  // fails the document without all three of these.
+  app: {
+    head: {
+      htmlAttrs: { lang: 'en' },
+      title: 'Delibera — AI council',
+      meta: [
+        {
+          name: 'description',
+          content:
+            'Run multi-model AI council debates and watch the rounds arrive live.',
+        },
+        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+      ],
+    },
+  },
+
   // No UI kit and no Tailwind. This app becomes a published container image, and every
   // dependency is image weight and supply-chain surface for a surface that is a handful of
   // forms and a timeline. Styling is a scoped stylesheet per component.

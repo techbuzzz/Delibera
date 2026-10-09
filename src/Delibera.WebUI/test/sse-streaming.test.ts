@@ -36,6 +36,9 @@ const COMPLETED_AT_MS = 3000
 let upstream: ReturnType<typeof createServer>
 let bff: ReturnType<typeof spawn> | undefined
 
+/** Bodies the upstream actually received, so POST forwarding can be asserted. */
+const receivedBodies: string[] = []
+
 /**
  * Readiness probe.
  *
@@ -64,9 +67,30 @@ describe('SSE proxy streaming', () => {
       throw new Error(`built server not found at ${entry} — run "npm run build" first`)
     }
 
-    // Upstream that serves a JSON list, and emits SSE rounds early while holding the
-    // connection open.
+    // Upstream that echoes what it received, serves a JSON list, and emits SSE rounds
+    // early while holding the connection open.
     upstream = createServer((req, res) => {
+      if (req.method === 'POST') {
+        const chunks: Buffer[] = []
+        req.on('data', (c: Buffer) => chunks.push(c))
+        req.on('end', () => {
+          const raw = Buffer.concat(chunks).toString('utf8')
+          receivedBodies.push(raw)
+          // Mirrors the real API's 400 on an unparseable body, so a broken proxy produces a
+          // genuine failure here rather than a silent success.
+          try {
+            JSON.parse(raw)
+          } catch {
+            res.writeHead(400, { 'Content-Type': 'application/problem+json' })
+            res.end(JSON.stringify({ title: 'Bad Request', status: 400 }))
+            return
+          }
+          res.writeHead(202, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ debateId: 'test-debate', status: 'Pending' }))
+        })
+        return
+      }
+
       if (req.url?.startsWith('/api/v1/templates')) {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
         res.end(
@@ -187,5 +211,32 @@ describe('SSE proxy streaming', () => {
     expect(Array.isArray(body)).toBe(true)
     expect(body.length).toBeGreaterThan(0)
     expect(body[0]).toHaveProperty('templateId')
+  }, 20_000)
+
+  // Regression guard for the highest-impact bug found during UI testing: readBody returns
+  // a PARSED object, and fetch stringifies a non-string body with String(value) — producing
+  // the literal "[object Object]". Every POST through the proxy answered 400 "Bad Request"
+  // with no field detail, while the same POST sent directly to the API returned 202.
+  it('forwards a POST body as valid JSON', async () => {
+    const payload = {
+      templateId: 'risk-committee',
+      question: 'proxy body probe',
+      options: { maxRounds: 2, temperature: 0.7 },
+    }
+
+    const response = await fetch(`http://127.0.0.1:${BFF_PORT}/api/delibera/debates/async`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+
+    // The upstream returns 400 for unparseable JSON, so a non-202 here means the body
+    // arrived mangled.
+    expect(response.status).toBe(202)
+
+    const received = receivedBodies.at(-1)
+    expect(received).toBeTruthy()
+    expect(received).not.toContain('[object Object]')
+    expect(JSON.parse(received!)).toEqual(payload)
   }, 20_000)
 })

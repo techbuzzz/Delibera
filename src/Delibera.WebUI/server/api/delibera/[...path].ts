@@ -24,6 +24,28 @@ import {
   UpstreamError,
 } from '../../utils/delibera'
 
+/**
+ * Re-encodes the incoming request body for the upstream fetch.
+ *
+ * `readBody` parses the payload (JSON in, plain object out), and `fetch` stringifies a
+ * non-string body with `String(value)` — which yields the literal `"[object Object]"`. The
+ * upstream then received invalid JSON and answered 400 "Bad Request" with no field detail,
+ * for every POST through the proxy.
+ *
+ * A string body is passed through untouched: `readBody` returns the raw text for
+ * non-JSON content types, and re-encoding it would corrupt it.
+ */
+function encodeUpstreamBody(parsed: unknown): string | undefined {
+  if (parsed === undefined || parsed === null) return undefined
+  if (typeof parsed === 'string') return parsed
+  if (typeof parsed === 'object' && Object.keys(parsed as object).length === 0) {
+    // An empty JSON object carries no information the server needs, and sending "{}" for
+    // a body-less request is how a DELETE ends up asking the API to validate one.
+    return undefined
+  }
+  return JSON.stringify(parsed)
+}
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
 
@@ -56,6 +78,7 @@ export default defineEventHandler(async (event) => {
 
   const method = event.method ?? 'GET'
   const hasBody = method !== 'GET' && method !== 'HEAD'
+  const upstreamBody = hasBody ? encodeUpstreamBody(await readBody(event)) : undefined
 
   // A debate legitimately runs 150–200 s and an SSE stream stays open far longer, so
   // Nitro's default fetch timeout would cut both off mid-flight. `timeout` is a Nitro
@@ -63,10 +86,11 @@ export default defineEventHandler(async (event) => {
   // (which would still be checked against the DOM type before the assertion applied).
   const upstreamInit = {
     method,
+    body: upstreamBody,
     headers: buildUpstreamHeaders(
       {
         method,
-        body: hasBody ? await readBody(event) : undefined,
+        body: upstreamBody,
         headers: getRequestHeaders(event),
       },
       config.public.tenantId,
