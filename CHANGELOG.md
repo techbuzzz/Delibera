@@ -5,6 +5,83 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added — Web UI (`Delibera.WebUI`, Nuxt 4)
+
+A browser front end for the debate workflow, shipped as a second container alongside
+`delibera-server`. Scope: list debates, create one from a registered template, watch rounds
+arrive live, read the verdict with token stats, export Markdown, cancel a running debate.
+
+The UI talks to the API **only through a Nitro server-side proxy** (`/api/delibera/**`). That is
+not a convenience: `Delibera.Server` registers no CORS policy, so a browser calling the API
+origin directly is blocked on every request, GETs included. Proxying also sidesteps a second
+defect — `DebateMapper` builds the absolute `streamUrl`/`resultUrl` from `Scheme://Host` with no
+forwarded-header handling, so they point at the wrong host behind a proxy or ingress.
+
+SSE is forwarded with `sendStream` rather than buffered. The suite asserts this against a real
+socket: the upstream withholds its terminal event for 3 s, and the test fails if the first chunk
+does not arrive before then. A buffering proxy would pass every functional test and still deliver
+each round 150–200 s late.
+
+`docker compose up` now starts `delibera-webui` alongside the rest. Frontend hot reload is
+`nuxt dev` on the host against `http://localhost:5200`.
+
+### Added — Redis is now an opt-in runtime feature of `Delibera.Server`
+
+`Delibera.Redis` shipped as a standalone package and could never be switched on inside the server:
+`Delibera.Server.csproj` referenced only `Delibera.Core`, so `AddRedisDebateOrchestrator` was never
+called and the server always ran `LocalDebateOrchestrator`. A `redis` service in compose would have
+connected to nothing.
+
+`Delibera.Server` now references `Delibera.Redis` and registers the Redis orchestrator and,
+optionally, the Redis result cache when `Delibera:Redis:Enabled` is true. Off by default — the
+default path resolves the same in-process orchestrator as before.
+
+What this buys: round events published to a Redis Stream (so any API instance can stream them over
+SSE), shared debate state, and optional result caching. **What it does not buy: distributed turn
+execution.** `DebateWorkerService.ProcessMessageAsync` is an explicit no-op placeholder, and the
+orchestrator still runs each debate in the process that accepted it. Do not read this as horizontal
+debate scaling.
+
+A bad `Delibera:Redis:ConnectionString` now fails at startup with a message naming the key, rather
+than silently degrading — a deployment that quietly fell back would look distributed and not be.
+`abortConnect=false` still covers transient ordering, so compose can start Redis and the server in
+either order. `DebateWorkerService` is deliberately not registered: it would spin an `XREADGROUP`
+poll loop against a stream nobody publishes to.
+
+### Added — Docker Hub images
+
+`techbuzzz/delibera-server` and `techbuzzz/delibera-webui`, published from `v*` tags by
+`.github/workflows/publish-docker.yml` as `linux/amd64` + `linux/arm64`. `deploy/docker-compose.hub.yml`
+pulls them with no build step:
+
+```bash
+docker compose -f deploy/docker-compose.hub.yml up -d
+```
+
+Ollama is not re-published; it keeps its `ollama` profile and its official upstream image.
+
+### Security — published ports now bind to 127.0.0.1
+
+**This is a behaviour change.** Every published port in `docker-compose.yml` was previously bound
+to `0.0.0.0`; all of them now bind to `127.0.0.1`.
+
+The API is **unauthenticated and unthrottled**, and a debate spends real LLM credits. That was
+already true, but publishing the images makes it trivially reachable. Localhost-only binding is the
+enforcement; the README, README-RU and `.env.example` now state plainly that an authenticating
+reverse proxy is required before this stack is exposed to any network you do not control.
+
+A host currently reaching `Delibera.Server` from another machine on its LAN will stop being able to
+after this upgrade. Bind explicitly if that is intended.
+
+### Changed — `Delibera.Server` now depends on `Delibera.Redis` on NuGet
+
+The ProjectReference flows into the nuspec, so existing consumers pull `Delibera.Redis` and
+`StackExchange.Redis`. This is deliberate and accepted rather than hidden with `PrivateAssets="all"`,
+which would remove `AddRedisDebateOrchestrator` from the published package — the one thing the
+reference exists to expose. Both packages ship in the same GA matrix at the same version.
+
 ## [10.5.1] - 2026-10-07
 
 Closes all six open GitHub issues (#11, #13, #14, #15, #16, #18) and the two findings that were

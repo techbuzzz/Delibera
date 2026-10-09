@@ -50,6 +50,13 @@ The 10.5.0 package page for Delibera.Core shows a 514-test figure; that number w
   <ItemGroup>
     <!-- Core -->
     <ProjectReference Include="..\Delibera.Core\Delibera.Core.csproj" />
+    <!-- Redis: opt-in distributed debate state, gated by Delibera:Redis:Enabled.
+         This becomes a package dependency of Delibera.Server on nuget.org — accepted
+         deliberately. Delibera.Redis ships in the same GA matrix (publish-nuget.yml),
+         both are versioned together, and the alternative (PrivateAssets="all") would
+         remove AddRedisDebateOrchestrator from the published package, which is the one
+         thing this reference exists to expose. -->
+    <ProjectReference Include="..\Delibera.Redis\Delibera.Redis.csproj" />
   </ItemGroup>
 
   <ItemGroup>

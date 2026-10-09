@@ -1,0 +1,10 @@
+# Build artefacts — node_modules in particular must never enter the build context.
+node_modules
+.nuxt
+.output
+.data
+dist
+.env
+npm-debug.log*
+yarn-error.log*
+.DS_Store

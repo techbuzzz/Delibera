@@ -1,6 +1,11 @@
+using Delibera.Redis;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using StackExchange.Redis;
 
 namespace Delibera.Server.Infrastructure;
 
@@ -16,6 +21,10 @@ public static class ServerServiceExtensions
 
       // Delibera.Core
       services.AddDelibera(configuration);
+
+      // Redis — opt-in, off by default, and validated eagerly so a typo in the
+      // connection string names itself at startup rather than at the first debate.
+      services.AddDeliberaRedis(configuration);
 
       // Business services
       services.AddSingleton<ITemplateRegistry, TemplateRegistry>();
@@ -75,5 +84,108 @@ public static class ServerServiceExtensions
          });
 
       return services;
+   }
+
+   /// <summary>
+   ///    Wires the Redis-backed debate orchestrator when <c>Delibera:Redis:Enabled</c> is true.
+   /// </summary>
+   /// <remarks>
+   ///    <para>
+   ///       What Redis actually buys today, stated plainly because the alternative reading is
+   ///       a documentation bug waiting to happen: round events are published to a Redis Stream
+   ///       so any API instance can stream them over SSE, debate state is shared, and results
+   ///       can be cached. It does <b>not</b> distribute turn execution —
+   ///       <c>DebateWorkerService.ProcessMessageAsync</c> is an explicit no-op placeholder and
+   ///       the orchestrator still runs each debate in-process. So this is not horizontal
+   ///       debate scaling, and nothing below should be described as if it were.
+   ///    </para>
+   ///    <para>
+   ///       Two deliberate choices:
+   ///    </para>
+   ///    <list type="bullet">
+   ///       <item>
+   ///          The connection is validated eagerly (parse + endpoint check) so a bad
+   ///          connection string fails at startup with a message naming the config key. A
+   ///          silent fallback to the local orchestrator would leave a deployment that
+   ///          looks distributed and is not. Transient unavailability is handled separately by
+   ///          <c>abortConnect=false</c>, which is why compose can start Redis and the server
+   ///          in either order.
+   ///       </item>
+   ///       <item>
+   ///          <c>DebateWorkerService</c> is NOT registered as a hosted service. It is a
+   ///          placeholder whose only effect would be an <c>XREADGROUP</c> poll loop against a
+   ///          stream nobody publishes to — real Redis load for no behaviour.
+   ///       </item>
+   ///    </list>
+   /// </remarks>
+   public static IServiceCollection AddDeliberaRedis(
+      this IServiceCollection services,
+      IConfiguration configuration)
+   {
+      var section = configuration.GetSection(RedisGateOptions.SectionName);
+      var gate = section.Get<RedisGateOptions>() ?? new RedisGateOptions();
+
+      if (!gate.Enabled)
+      {
+         // Nothing is registered: IDebateOrchestrator stays whatever Delibera.Core bound
+         // (LocalDebateOrchestrator), so the default path is byte-identical to before Redis
+         // was an option at all.
+         return services;
+      }
+
+      var connectionString = section["ConnectionString"];
+      ValidateRedisConnectionString(connectionString, section);
+
+      // Assign through a non-nullable local: ValidateRedisConnectionString throws on null or
+      // blank, but that guarantee does not flow to the compiler, and CI builds with
+      // -warnaserror (publish-nuget.yml).
+      var validated = connectionString!;
+
+      // ConfigurationOptions.Parse is the same parse ConnectionMultiplexer performs, so a
+      // string rejected here would have thrown later inside the orchestrator's constructor
+      // with no indication of which config key was at fault.
+      var options = ConfigurationOptions.Parse(validated);
+      options.AbortOnConnectFail = false; // survive a cold/slow Redis in compose ordering
+
+      services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(options));
+
+      // Binds RedisOrchestratorOptions to the same section and replaces IDebateOrchestrator.
+      services.AddRedisDebateOrchestrator(configuration);
+
+      if (gate.CacheEnabled)
+         services.UseRedisCache(gate.CacheTtl);
+
+      return services;
+   }
+
+   /// <summary>
+   ///    Fails fast when Redis is switched on with an unusable connection string.
+   /// </summary>
+   private static void ValidateRedisConnectionString(
+      string? connectionString,
+      IConfigurationSection section)
+   {
+      const string key = $"{RedisGateOptions.SectionName}:ConnectionString";
+
+      if (string.IsNullOrWhiteSpace(connectionString))
+         throw new InvalidOperationException(
+            $"{RedisGateOptions.SectionName}:Enabled is true but {key} is empty. " +
+            $"Set {key} (for example 'redis:6379,abortConnect=false') or set " +
+            $"{RedisGateOptions.SectionName}:Enabled to false.");
+
+      ConfigurationOptions parsed;
+      try
+      {
+         parsed = ConfigurationOptions.Parse(connectionString);
+      }
+      catch (Exception ex)
+      {
+         throw new InvalidOperationException(
+            $"{key} ('{connectionString}') could not be parsed: {ex.Message}", ex);
+      }
+
+      if (parsed.EndPoints.Count == 0)
+         throw new InvalidOperationException(
+            $"{key} ('{connectionString}') declares no Redis endpoint.");
    }
 }

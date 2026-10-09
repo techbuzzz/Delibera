@@ -1,0 +1,172 @@
+name: publish-docker
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  REGISTRY:    docker.io
+  NAMESPACE:   techbuzzz
+  SERVER_IMG:  delibera-server
+  WEBUI_IMG:   delibera-webui
+
+jobs:
+  # ── Build only: proves both images compile on every push, pushes nothing ──────
+  build:
+    name: build (verify only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build server image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Delibera.Server/Dockerfile
+          push: false
+          load: false
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+
+      - name: Build webui image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          # Context is the WebUI folder, matching docker-compose.yml: the Dockerfile copies
+          # package.json / package-lock.json by bare filename, so a repo-root context would
+          # not find them at /package.json.
+          context: ./src/Delibera.WebUI
+          file: src/Delibera.WebUI/Dockerfile
+          push: false
+          load: false
+          cache-from: type=gha,scope=webui
+          cache-to: type=gha,scope=webui,mode=max
+
+  # ── Frontend tests ──────────────────────────────────────────────────────────
+  webui-tests:
+    name: webui tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Delibera.WebUI
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: src/Delibera.WebUI/.nvmrc
+          cache: npm
+          cache-dependency-path: src/Delibera.WebUI/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # The SSE test boots .output/server/index.mjs, so the build above is a prerequisite —
+      # running tests before it would fail on a missing entry point rather than on a defect.
+      - name: Test
+        run: npm test
+
+  # ── Publish ─────────────────────────────────────────────────────────────────
+  publish:
+    name: push to Docker Hub
+    needs: [ build, webui-tests ]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ── Version derivation ──────────────────────────────────────────────────
+      # A tag like v10.5.2 yields: full=10.5.2, major=10, minor=5.
+      # `latest` is applied only on a minor/patch bump, never on a major — a new
+      # .NET major is exactly when someone's `latest` should NOT move under them.
+      - name: Derive tags
+        id: meta
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          echo "full=$tag"  >> "$GITHUB_OUTPUT"
+          echo "major=${tag%%.*}" >> "$GITHUB_OUTPUT"
+          minor="${tag#*.}"; minor="${minor%%.*}"
+          echo "minor=$minor" >> "$GITHUB_OUTPUT"
+
+      # ── Server image ────────────────────────────────────────────────────────
+      - name: Build and push server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Delibera.Server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.SERVER_IMG }}:${{ steps.meta.outputs.full }}
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.SERVER_IMG }}:${{ steps.meta.outputs.major }}.${{ steps.meta.outputs.minor }}
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.SERVER_IMG }}:latest
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+
+      # ── WebUI image ─────────────────────────────────────────────────────────
+      - name: Build and push webui
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src/Delibera.WebUI
+          file: src/Delibera.WebUI/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.WEBUI_IMG }}:${{ steps.meta.outputs.full }}
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.WEBUI_IMG }}:${{ steps.meta.outputs.major }}.${{ steps.meta.outputs.minor }}
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.WEBUI_IMG }}:latest
+          cache-from: type=gha,scope=webui
+          cache-to: type=gha,scope=webui,mode=max
+
+      # ── Smoke assertions ────────────────────────────────────────────────────
+      # A multi-arch tag that silently contains only one architecture is worse than a
+      # build failure: the pull fails much later, on someone else's machine.
+      - name: Verify published manifests
+        run: |
+          set -euo pipefail
+          for img in "${{ env.SERVER_IMG }}" "${{ env.WEBUI_IMG }}"; do
+            repo="${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${img}:${{ steps.meta.outputs.full }}"
+            echo "── $repo"
+            docker buildx imagetools inspect "$repo" --format '{{json .Manifest}}' || exit 1
+          done
+
+      - name: Runtime smoke (amd64)
+        run: |
+          set -euo pipefail
+          # Runs the actual entrypoint binary from each published image. The WebUI
+          # container would exit immediately, so --version is the cheapest proof that
+          # the runtime stage has a working interpreter and the right file layout.
+          docker run --rm --platform linux/amd64 \
+            "${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.SERVER_IMG }}:${{ steps.meta.outputs.full }}" \
+            dotnet --version
+          docker run --rm --platform linux/amd64 \
+            "${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.WEBUI_IMG }}:${{ steps.meta.outputs.full }}" \
+            node --version
