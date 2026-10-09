@@ -280,6 +280,10 @@ dotnet build Delibera.slnx -c Release
 Из клона `docker compose up -d` поднимает весь стек — сервер, веб-интерфейс, Ollama, Qdrant,
 pgvector и Redis. Пошаговое руководство: [docs/QuickStart-RU.md](docs/QuickStart-RU.md).
 
+> 🧑‍🔧 **Публикуете релиз или обновляетесь со старой версии?** Смотрите
+> [docs/ReleaseProcess.md](docs/ReleaseProcess.md) — там описан порядок, который важен, и два
+> шага, которые падают молча, а не с ошибкой.
+
 ### Минимальный пример
 
 ```csharp

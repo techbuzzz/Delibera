@@ -279,6 +279,10 @@ dotnet build Delibera.slnx -c Release
 From a clone, `docker compose up -d` starts the whole stack — server, Web UI, Ollama, Qdrant,
 pgvector and Redis. See [docs/QuickStart.md](docs/QuickStart.md) for the walkthrough.
 
+> 🧑‍🔧 **Publishing a release, or upgrading from an older one?** See
+> [docs/ReleaseProcess.md](docs/ReleaseProcess.md) — it documents the order that matters, and the
+> two steps that fail silently rather than loudly.
+
 ### Minimal Example
 
 ```csharp
