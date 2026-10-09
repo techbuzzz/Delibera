@@ -102,17 +102,44 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
-          body=/tmp/release-body.md
-          cp .github/release-notes/header.md "$body"
+          default_branch="${{ github.event.repository.default_branch }}"
 
-          sed -i "s/{{VERSION}}/${VERSION}/g" "$body"
+          # A dispatch checks out the TAG. Editorial files that live on main — the release
+          # header above all — do not exist at an older tag, and a bare `cp` under `set -e`
+          # kills the job at this step, after the version cross-check has already passed and
+          # with an error ("cp: cannot stat") that says nothing about releases.
+          #
+          # Prefer whatever is checked out, fall back to the default branch, and never let a
+          # missing document cost us the release page itself.
+          fetch_note() {
+            path="$1"; dest="$2"
+            if [ -f "$path" ]; then
+              cp "$path" "$dest"
+              echo "  $path (from the checked-out ref)"
+              return 0
+            fi
+            echo "  $path is not at this ref — trying origin/$default_branch"
+            if git fetch --depth=1 origin "$default_branch" > /dev/null 2>&1 \
+               && git show "FETCH_HEAD:$path" > "$dest" 2> /dev/null \
+               && [ -s "$dest" ]; then
+              echo "  $path (from origin/$default_branch)"
+              return 0
+            fi
+            rm -f "$dest"
+            echo "::warning::$path is absent both here and on $default_branch — omitted from the body"
+            return 1
+          }
+
+          body=/tmp/release-body.md
+          : > "$body"
+          if fetch_note .github/release-notes/header.md "$body"; then
+            sed -i "s/{{VERSION}}/${VERSION}/g" "$body"
+          fi
 
           whatsnew="docs/WhatsNew-v${VERSION}.md"
-          if [ -f "$whatsnew" ]; then
+          if fetch_note "$whatsnew" /tmp/whatsnew.md; then
             printf '\n## What is new in %s\n\n' "$VERSION" >> "$body"
-            cat "$whatsnew" >> "$body"
-          else
-            echo "::warning::$whatsnew not found — release will carry only the header and PR notes"
+            cat /tmp/whatsnew.md >> "$body"
           fi
 
           if [ -s /tmp/auto-notes.md ]; then
