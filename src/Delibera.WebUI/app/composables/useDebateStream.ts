@@ -110,9 +110,15 @@ export function useDebateStream() {
         status.value = record.status
         if (record.errorMessage) errorMessage.value = record.errorMessage
         if (!isActive(record.status)) finish()
-      } catch {
-        // A 404 here is the ~30 min eviction, not a transient failure. Keep polling: the
-        // debate may still be running in a different process after a server restart.
+      } catch (error) {
+        // 404 is terminal, not transient: the record is either unknown or past its ~30 min
+        // eviction, and polling it forever just hammers the API with a request that can
+        // never succeed. Any other failure (5xx, unreachable) keeps polling, because the
+        // debate may still be running elsewhere after a restart.
+        if ((error as { status?: number })?.status === 404) {
+          stopPolling()
+          return
+        }
       }
     }, POLL_INTERVAL_MS)
   }
