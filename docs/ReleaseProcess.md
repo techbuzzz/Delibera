@@ -159,3 +159,15 @@ bash -n <script>
 
 GitHub expressions (`${{ ... }}`) must be stripped before `bash -n` — they are invalid bash and
 mask every real error behind noise.
+
+When the workflow checks out a **tag**, syntax checking is not enough. Clone shallow at that tag
+and run the extracted block against the clone — a dispatch resolves `actions/checkout` to the
+tag, so any file authored on `main` afterwards is simply not there:
+
+```bash
+git clone --depth 1 --branch v<Version> file:///path/to/repo /tmp/sim
+cd /tmp/sim && VERSION=<Version> bash ../step.sh
+```
+
+This is how the release-notes step was caught: `cp` of a file that exists on `main` and not at the
+tag is valid bash, passes `bash -n`, and fails on the only run that matters.
