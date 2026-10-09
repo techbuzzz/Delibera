@@ -1,6 +1,6 @@
 {
   "name": "delibera-webui",
-  "version": "10.5.1",
+  "version": "10.5.2",
   "private": true,
   "type": "module",
   "description": "Web UI for the Delibera multi-model AI council framework",

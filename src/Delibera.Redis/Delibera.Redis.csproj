@@ -12,7 +12,7 @@
   <!-- NuGet package metadata. -->
   <PropertyGroup>
     <PackageId>Delibera.Redis</PackageId>
-    <Version>10.5.1</Version>
+    <Version>10.5.2</Version>
     <Title>Delibera Redis</Title>
     <Description>Redis-backed distributed debate execution for the Delibera multi-model AI council framework. RedisDebateOrchestrator publishes every completed round to a Redis Stream so multiple workers can share one debate and survive each other's restarts; RedisDebateCache adds shared result caching with TTLs; DebateWorkerService consumes work in the background. Streams are created with a max length so they cannot grow without bound. Depends on Delibera.Core.</Description>
     <Authors>Victor Buzin</Authors>
