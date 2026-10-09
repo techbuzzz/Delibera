@@ -108,6 +108,23 @@ Same for **dockerhub-metadata → Run workflow**. The cards are empty by default
 is created through the API — `docker push` writes no metadata. The overviews live in
 `dockerhub/*.md` and are synced from there.
 
+### Both backfills need the workflow on `main` first
+
+`workflow_dispatch` only exists for workflows that GitHub can see on the **default branch**. A
+new `release.yml` or `dockerhub-metadata.yml` sitting on a feature branch has no Actions entry,
+so "Run workflow" does not merely fail — the button is not there.
+
+Confirm what is actually dispatchable before promising a backfill:
+
+```bash
+curl -s https://api.github.com/repos/techbuzzz/Delibera/actions/workflows \
+  | grep '"name"'        # only workflows on main appear here
+```
+
+The symptom if you skip this check: the tags are on Docker Hub, the pulls counter is climbing,
+and the overview is still empty — with every pipeline green, because nothing in the tag-push
+path writes metadata on its own.
+
 ---
 
 ## GitHub Pages (one-time setup)
