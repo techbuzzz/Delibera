@@ -20,7 +20,7 @@
     <!-- Microsoft.NET.Sdk.Web sets IsPackable=false because the Web SDK's default output is an
          app, not a library. This project ships as a reusable library, so it must opt back in. -->
     <IsPackable>true</IsPackable>
-    <Version>10.5.1</Version>
+    <Version>10.5.2</Version>
     <Title>Delibera Server</Title>
     <Description>ASP.NET Core host for the Delibera multi-model AI council framework: debate, scenario, corpus, SSE streaming and MCP endpoints mountable inside an existing application through AddDeliberaServer/UseDeliberaServer. All routes live under /api/v1 so they cannot collide with your own endpoints. Depends on Delibera.Core.</Description>
     <Authors>Victor Buzin</Authors>
@@ -31,9 +31,15 @@
     <PackageProjectUrl>https://github.com/techbuzzz/Delibera</PackageProjectUrl>
     <RepositoryUrl>https://github.com/techbuzzz/Delibera</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>First GA release of Delibera.Server as a standalone package.
+    <PackageReleaseNotes>v10.5.2 — Redis becomes an opt-in runtime feature, and a Web UI ships alongside the server. CONTAINS BEHAVIOUR CHANGES.
 
-The 10.5.0 package page for Delibera.Core shows a 514-test figure; that number was measured at 10.4.0. At the 10.5.0 tag the count was 532, and at this release it is 611 (493 Core + 108 Server + 10 gRPC contract). This package ships with the corrected numbers.</PackageReleaseNotes>
+⚠️ NEW TRANSITIVE DEPENDENCY: this package now references Delibera.Redis, so consumers pull Delibera.Redis and StackExchange.Redis. Accepted deliberately rather than hidden with PrivateAssets="all", which would remove AddRedisDebateOrchestrator from the published package — the one thing the reference exists to expose. Both packages ship at the same version.
+
+New — Redis integration, gated by Delibera:Redis:Enabled and off by default. Previously Delibera.Server referenced only Delibera.Core, so AddRedisDebateOrchestrator was never called and the server always ran LocalDebateOrchestrator — a redis service in compose connected to nothing. It now registers the Redis orchestrator and, optionally, the Redis result cache. This buys round events on a Redis Stream (so any API instance can stream them over SSE), shared debate state and optional caching. It does NOT buy distributed turn execution: DebateWorkerService.ProcessMessageAsync is an explicit no-op and each debate still runs in the process that accepted it. A bad connection string now fails at startup naming the key instead of silently degrading, because a deployment that quietly fell back would look distributed and not be; abortConnect=false still covers transient ordering so compose can start Redis and the server in either order.
+
+⚠️ DEPLOYMENT: docker-compose.yml now binds every published port to 127.0.0.1 instead of 0.0.0.0. The API is unauthenticated and unthrottled and a debate spends real LLM credits. A host reaching this server from another machine on its LAN will stop being able to after this upgrade; bind explicitly if that is intended.
+
+Tests: 620 passing (493 Core + 117 Server + 10 gRPC contract), 0 failed, 0 skipped, plus 34 Web UI tests. Clean under -warnaserror. The 10.5.0 package page for Delibera.Core shows a 514-test figure; that number was measured at 10.4.0, and at the 10.5.1 tag the count was 611.</PackageReleaseNotes>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>

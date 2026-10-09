@@ -5,7 +5,13 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [10.5.2] - 2026-10-09
+
+**Contains behaviour changes.** Two are breaking for existing deployments: published ports now
+bind to `127.0.0.1` instead of `0.0.0.0`, and `Delibera.Server` now pulls `Delibera.Redis` +
+`StackExchange.Redis` transitively on NuGet. Both are documented below under *Security* and
+*Changed*. The breaking changes are real but deliberate; the patch number is retained because the
+tag and the merge history already declare this release as v10.5.2.
 
 ### Added — Web UI (`Delibera.WebUI`, Nuxt 4)
 
@@ -81,6 +87,49 @@ The ProjectReference flows into the nuspec, so existing consumers pull `Delibera
 `StackExchange.Redis`. This is deliberate and accepted rather than hidden with `PrivateAssets="all"`,
 which would remove `AddRedisDebateOrchestrator` from the published package — the one thing the
 reference exists to expose. Both packages ship in the same GA matrix at the same version.
+
+### Fixed — every POST through the Web UI proxy returned 400
+
+The Nitro proxy passed the request body to `fetch` as-is. `readBody` **parses** the payload — JSON
+in, plain object out — and `fetch` stringifies a non-string body with `String(value)`, which yields
+the literal `"[object Object]"`. The upstream therefore received invalid JSON and answered `400 Bad
+Request` with no field detail, for every POST. Creating a debate, cancelling one and exporting were
+all unreachable through the UI; only the GET paths worked.
+
+The body is now re-encoded before the upstream call: a parsed object is serialised with
+`JSON.stringify`, a string is passed through untouched (`readBody` returns raw text for non-JSON
+content types, and re-encoding it would corrupt it), and an empty object becomes `undefined` — a
+body-less DELETE should not ask the API to validate a body.
+
+### Fixed — a debate that finished before the timeline attached showed no rounds
+
+Seeding ran only when the record was already inactive on mount. A debate reached by clicking through
+from the list arrived Completed and was seeded; one opened right after creation arrived Running, the
+stream was opened, and if the debate finished before the page settled the terminal event carries no
+rounds — leaving the timeline empty while the verdict panel was already populated. Seeding is now
+unconditional and dedupes by round number, so both paths are covered.
+
+### Fixed — a missing debate was polled forever
+
+The fallback poll treated a 404 as transient and kept retrying. A 404 is terminal: the record is
+either unknown or past its ~30 min eviction, and polling it forever hammers the API with a request
+that can never succeed. 404 now stops the poll; 5xx and unreachable still keep it, because a debate
+may genuinely be running in another process after a restart.
+
+### Fixed — the stream-state badge rendered unstyled
+
+`StatusBadge.vue` scopes its styles, so the `.badge` class used on the debate page was never
+matched: the element rendered with no styling and, with it, a malformed accessibility tree. The
+styles are now declared on the page that uses them.
+
+### Added — document head metadata for accessibility
+
+`htmlAttrs.lang`, a real title, description and viewport — without all three Lighthouse fails the
+document and screen readers get no document language.
+
+Tests: 620 passing (493 Core + 117 Server + 10 gRPC contract), 0 failed, 0 skipped, plus 34 Web UI
+tests. The release build is clean under `-warnaserror`. The 611 figure published with v10.5.1
+remains correct for that tag; Server gained 9 Redis-orchestration tests in this release.
 
 ## [10.5.1] - 2026-10-07
 

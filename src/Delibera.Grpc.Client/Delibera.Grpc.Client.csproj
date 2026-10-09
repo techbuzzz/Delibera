@@ -11,7 +11,7 @@
     <!-- Packaged and ready, but NOT in the GA matrix yet. -->
     <PackageId>Delibera.Grpc.Client</PackageId>
     <IsPackable>true</IsPackable>
-    <Version>10.5.1</Version>
+    <Version>10.5.2</Version>
     <Title>Delibera gRPC Client</Title>
     <Description>Generated gRPC client for the Delibera multi-model AI council framework: typed stubs for DebateService, ScenarioService and CorpusService, including the server-streaming debate event channel. Depends on Delibera.Grpc.</Description>
     <Authors>Victor Buzin</Authors>

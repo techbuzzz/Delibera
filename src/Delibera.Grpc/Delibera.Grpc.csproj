@@ -14,7 +14,7 @@
          implementations ship. -->
     <PackageId>Delibera.Grpc</PackageId>
     <IsPackable>true</IsPackable>
-    <Version>10.5.1</Version>
+    <Version>10.5.2</Version>
     <Title>Delibera gRPC</Title>
     <Description>gRPC transport for the Delibera multi-model AI council framework: protobuf service definitions, server-streaming debate events, and bi-directional debate control. Sits on top of IDebateOrchestrator so distributed execution and result caching work identically over gRPC. Depends on Delibera.Core.</Description>
     <Authors>Victor Buzin</Authors>

@@ -63,6 +63,25 @@ well-reasoned outcomes** rather than single-model guesses.
 | **🛑 Cooperative Cancellation**| Every public async method accepts a `CancellationToken`; a host shutdown or user cancel aborts the debate mid-flight (rounds, LLM calls, MCP tools, RAG, file saves) |
 | **🧱 Modern C# 15 (preview)** | Built on .NET 10 with `LangVersion=preview`, file-scoped namespaces, records, span/SIMD hot paths |
 
+### 🆕 What's new in v10.5.2
+
+A browser front end for the debate workflow, Redis actually reachable from inside the server, Docker
+Hub images, and four Web UI fixes — one of which made creating a debate through the browser impossible.
+
+**Contains two breaking behaviour changes:** published ports bind to `127.0.0.1` instead of
+`0.0.0.0`, and `Delibera.Server` gains a transitive dependency on `Delibera.Redis`. Full account:
+[docs/WhatsNew-v10.5.2.md](docs/WhatsNew-v10.5.2.md).
+
+| Feature | Description |
+| --- | --- |
+| **🖥️ Web UI** | `src/Delibera.WebUI` — Nuxt 4, shipped as a second container. List, create, live SSE rounds, verdict with token stats, Markdown export, cancel. Reaches the API **only** through a Nitro proxy: the server registers no CORS policy, and `DebateMapper` builds absolute URLs without forwarded-header handling. SSE is forwarded unbuffered, asserted against a real socket. |
+| **🔌 Redis in the server** | `Delibera:Redis:Enabled` registers the Redis orchestrator and, optionally, the Redis result cache. Off by default. Previously `Delibera.Server` referenced only `Delibera.Core`, so a `redis` service in compose connected to nothing. Does **not** buy distributed turn execution — `DebateWorkerService` is a deliberate no-op. |
+| **🐳 Docker Hub** | `techbuzzz/delibera-server` and `techbuzzz/delibera-webui`, published from `v*` tags as `linux/amd64` + `linux/arm64`. Ollama is not re-published. |
+| **🔒 Localhost-only ports** | Every published port binds to `127.0.0.1`. The API is unauthenticated and unthrottled, and a debate spends real credits — so this binding is the enforcement, not decoration. |
+
+Tests: **620 passing** (493 Core + 117 Server + 10 gRPC), 0 failed, 0 skipped, plus 34 Web UI tests.
+The release build is clean under `-warnaserror`.
+
 ### 🆕 What's new in v10.5.1
 
 Closes all six open issues and adds one fix that only a live database could surface. No breaking
@@ -858,7 +877,7 @@ docker compose -f docker-compose.hub.yml up -d
 ```
 
 Pulls `techbuzzz/delibera-server` and `techbuzzz/delibera-webui` from Docker Hub. Set
-`DELIBERA_VERSION=10.5.1` to pin a specific release.
+`DELIBERA_VERSION=10.5.2` to pin a specific release.
 
 ### Web UI
 
