@@ -815,30 +815,83 @@ dotnet run
 
 ### One-Command Infrastructure (Docker Compose)
 
-Spin up **Qdrant + PostgreSQL/pgvector** in one shot. (Ollama is intentionally not included —
-[install it natively](https://ollama.com/download) so the GPU driver is used directly.)
+Spin up **the API + Web UI + Redis + Qdrant + PostgreSQL/pgvector** in one shot. (Ollama is
+intentionally not included — [install it natively](https://ollama.com/download) so the GPU driver
+is used directly.)
 
 ```bash
 # From the repo root
 docker compose up -d
 
-# In another terminal, run the console app
-cd src/Delibera.ConsoleApp
-dotnet run
+# Or, with Ollama on GPU inside Docker:
+docker compose --profile ollama up -d
 ```
 
-The compose stack exposes:
+Then open **http://localhost:3000** for the web UI and http://localhost:5200 for the API.
 
-| Service       | URL                        | Purpose                       |
-| ------------- | -------------------------- | ----------------------------- |
-| Qdrant (REST) | `http://localhost:6333`    | Vector store UI / REST        |
-| Qdrant (gRPC) | `localhost:6334`           | gRPC client (used by Delibera)|
-| PostgreSQL    | `localhost:5432`           | pgvector RAG store            |
+| Service                | URL                        | Purpose                        |
+| ---------------------- | -------------------------- | ------------------------------ |
+| Web UI (Nuxt 4)        | `http://localhost:3000`    | Debates: create, live rounds, verdict |
+| REST API               | `http://localhost:5200`    | REST endpoints under `/api/v1` |
+| MCP endpoint           | `http://localhost:5200/mcp`| Model Context Protocol tools   |
+| Qdrant (REST / gRPC)   | `localhost:6333` / `:6334` | Vector store (used by Delibera)|
+| PostgreSQL             | `localhost:5432`           | pgvector RAG store             |
+| Redis                  | internal only              | Debate state (opt-in)          |
 
 Default credentials: `postgres` / `postgres`, database `council_vectors`.
 
-> If you already have these services running natively, just skip `docker compose` and
-> point the console app at them — `appsettings.json` defaults to `localhost`.
+> **⚠️ Security — read this before changing a port binding.**
+>
+> The Delibera API is **unauthenticated and unthrottled**. Anyone who can reach the port can start
+> debates that spend real LLM credits on your provider account. Every published port is bound to
+> `127.0.0.1` for exactly this reason. Do not change those bindings to `0.0.0.0` unless you have put
+> an authenticating reverse proxy in front first.
+
+> If you already have these services running natively, just skip `docker compose` and point the
+> console app at them — `appsettings.json` defaults to `localhost`.
+
+#### Pre-built images (no clone required)
+
+```bash
+curl -O https://raw.githubusercontent.com/techbuzzz/Delibera/main/deploy/docker-compose.hub.yml
+docker compose -f docker-compose.hub.yml up -d
+```
+
+Pulls `techbuzzz/delibera-server` and `techbuzzz/delibera-webui` from Docker Hub. Set
+`DELIBERA_VERSION=10.5.1` to pin a specific release.
+
+### Web UI
+
+[`src/Delibera.WebUI`](src/Delibera.WebUI/) is a Nuxt 4 application covering the debate workflow:
+list, create, live SSE rounds, verdict with token stats, Markdown export, cancel.
+
+Two things are worth knowing if you extend it:
+
+- **The browser never calls the API directly.** Every request goes through a Nitro server-side
+  proxy (`/api/delibera/**`), because the API registers no CORS policy and a cross-origin browser
+  call would be blocked. SSE is streamed through, not buffered — the test suite asserts a chunk
+  arrives before the upstream stream ends.
+- **`VerdictDto` is mostly a shell.** `DebateMapper` populates only `recommendation` and `rawJson`;
+  `confidence`, `riskLevel`, `risks` and `conditions` are never filled in. The structured output
+  that does exist is template-specific and lives inside `verdict.rawJson`.
+
+Run it locally against a host API:
+
+```bash
+cd src/Delibera.WebUI
+npm ci
+npm run dev          # http://localhost:3000, proxies to http://localhost:5200
+```
+
+### Redis (optional)
+
+Set `Delibera:Redis:Enabled=true` (or `DELIBERA_REDIS_ENABLED=true`) to have the server publish
+round events to a Redis Stream instead of keeping them in process. That lets several API instances
+serve the same debates, and enables the Redis result cache via `CacheEnabled`.
+
+It is **off by default**. It is also **not distributed turn execution** —
+`DebateWorkerService` is a documented no-op placeholder, so each debate still runs in the process
+that accepted it. See [`src/Delibera.Redis/README.md`](src/Delibera.Redis/README.md).
 
 ### Manual Alternative (one container at a time)
 

@@ -4,8 +4,13 @@
 # Quickstart (Ollama on host, external LLM provider):
 #   docker compose up delibera-server qdrant postgres
 #
-# Quickstart (all-in-one incl. Ollama on GPU):
+# Quickstart (everything, Ollama included, on GPU):
 #   docker compose --profile ollama up
+#
+# After 10.5.2, published ports bind to 127.0.0.1 only. The API is
+# UNAUTHENTICATED and UNTHROTTLED by design — anyone who can reach the port can run
+# paid LLM debates — so it must not be exposed to a network you do not control. Put an
+# authenticating reverse proxy in front before doing that.
 #
 # Copy .env.example -> .env and fill in your values before first run.
 # ───────────────────────────────────────────────────────────────────────────────
@@ -35,7 +40,8 @@ services:
     networks:
       - delibera-net
     ports:
-      - "${DELIBERA_PORT:-5200}:8080"
+      # 127.0.0.1 only — see the header warning. The API has no auth and no rate limit.
+      - "127.0.0.1:${DELIBERA_PORT:-5200}:8080"
     volumes:
       - debate-results:/app/debate_results
     environment:
@@ -77,11 +83,24 @@ services:
       Delibera__Output__SeparateFiles:  true
       # — observability —
       Delibera__Server__Telemetry__OtlpEndpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # — Redis (opt-in; off by default) —
+      # When Enabled is true the server replaces its in-process orchestrator with
+      # RedisDebateOrchestrator and shares round events/state through Redis Streams.
+      # This is NOT distributed turn execution: DebateWorkerService is a no-op
+      # placeholder, so a debate still runs in the process that accepted it.
+      Delibera__Redis__Enabled:            ${DELIBERA_REDIS_ENABLED:-false}
+      Delibera__Redis__CacheEnabled:       ${DELIBERA_REDIS_CACHE_ENABLED:-false}
+      Delibera__Redis__ConnectionString:   ${DELIBERA_REDIS_CONNECTION:-redis:6379,abortConnect=false}
+      Delibera__Redis__StreamMaxLength:    ${DELIBERA_REDIS_STREAM_MAX_LENGTH:-10000}
+      Delibera__Redis__StateKeyTtl:        ${DELIBERA_REDIS_STATE_TTL:-24:00:00}
     depends_on:
       qdrant:
         condition: service_healthy
         required: false
       postgres:
+        condition: service_healthy
+        required: false
+      redis:
         condition: service_healthy
         required: false
     healthcheck:
@@ -90,6 +109,65 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Delibera WebUI — Nuxt 4 front end (debates: list, create, live SSE, verdict)
+  #
+  # The browser never talks to delibera-server directly: the API registers no CORS
+  # policy, so a cross-origin call would be blocked. This container proxies every API
+  # call server-side through Nitro, keeping the browser on one origin.
+  # ───────────────────────────────────────────────────────────────────────────
+  delibera-webui:
+    build:
+      # Context is the WebUI folder, not the repository root: the Dockerfile copies
+      # package.json / package-lock.json by those exact paths, and a root context would make
+      # them src/Delibera.WebUI/... . It also picks up the folder's own .dockerignore, so a
+      # local node_modules never reaches the daemon.
+      context: ./src/Delibera.WebUI
+      dockerfile: Dockerfile
+    image: delibera-webui:${IMAGE_TAG:-latest}
+    container_name: delibera-webui
+    restart: unless-stopped
+    networks:
+      - delibera-net
+    ports:
+      - "127.0.0.1:${WEBUI_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      # Server-only runtime config. The browser sees just the same-origin /api/delibera proxy.
+      NUXT_DELIBERA_API_BASE: http://delibera-server:8080
+      NUXT_PUBLIC_TENANT_ID: ${DELIBERA_TENANT_ID:-default}
+    depends_on:
+      delibera-server:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Redis — debate state + round events (opt-in; see Delibera:Redis:Enabled)
+  #
+  # No host port: the server reaches it over delibera-net, and publishing it would add an
+  # attack surface for no benefit.
+  # ───────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: delibera-redis
+    restart: unless-stopped
+    networks:
+      - delibera-net
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
   # ───────────────────────────────────────────────────────────────────────────
   # Ollama — local LLM (GPU). Start with: docker compose --profile ollama up
@@ -102,7 +180,7 @@ services:
     networks:
       - delibera-net
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama-data:/root/.ollama
     deploy:
@@ -153,8 +231,8 @@ services:
     networks:
       - delibera-net
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
     volumes:
       - qdrant-data:/qdrant/storage
     # The qdrant/qdrant image ships bash but no wget, curl or nc, and its /bin/sh is dash
@@ -180,7 +258,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB:       ${POSTGRES_DB:-council_vectors}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -195,3 +273,4 @@ volumes:
   ollama-data:
   qdrant-data:
   postgres-data:
+  redis-data:

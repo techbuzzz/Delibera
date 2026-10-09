@@ -21,6 +21,18 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"  # Linux bridge to host Ollama
     ports:
-      - "5200:8080"   # REST API  →  http://localhost:5200/api/v1
-                      # MCP tools →  http://localhost:5200/mcp
-                      # OpenAPI   →  http://localhost:5200/openapi/v1.json
+      - "127.0.0.1:5200:8080"   # REST API  →  http://localhost:5200/api/v1
+                                 # MCP tools →  http://localhost:5200/mcp
+                                 # OpenAPI   →  http://localhost:5200/openapi/v1.json
+
+  # Dev WebUI — same runtime image as production, only pointed at the compose network.
+  # Deliberately NOT `target: build`: the build stage has no ENTRYPOINT and runs as root, so
+  # targeting it yields a container that exits 0 immediately and silently serves nothing.
+  # For hot reload run `nuxt dev` on the host instead and point it at http://localhost:5200 —
+  # a node_modules bind mount into a container is slower and breaks on Windows and macOS file
+  # sharing.
+  delibera-webui:
+    environment:
+      NUXT_DELIBERA_API_BASE: http://delibera-server:8080
+    ports:
+      - "127.0.0.1:3000:3000"

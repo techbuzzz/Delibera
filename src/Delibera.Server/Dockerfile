@@ -7,8 +7,11 @@ ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 
 # — Restore (layer-cached: only re-runs when .csproj files change) —
+# Every referenced project must be copied here, not just the entry point: Delibera.Server
+# also references Delibera.Redis, and omitting it here fails the restore with NU1101.
 COPY ["src/Delibera.Server/Delibera.Server.csproj", "src/Delibera.Server/"]
 COPY ["src/Delibera.Core/Delibera.Core.csproj",     "src/Delibera.Core/"]
+COPY ["src/Delibera.Redis/Delibera.Redis.csproj",   "src/Delibera.Redis/"]
 RUN dotnet restore "src/Delibera.Server/Delibera.Server.csproj"
 
 # — Build & publish —

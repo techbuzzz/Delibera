@@ -19,3 +19,10 @@
 **/.opencode
 **/tests
 **/.bench
+# Node — the WebUI's local install must never enter the build context, or every
+# `docker compose build` ships hundreds of megabytes it does not need.
+**/node_modules
+**/.nuxt
+**/.output
+**/dist
+**/.data
