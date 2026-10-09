@@ -65,12 +65,18 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 
 // ── CORS (opt-in) ─────────────────────────────────────────────────────────────
-// Guarded rather than unconditional: no policy is registered unless
-// Delibera:Server:Cors:AllowedOrigins is non-empty, and UseCors against a missing policy
-// throws on the first request. The default deployment therefore keeps sending no
-// Access-Control-Allow-Origin at all, which is what stops a random page from reading this
-// unauthenticated API. Enable it only for a static client such as the GitHub Pages build.
-if (builder.Configuration.IsCorsEnabled())
+// Gated on whether AddCors actually ran, NOT on whether the configuration looks enabled.
+//
+// An earlier version asked the configuration here while the policy was registered from the same
+// configuration inside AddDeliberaServer. Two reads of the same section can disagree — the
+// configuration is live and providers can be appended between the two — and when they did the
+// host hit "Unable to resolve service for type 'ICorsService'" while activating CorsMiddleware,
+// i.e. it crashed at startup instead of serving. UseCors against a policy that was never
+// registered is not a degraded mode; it is a dead process.
+//
+// ICorsService is registered by AddCors and by nothing else, so its presence is the one answer
+// that cannot disagree with what is actually in the container.
+if (app.Services.GetService<Microsoft.AspNetCore.Cors.Infrastructure.ICorsService>() is not null)
    app.UseCors(ServerServiceExtensions.CorsPolicyName);
 
 app.UseMiddleware<CorrelationIdMiddleware>();

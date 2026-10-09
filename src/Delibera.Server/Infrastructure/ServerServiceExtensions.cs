@@ -20,19 +20,6 @@ public static class ServerServiceExtensions
    public const string CorsPolicyName = "DeliberaCors";
 
    /// <summary>
-   ///    True when a CORS policy was registered, i.e. when at least one allowed origin is set.
-   ///    The host checks this before calling <c>UseCors</c>.
-   /// </summary>
-   public static bool IsCorsEnabled(this IConfiguration configuration)
-   {
-      var cors = configuration
-         .GetSection(DeliberaServerOptions.SectionName)
-         .Get<DeliberaServerOptions>()?.Cors;
-
-      return cors?.AllowedOrigins?.Any(o => !string.IsNullOrWhiteSpace(o)) == true;
-   }
-
-   /// <summary>
    ///    Registers a named CORS policy, but only when origins are explicitly configured.
    /// </summary>
    /// <remarks>

@@ -28,7 +28,10 @@ environment:
 
 Origins are matched exactly; there is no wildcard switch. `AllowCredentials` together with `*`
 is rejected at startup with a message naming the config key, rather than by the framework with one
-that names nothing. 8 new tests, including that the default path registers no CORS service at all.
+that names nothing. 13 new tests: 8 asserting what gets registered, and 5 driving the real
+pipeline over HTTP — that a default host emits no `Access-Control-Allow-Origin`, that a
+configured origin gets its own origin echoed back rather than a wildcard, that an unlisted origin
+gets nothing, that the preflight is answered, and that `X-Correlation-Id` is exposed.
 
 ## [10.5.2] - 2026-10-09
 

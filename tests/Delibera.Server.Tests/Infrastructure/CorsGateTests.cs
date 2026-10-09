@@ -18,7 +18,7 @@ namespace Delibera.Server.Tests.Infrastructure;
 ///       The default path is the one that matters, and it is asserted rather than assumed:
 ///       a deployment that never configured CORS must send no Access-Control-Allow-Origin at
 ///       all. That header being absent is what stops a random web page from reading this
-///       unauthenticated, unthrottled API â€” a cross-origin <c>fetch</c> still fires the
+///       unauthenticated, unthrottled API Ã¢â‚¬â€ a cross-origin <c>fetch</c> still fires the
 ///       request without it, it simply cannot see the answer.
 ///    </para>
 ///    <para>
@@ -36,7 +36,7 @@ public sealed class CorsGateTests
    }
 
    /// <summary>
-   ///    Returns null when <c>AddCors</c> was never called at all â€” which is the stronger
+   ///    Returns null when <c>AddCors</c> was never called at all Ã¢â‚¬â€ which is the stronger
    ///    statement for the default path: no CORS service is registered, so there is nothing
    ///    that could emit an <c>Access-Control-Allow-Origin</c> header at request time.
    /// </summary>
@@ -54,8 +54,6 @@ public sealed class CorsGateTests
 
       var services = new ServiceCollection();
       services.AddDeliberaCors(config);
-
-      config.IsCorsEnabled().Should().BeFalse();
       TryResolvePolicies(services).Should().BeNull();
    }
 
@@ -67,23 +65,23 @@ public sealed class CorsGateTests
 
       var services = new ServiceCollection();
       services.AddDeliberaCors(config);
-
-      config.IsCorsEnabled().Should().BeFalse();
       TryResolvePolicies(services).Should().BeNull();
    }
 
    [Theory]
    [InlineData(" ")]
    [InlineData("\t")]
-   public void Whitespace_Only_Origins_Count_As_Not_Configured(string origin)
+   public void Whitespace_Only_Origins_Register_No_Policy(string origin)
    {
-      // A blank entry is what an unset compose variable leaves behind. Treating it as an
-      // origin would register a policy matching the literal string " ", which matches nothing
-      // while making IsCorsEnabled report true â€” the pipeline would then call UseCors on a
-      // policy that can never match.
+      // A blank entry is what an unset compose variable leaves behind. Treating it as an origin
+      // would register a policy matching the literal string " " or "\t" — which matches no
+      // browser ever — while the host still believes CORS is on.
       var config = ConfigWith(("Delibera:Server:Cors:AllowedOrigins:0", origin));
 
-      config.IsCorsEnabled().Should().BeFalse();
+      var services = new ServiceCollection();
+      services.AddDeliberaCors(config);
+
+      TryResolvePolicies(services).Should().BeNull();
    }
 
    [Fact]
@@ -94,8 +92,6 @@ public sealed class CorsGateTests
 
       var services = new ServiceCollection();
       services.AddDeliberaCors(config);
-
-      config.IsCorsEnabled().Should().BeTrue();
       ResolvePolicy(services).Should().NotBeNull();
    }
 
@@ -108,8 +104,6 @@ public sealed class CorsGateTests
 
       var services = new ServiceCollection();
       services.AddDeliberaCors(config);
-
-      config.IsCorsEnabled().Should().BeTrue();
       var policy = ResolvePolicy(services);
       policy.Should().NotBeNull();
    }
@@ -126,7 +120,7 @@ public sealed class CorsGateTests
       var act = () => services.AddDeliberaCors(config);
 
       // The framework rejects this combination too, but with a message that names no config
-      // key â€” an operator would be left grepping. Failing here points straight at the setting.
+      // key Ã¢â‚¬â€ an operator would be left grepping. Failing here points straight at the setting.
       act.Should().Throw<InvalidOperationException>()
          .WithMessage("*Delibera:Server:Cors:AllowCredentials*");
    }
@@ -140,8 +134,6 @@ public sealed class CorsGateTests
 
       var services = new ServiceCollection();
       services.AddDeliberaCors(config);
-
-      config.IsCorsEnabled().Should().BeTrue();
       ResolvePolicy(services).Should().NotBeNull();
    }
 }
