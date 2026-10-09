@@ -115,4 +115,9 @@ jobs:
             # cannot manufacture a release pointing at a tag that does not exist.
             gh release create "$TAG" --title "$title" --notes-file /tmp/release-body.md --verify-tag
           fi
-          gh release view "$TAG" --json url,tagName,isLatest --jq '"  -> \(.tagName)  latest=\(.isLatest)  \(.url)"'
+          # Only fields `gh release view --json` actually exposes. `isLatest` is NOT one of
+          # them (it belongs to `gh release list`), and asking for it fails with
+          # "Unknown JSON field" — AFTER the release was created, turning a successful
+          # publish into a red run.
+          gh release view "$TAG" --json url,tagName,isDraft,isPrerelease \
+            --jq '"  -> \(.tagName)  draft=\(.isDraft) prerelease=\(.isPrerelease)  \(.url)"'

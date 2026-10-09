@@ -71,17 +71,23 @@ jobs:
                   "https://hub.docker.com/v2/repositories/techbuzzz/$repo/" > /dev/null
             echo "   description + overview synced"
 
-            # Categories come from a fixed Docker Hub taxonomy and have changed between UI
-            # revisions, so a rejected value here must not cost us the description above.
-            if jq -nc --argjson c "$categories" '{categories:$c}' \
-               | curl -fsS -X PATCH \
-                   -H "Authorization: JWT ${JWT}" \
-                   -H 'Content-Type: application/json' \
-                   --data-binary @- \
-                   "https://hub.docker.com/v2/repositories/techbuzzz/$repo/" > /dev/null 2>&1; then
+            # Categories come from a fixed Docker Hub taxonomy keyed by slug, not by the
+            # display name shown in the UI, so the slugs below are the part most likely to
+            # need fixing. A rejected value must not cost us the description above, but it
+            # must not be silent either — Docker Hub echoes the accepted values in the error
+            # body, so print it instead of discarding it.
+            cats_resp="$(jq -nc --argjson c "$categories" '{categories:$c}' \
+              | curl -sS -w $'\n%{http_code}' -X PATCH \
+                  -H "Authorization: JWT ${JWT}" \
+                  -H 'Content-Type: application/json' \
+                  --data-binary @- \
+                  "https://hub.docker.com/v2/repositories/techbuzzz/$repo/")"
+            cats_code="${cats_resp##*$'\n'}"
+            if [ "$cats_code" = "200" ] || [ "$cats_code" = "201" ]; then
               echo "   categories synced: $categories"
             else
-              echo "   ::warning::categories rejected for $repo ($categories) — description still applied"
+              echo "   ::warning::categories rejected for $repo (HTTP $cats_code): $categories"
+              echo "   Docker Hub said: $(printf '%s' "${cats_resp%$'\n'*}" | head -c 600)"
             fi
           done <<'REPOS'
           delibera-server|ASP.NET Core host for multi-model AI council debates: REST, SSE streaming, MCP|["web","messaging","ai-machine-learning","network"]
