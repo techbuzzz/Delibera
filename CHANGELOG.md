@@ -5,6 +5,31 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added — opt-in CORS for static browser clients
+
+`Delibera:Server:Cors:AllowedOrigins` registers a named CORS policy listing the browser origins
+permitted to call the API cross-origin, and `UseCors` is wired only when that list is non-empty.
+
+**Off by default, and the default is the point.** The Web UI reaches the API through its own
+same-origin BFF route and never needs CORS. The absent header is also what stops an arbitrary web
+page from *reading* a response — a cross-origin `fetch` still fires the request without it, it just
+cannot see the answer. Turning this on globally would have added a browser-side CSRF vector to an
+API that is unauthenticated, unthrottled, and spends real credits per debate.
+
+Set it only for a deliberately static client — the GitHub Pages build of the Web UI, which has no
+Nitro server and therefore no BFF route. In compose:
+
+```yaml
+environment:
+  DELIBERA_CORS_ORIGIN: https://techbuzzz.github.io
+```
+
+Origins are matched exactly; there is no wildcard switch. `AllowCredentials` together with `*`
+is rejected at startup with a message naming the config key, rather than by the framework with one
+that names nothing. 8 new tests, including that the default path registers no CORS service at all.
+
 ## [10.5.2] - 2026-10-09
 
 **Contains behaviour changes.** Two are breaking for existing deployments: published ports now

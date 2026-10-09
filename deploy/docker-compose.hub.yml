@@ -64,6 +64,11 @@ services:
       Delibera__Redis__ConnectionString: ${DELIBERA_REDIS_CONNECTION:-redis:6379,abortConnect=false}
       Delibera__Redis__StreamMaxLength:  ${DELIBERA_REDIS_STREAM_MAX_LENGTH:-10000}
       Delibera__Redis__StateKeyTtl:      ${DELIBERA_REDIS_STATE_TTL:-24:00:00}
+      # CORS is OFF unless you list origins here. The bundled Web UI talks to this API through
+      # its own same-origin BFF route and never needs it; set it only when a *static* client
+      # (e.g. the GitHub Pages build) calls this API straight from the browser. List origins
+      # explicitly — a wildcard would let any page on the internet spend credits here.
+      Delibera__Server__Cors__AllowedOrigins__0: ${DELIBERA_CORS_ORIGIN:-}
     depends_on:
       qdrant:
         condition: service_healthy

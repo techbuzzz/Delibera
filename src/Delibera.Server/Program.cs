@@ -64,6 +64,15 @@ app.UseExceptionHandler();
 // Gives 4xx/5xx responses that have no body (unmatched routes, 405s) a ProblemDetails body.
 app.UseStatusCodePages();
 
+// ── CORS (opt-in) ─────────────────────────────────────────────────────────────
+// Guarded rather than unconditional: no policy is registered unless
+// Delibera:Server:Cors:AllowedOrigins is non-empty, and UseCors against a missing policy
+// throws on the first request. The default deployment therefore keeps sending no
+// Access-Control-Allow-Origin at all, which is what stops a random page from reading this
+// unauthenticated API. Enable it only for a static client such as the GitHub Pages build.
+if (builder.Configuration.IsCorsEnabled())
+   app.UseCors(ServerServiceExtensions.CorsPolicyName);
+
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<TenantResolutionMiddleware>();
 

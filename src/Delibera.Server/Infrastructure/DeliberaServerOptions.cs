@@ -20,6 +20,7 @@ public sealed class DeliberaServerOptions
 
    public TelemetryOptions Telemetry { get; init; } = new();
    public AuthOptions Auth { get; init; } = new();
+   public CorsGateOptions Cors { get; init; } = new();
 }
 
 public sealed class TelemetryOptions
@@ -32,4 +33,42 @@ public sealed class AuthOptions
 {
    public bool Enabled { get; init; } = false;
    public string? ApiKey { get; init; }
+}
+
+/// <summary>
+///    Cross-origin access for browser clients. Empty by default.
+/// </summary>
+/// <remarks>
+///    <para>
+///       Empty means <b>no CORS policy is registered at all</b>, which is the shipped behaviour:
+///       the Web UI reaches the API through its own same-origin BFF route and never needs it. The
+///       header being absent is also what stops a random web page from <i>reading</i> a response —
+///       without CORS a cross-origin <c>fetch</c> still fires the request, it just cannot see the
+///       answer, so leaving this on by default would quietly add a browser-side CSRF vector to an
+///       unauthenticated, unthrottled API that spends real credits.
+///    </para>
+///    <para>
+///       Set it only for a deliberately static client — the GitHub Pages build of the Web UI —
+///       and list origins explicitly. There is no wildcard switch on purpose.
+///    </para>
+/// </remarks>
+/// <remarks>
+///    Named <c>CorsGateOptions</c> rather than <c>CorsOptions</c> so it cannot shadow
+///    <c>Microsoft.AspNetCore.Cors.Infrastructure.CorsOptions</c> in any file importing both
+///    namespaces.
+/// </remarks>
+public sealed class CorsGateOptions
+{
+   /// <summary>
+   ///    Exact browser origins permitted to call the API cross-origin, e.g.
+   ///    <c>https://techbuzzz.github.io</c>. Empty — the default — registers no policy.
+   /// </summary>
+   public string[] AllowedOrigins { get; init; } = [];
+
+   /// <summary>
+   ///    Whether to allow credentialed requests. Leave false unless the API sits behind an
+   ///    authenticating proxy that sets cookies; with cookies anywhere in play a wildcard
+   ///    origin would be rejected outright.
+   /// </summary>
+   public bool AllowCredentials { get; init; } = false;
 }

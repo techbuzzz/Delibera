@@ -268,6 +268,23 @@ docker compose -f docker-compose.hub.yml up -d
 > published port binds to `127.0.0.1`. Put an authenticating reverse proxy in front before exposing
 > this stack to any network you do not control.
 
+#### 🌐 Web UI on GitHub Pages
+
+The same UI is deployed statically to <https://techbuzzz.github.io/Delibera/> on every merge to
+`main`.
+
+A static export has **no server**, so the UI's same-origin BFF route does not exist there — it needs
+an absolute API origin, and that server must allow the Pages origin via CORS:
+
+```yaml
+environment:
+  DELIBERA_CORS_ORIGIN: https://techbuzzz.github.io
+```
+
+CORS is **off by default** and stays off unless you list origins. That is deliberate: the missing
+header is what stops a random web page from reading this API, and the Web UI in the container does
+not need it. `Wildcard + AllowCredentials` is rejected at startup with a message naming the key.
+
 #### 📥 From source
 
 ```bash
