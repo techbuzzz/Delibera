@@ -30,6 +30,11 @@ jobs:
   release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
+    # Job-level, not step-level: `Generate PR notes` also calls `gh`, and a runner has no
+    # ambient credentials. With `set -e` an unauthenticated `gh api` aborts the job before the
+    # release is ever created — the failure looks like "workflow broke", not "auth missing".
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
@@ -59,14 +64,26 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Generate PR notes
-        id: notes
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
         run: |
           set -euo pipefail
-          gh api --method POST \
-            "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
-            -f tag_name="${{ steps.meta.outputs.tag }}" > /tmp/auto-notes.md
+          # Explicit JSON through --input rather than -f: `gh api -f` sends parameters as a
+          # form-encoded body, and this endpoint wants application/json. The mismatch comes
+          # back as a 415 that reads like a permissions problem.
+          #
+          # Non-fatal on purpose. Auto notes are a nice-to-have appended after the WhatsNew
+          # document — losing them must not cost us the release itself.
+          if ! printf '{"tag_name":"%s"}' "$TAG" \
+               | gh api --method POST \
+                   -H 'Accept: application/vnd.github+json' \
+                   "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+                   --input - > /tmp/auto-notes.md; then
+            echo "::warning::could not generate PR notes for $TAG; continuing without them"
+            : > /tmp/auto-notes.md
+          fi
           if [ ! -s /tmp/auto-notes.md ]; then
-            echo "::warning::GitHub returned no auto notes for this tag"
+            echo "::warning::GitHub returned no auto notes for $TAG"
           fi
 
       - name: Assemble the release body
@@ -101,7 +118,6 @@ jobs:
 
       - name: Create or update the release
         env:
-          GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.meta.outputs.tag }}
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
