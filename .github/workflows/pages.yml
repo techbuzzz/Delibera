@@ -1,0 +1,72 @@
+name: pages
+
+# Publishes site/index.html to GitHub Pages on every merge to main.
+#
+# The site is hand-written HTML, not a generated one: a static landing page does not justify a
+# docs toolchain (MkDocs/Docusaurus) in a repo that has no Python. The one thing that must stay
+# in sync is the version string, so it is injected here from the csproj that actually drives
+# `dotnet pack` — meaning the page can never advertise a version that was not published.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A new push supersedes an in-flight deploy; without this the second run would fail on the
+# concurrency lock and leave the site one deploy behind.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version from the packable project
+        id: version
+        run: |
+          set -euo pipefail
+          # Read the version from the project that publish-nuget.yml packs. Do NOT read it from
+          # a tag or from CHANGELOG.md: those can disagree with what is on nuget.org, and a
+          # landing page claiming an unpublished version is worse than a stale one.
+          version="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' src/Delibera.Core/Delibera.Core.csproj | head -1)"
+          if [ -z "$version" ]; then
+            echo "Could not resolve <Version> from src/Delibera.Core/Delibera.Core.csproj" >&2
+            exit 1
+          fi
+          echo "Resolved Delibera version: $version"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble site
+        run: |
+          set -euo pipefail
+          mkdir -p _site/img
+          cp site/index.html _site/index.html
+          # The banner is the same asset the README uses — one file, two consumers.
+          cp img/delibera-horizontal-1920x480.png _site/img/
+          sed -i "s/{{VERSION}}/${{ steps.version.outputs.value }}/g" _site/index.html
+          if grep -q '{{VERSION}}' _site/index.html; then
+            echo "Unsubstituted {{VERSION}} placeholder left in the built site" >&2
+            exit 1
+          fi
+          ls -la _site _site/img
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

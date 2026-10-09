@@ -1,0 +1,118 @@
+name: release
+
+# Publishes a GitHub Release for every v* tag.
+#
+# The body is assembled from three parts, in this order:
+#   1. .github/release-notes/header.md  — orientation, registry links, the security warning
+#   2. docs/WhatsNew-v<version>.md       — the hand-written account of what changed and why
+#   3. auto-generated notes              — every merged PR, straight from GitHub
+#
+# (2) is why this is not just `--generate-notes`: an auto-notes-only release lists "updated README"
+# and "bump version to 10.5.2" as if they were the release. Part (2) is written by the person who
+# knows which of those commits mattered.
+#
+# Kept separate from publish-nuget.yml so a release-page failure cannot fail a package publish.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (defaults to the tag this workflow was dispatched on)'
+        required: false
+        type: string
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag and cross-check the version
+        id: meta
+        run: |
+          set -euo pipefail
+          tag="${TAG:-${GITHUB_REF#refs/tags/}}"
+          [ -n "$tag" ] || { echo "No tag to release" >&2; exit 1; }
+          case "$tag" in
+            v*) version="${tag#v}" ;;
+            *)  echo "Refusing to release a non-version tag: $tag" >&2; exit 1 ;;
+          esac
+
+          # A tag that disagrees with <Version> ships a package whose metadata lies about
+          # itself — publish-nuget packs from the csproj, not the tag, so the Docker tag would
+          # read 10.5.2 while the nupkg on nuget.org is 10.5.1. This is the exact mismatch that
+          # shipped a silent no-op once; fail here instead.
+          csproj="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' src/Delibera.Core/Delibera.Core.csproj | head -1)"
+          if [ "$csproj" != "$version" ]; then
+            echo "::error::tag $tag says $version but Delibera.Core.csproj says $csproj" >&2
+            exit 1
+          fi
+
+          echo "Releasing $tag (Delibera.Core $csproj)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Generate PR notes
+        id: notes
+        run: |
+          set -euo pipefail
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="${{ steps.meta.outputs.tag }}" > /tmp/auto-notes.md
+          if [ ! -s /tmp/auto-notes.md ]; then
+            echo "::warning::GitHub returned no auto notes for this tag"
+          fi
+
+      - name: Assemble the release body
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          body=/tmp/release-body.md
+          cp .github/release-notes/header.md "$body"
+
+          sed -i "s/{{VERSION}}/${VERSION}/g" "$body"
+
+          whatsnew="docs/WhatsNew-v${VERSION}.md"
+          if [ -f "$whatsnew" ]; then
+            printf '\n## What is new in %s\n\n' "$VERSION" >> "$body"
+            cat "$whatsnew" >> "$body"
+          else
+            echo "::warning::$whatsnew not found — release will carry only the header and PR notes"
+          fi
+
+          if [ -s /tmp/auto-notes.md ]; then
+            printf '\n---\n\n## Merged pull requests\n\n' >> "$body"
+            cat /tmp/auto-notes.md >> "$body"
+          fi
+
+          if grep -q '{{VERSION}}' "$body"; then
+            echo "::error::unsubstituted {{VERSION}} left in the release body" >&2
+            exit 1
+          fi
+          echo "--- body: $(wc -c < "$body") bytes, $(wc -l < "$body") lines ---"
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          title="Delibera $VERSION"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release for $TAG already exists — updating it."
+            gh release edit "$TAG" --title "$title" --notes-file /tmp/release-body.md
+          else
+            # --verify-tag refuses to create a release whose tag is not on the remote, so a typo
+            # cannot manufacture a release pointing at a tag that does not exist.
+            gh release create "$TAG" --title "$title" --notes-file /tmp/release-body.md --verify-tag
+          fi
+          gh release view "$TAG" --json url,tagName,isLatest --jq '"  -> \(.tagName)  latest=\(.isLatest)  \(.url)"'

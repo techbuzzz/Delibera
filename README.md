@@ -11,7 +11,13 @@
 [![NuGet](https://img.shields.io/nuget/v/Delibera.Core.svg)](https://www.nuget.org/packages/Delibera.Core)
 [![NuGet: Server](https://img.shields.io/nuget/v/Delibera.Server.svg)](https://www.nuget.org/packages/Delibera.Server)
 [![NuGet: Redis](https://img.shields.io/nuget/v/Delibera.Redis.svg)](https://www.nuget.org/packages/Delibera.Redis)
+[![Release](https://img.shields.io/github/v/release/techbuzzz/Delibera?label=Release)](https://github.com/techbuzzz/Delibera/releases/latest)
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-2496ED?logo=docker&logoColor=fff)](https://hub.docker.com/r/techbuzzz/delibera-server)
+[![Pulls: server](https://img.shields.io/docker/pulls/techbuzzz/delibera-server?logo=docker&logoColor=2496ED)](https://hub.docker.com/r/techbuzzz/delibera-server)
+[![Pulls: webui](https://img.shields.io/docker/pulls/techbuzzz/delibera-webui?logo=docker&logoColor=2496ED)](https://hub.docker.com/r/techbuzzz/delibera-webui)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-3E8AFF?logo=githubpages)](https://techbuzzz.github.io/Delibera/)
 [![CI](https://github.com/techbuzzz/Delibera/actions/workflows/publish-nuget.yml/badge.svg)](https://github.com/techbuzzz/Delibera/actions/workflows/publish-nuget.yml)
+[![Docker CI](https://github.com/techbuzzz/Delibera/actions/workflows/publish-docker.yml/badge.svg)](https://github.com/techbuzzz/Delibera/actions/workflows/publish-docker.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-1F2937.svg)](https://dotnet.microsoft.com)
 [![C# 15](https://img.shields.io/badge/C%23-15.0--preview-239120.svg)](https://learn.microsoft.com/dotnet/csharp/)
@@ -229,9 +235,49 @@ Heavier local models, recommended on GPUs with ≥ 24 GB VRAM or on Ollama Cloud
 
 ### Installation
 
+Delibera ships as three NuGet packages and two Docker images. Pick the path that fits.
+
+#### 📦 NuGet
+
 ```bash
-dotnet add package Delibera.Core
+dotnet add package Delibera.Core      # the framework — start here
+dotnet add package Delibera.Server    # ASP.NET Core host (Minimal API, SSE, MCP)
+dotnet add package Delibera.Redis     # distributed debates + shared result cache
 ```
+
+All three publish on every release at the same version. `Delibera.Server` pulls `Delibera.Redis`
+transitively, so you only need to reference it explicitly if you use the Redis integration directly.
+Redis stays **off** unless you set `Delibera:Redis:Enabled`.
+
+#### 🐳 Docker Hub — no build required
+
+Images are published on every `v*` tag for `linux/amd64` **and** `linux/arm64`:
+
+| Image | What it is |
+| --- | --- |
+| `techbuzzz/delibera-server` | API, SSE debate streaming, MCP endpoints |
+| `techbuzzz/delibera-webui` | Nuxt 4 browser front end for the debate workflow |
+
+```bash
+curl -O https://raw.githubusercontent.com/techbuzzz/Delibera/main/deploy/docker-compose.hub.yml
+export DELIBERA_VERSION=10.5.2      # pin a release; omit to track :latest
+docker compose -f docker-compose.hub.yml up -d
+```
+
+> ⚠️ **The API is unauthenticated and unthrottled, and a debate spends real LLM credits.** Every
+> published port binds to `127.0.0.1`. Put an authenticating reverse proxy in front before exposing
+> this stack to any network you do not control.
+
+#### 📥 From source
+
+```bash
+git clone https://github.com/techbuzzz/Delibera.git
+cd Delibera
+dotnet build Delibera.slnx -c Release
+```
+
+From a clone, `docker compose up -d` starts the whole stack — server, Web UI, Ollama, Qdrant,
+pgvector and Redis. See [docs/QuickStart.md](docs/QuickStart.md) for the walkthrough.
 
 ### Minimal Example
 

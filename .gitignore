@@ -470,3 +470,10 @@ FodyWeavers.xsd
 **/.output/
 **/.data/
 **/dist/
+
+
+# Social / newsletter drafts (never committed)
+# LinkedIn articles and release announcements are written here, reviewed on the
+# desktop, and pasted into the platform. Same rationale as .bench/ — personal
+# working material, not repository documentation.
+.articles/
