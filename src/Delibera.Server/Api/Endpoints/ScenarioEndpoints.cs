@@ -1,3 +1,4 @@
+using Delibera.Core;
 using Delibera.Core.Interfaces;
 using Delibera.Server.Middleware;
 using Delibera.Server.Scenarios;
@@ -40,7 +41,7 @@ public static class ScenarioEndpoints
       group.MapGet("/{id}/stream", StreamScenarioAsync)
          .WithName("StreamScenario")
          .WithSummary("SSE stream of DebateRound payloads for a running scenario.")
-         .Produces(StatusCodes.Status200OK, contentType: "text/event-stream");
+         .Produces(StatusCodes.Status200OK, contentType: BuiltIn.HttpHeaderValues.EventStream);
 
       return routes;
    }

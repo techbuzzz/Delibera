@@ -1,3 +1,4 @@
+using Delibera.Core;
 using Delibera.Core.Debate;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Providers;
@@ -14,10 +15,10 @@ public static class ScenarioBuilder
       if (request.Members is not { Length: > 0 })
          throw new ArgumentException("A scenario must have at least one member.", nameof(request));
 
-      var endpoint = configuration["Delibera:Providers:DefaultEndpoint"] ?? "http://localhost:11434";
-      var apiKey = configuration["Delibera:Providers:ApiKey"];
-      var fastModel = configuration["Delibera:Models:Fast"] ?? "llama3.2:3b";
-      var strongModel = configuration["Delibera:Models:Strong"] ?? "qwen2.5:7b";
+       var endpoint = configuration[BuiltIn.ConfigKeys.ProvidersDefaultEndpoint] ?? BuiltIn.Endpoints.OllamaLocal;
+       var apiKey = configuration[BuiltIn.ConfigKeys.ProvidersApiKey];
+       var fastModel = configuration[BuiltIn.ConfigKeys.ModelsFast] ?? BuiltIn.Models.DefaultFast;
+       var strongModel = configuration[BuiltIn.ConfigKeys.ModelsStrong] ?? BuiltIn.Models.DefaultStrong;
       using var factory = new ProviderFactory();
 
       ILLMProvider DefaultProvider()

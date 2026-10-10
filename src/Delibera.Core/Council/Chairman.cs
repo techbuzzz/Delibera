@@ -20,9 +20,9 @@ public static class Chairman
 // ──────────────────────────────────────────────
 
    /// <summary>Creates a standard, neutral Chairman.</summary>
-   public static CouncilMember CreateStandard(string modelName, ILLMProvider provider)
-   {
-      return new CouncilMember(modelName, provider, "Chairman",
+public static CouncilMember CreateStandard(string modelName, ILLMProvider provider)
+    {
+       return new CouncilMember(modelName, provider, BuiltIn.Roles.Chairman,
          """
          You are the Chairman of an AI Council debate — neutral, objective and fair.
          You organise the debate process, ensure every participant is heard,
@@ -54,9 +54,9 @@ public static class Chairman
    }
 
    /// <summary>Creates a Chairman with a custom persona prompt.</summary>
-   public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt)
-   {
-      return new CouncilMember(modelName, provider, "Chairman", personaPrompt);
+public static CouncilMember CreateCustom(string modelName, ILLMProvider provider, string personaPrompt)
+    {
+       return new CouncilMember(modelName, provider, BuiltIn.Roles.Chairman, personaPrompt);
    }
 
    /// <summary>
@@ -84,8 +84,8 @@ public static class Chairman
       // Encode the strategy as a special marker in the persona prompt so the executor
       // can detect it without changing the CouncilMember type. The marker is a
       // well-known prefix that CouncilExecutor checks for.
-      var persona = $"{VotingChairmanMarker}{votingStrategy.MethodName}:{votingStrategy.GetType().FullName}";
-      return new CouncilMember(modelName, provider, "Voting Chairman", persona);
+var persona = $"{VotingChairmanMarker}{votingStrategy.MethodName}:{votingStrategy.GetType().FullName}";
+       return new CouncilMember(modelName, provider, BuiltIn.Roles.VotingChairman, persona);
    }
 
    // ──────────────────────────────────────────────

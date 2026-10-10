@@ -82,7 +82,10 @@ public sealed class KnowledgeKeeper
       // corpus for exactly `limit` and merging afterwards would let the largest corpus fill the
       // whole budget before a smaller one contributed anything.
       var perCollection = Math.Max(limit, limit * 2);
-      var merged = new List<VectorSearchResult>();
+      // Each corpus is asked for exactly perCollection hits, so the final count is known
+      // before the first call — the merge below can allocate it in one go instead of
+      // growing (and copying) the list once per corpus.
+      List<VectorSearchResult> merged = [with(capacity: Collections.Count * perCollection)];
 
       foreach (var collection in Collections)
       {

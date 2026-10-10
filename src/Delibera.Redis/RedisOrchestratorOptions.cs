@@ -1,3 +1,5 @@
+using Delibera.Core;
+
 namespace Delibera.Redis;
 
 /// <summary>
@@ -5,7 +7,7 @@ namespace Delibera.Redis;
 /// </summary>
 public sealed class RedisOrchestratorOptions
 {
-   public const string SectionName = "Delibera:Redis";
+   public const string SectionName = BuiltIn.ConfigSections.Redis;
 
    /// <summary>
    ///    Redis connection string (e.g. "localhost:6379,abortConnect=false").
@@ -16,23 +18,23 @@ public sealed class RedisOrchestratorOptions
    ///    Redis Streams key for member-turn jobs published by the orchestrator.
    ///    Workers read from this stream to pick up turn execution work.
    /// </summary>
-   public string JobStreamKey { get; set; } = "delibera:jobs";
+   public string JobStreamKey { get; set; } = BuiltIn.Redis.JobStreamKey;
 
    /// <summary>
    ///    Redis Streams key for debate round events published by workers.
    ///    The orchestrator reads from this stream to push SSE events to clients.
    /// </summary>
-   public string EventStreamKey { get; set; } = "delibera:events";
+   public string EventStreamKey { get; set; } = BuiltIn.Redis.EventStreamKey;
 
    /// <summary>
    ///    Consumer group name for the orchestrator's event listener.
    /// </summary>
-   public string OrchestratorConsumerGroup { get; set; } = "orchestrator";
+   public string OrchestratorConsumerGroup { get; set; } = BuiltIn.Redis.OrchestratorGroup;
 
    /// <summary>
    ///    Consumer group name for worker instances.
    /// </summary>
-   public string WorkerConsumerGroup { get; set; } = "workers";
+   public string WorkerConsumerGroup { get; set; } = BuiltIn.Redis.WorkerGroup;
 
    /// <summary>
    ///    Consumer name within the worker group. Defaults to the machine name.
@@ -79,7 +81,7 @@ public sealed class RedisOrchestratorOptions
    /// <summary>
    ///    Prefix for Redis hash keys storing debate state (status, result).
    /// </summary>
-   public string StateKeyPrefix { get; set; } = "delibera:state:";
+   public string StateKeyPrefix { get; set; } = BuiltIn.Redis.StateKeyPrefix;
 
    /// <summary>
    ///    Maximum number of pending messages before claiming stalled messages.

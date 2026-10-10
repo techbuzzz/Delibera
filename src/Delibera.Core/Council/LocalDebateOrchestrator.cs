@@ -9,33 +9,26 @@ namespace Delibera.Core.Council;
 ///    This is the default implementation — no external infrastructure required.
 ///    Round events are published via an in-process channel.
 ///    <para>
-///       Completed entries are automatically evicted after <see cref="CompletedEntryLifetime" />
+///       Completed entries are automatically evicted after <see cref="BuiltIn.Timeouts.CompletedDebateLifetime" />
 ///       to prevent unbounded memory growth. The default lifetime is 30 minutes.
 ///    </para>
 /// </summary>
 public sealed class LocalDebateOrchestrator : IDebateOrchestrator, IDisposable
 {
-   /// <summary>
-   ///    Default lifetime for completed debate entries before they are evicted
-   ///    from the in-memory dictionary. Set to <see cref="TimeSpan.Zero" /> to
-   ///    disable eviction (entries remain indefinitely).
-   /// </summary>
-   public static readonly TimeSpan CompletedEntryLifetime = TimeSpan.FromMinutes(30);
-
-   private readonly TimeSpan _completedEntryLifetime;
-   private readonly ConcurrentDictionary<string, DebateEntry> _entries = new();
-   private readonly Timer? _evictionTimer;
-
-   /// <summary>
-   ///    Creates a new <see cref="LocalDebateOrchestrator" />.
-   /// </summary>
-   /// <param name="completedEntryLifetime">
-   ///    How long completed entries are kept before eviction.
-   ///    Defaults to <see cref="CompletedEntryLifetime" /> (30 minutes).
-   /// </param>
-   public LocalDebateOrchestrator(TimeSpan? completedEntryLifetime = null)
-   {
-      _completedEntryLifetime = completedEntryLifetime ?? CompletedEntryLifetime;
+    private readonly TimeSpan _completedEntryLifetime;
+    private readonly ConcurrentDictionary<string, DebateEntry> _entries = new();
+    private readonly Timer? _evictionTimer;
+ 
+    /// <summary>
+    ///    Creates a new <see cref="LocalDebateOrchestrator" />.
+    /// </summary>
+    /// <param name="completedEntryLifetime">
+    ///    How long completed entries are kept before eviction.
+    ///    Defaults to <see cref="BuiltIn.Timeouts.CompletedDebateLifetime" /> (30 minutes).
+    /// </param>
+    public LocalDebateOrchestrator(TimeSpan? completedEntryLifetime = null)
+    {
+       _completedEntryLifetime = completedEntryLifetime ?? BuiltIn.Timeouts.CompletedDebateLifetime;
       if (_completedEntryLifetime > TimeSpan.Zero)
          _evictionTimer = new Timer(EvictCompletedEntries, new WeakReference<LocalDebateOrchestrator>(this),
             _completedEntryLifetime, _completedEntryLifetime);

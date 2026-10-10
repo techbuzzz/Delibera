@@ -1,3 +1,5 @@
+using Delibera.Core;
+
 namespace Delibera.Server.Infrastructure;
 
 /// <summary>
@@ -20,7 +22,7 @@ public sealed class RedisGateOptions
    /// <summary>
    ///    The same section <c>RedisOrchestratorOptions.SectionName</c> resolves to.
    /// </summary>
-   public const string SectionName = "Delibera:Redis";
+   public const string SectionName = BuiltIn.ConfigSections.Redis;
 
    /// <summary>
    ///    Replaces the in-process <c>LocalDebateOrchestrator</c> with

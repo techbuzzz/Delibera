@@ -1,3 +1,4 @@
+using Delibera.Core;
 using Microsoft.AspNetCore.Diagnostics;
 
 namespace Delibera.Server.Infrastructure;
@@ -23,7 +24,7 @@ public sealed class ProblemDetailsExceptionHandler(
    ILogger<ProblemDetailsExceptionHandler> logger) : IExceptionHandler
 {
    /// <summary>Header the correlation id is echoed on, and the key it is stored under.</summary>
-   public const string CorrelationIdHeader = "X-Correlation-Id";
+   public const string CorrelationIdHeader = BuiltIn.HttpHeaders.CorrelationId;
 
    public async ValueTask<bool> TryHandleAsync(
       HttpContext httpContext,

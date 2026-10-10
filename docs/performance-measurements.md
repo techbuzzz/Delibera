@@ -411,6 +411,60 @@ were git worktrees at `1297e38` and `978f4cb`.
 
 ---
 
+## 9. C# 15 pass — what it did and did not move
+
+A pass adopted the C# 15 features that actually compile on `net10.0` and fixed three per-request
+costs on the server side. The honest result is that **the framework-overhead benchmark does not
+show it**, and the reason matters more than the number.
+
+### 9.1 The measured result: no change, and not noise-hiding a small win
+
+Same harness, same workload, baseline extracted from `HEAD` with `git archive` and built via
+`-p:DeliberaCorePath=`. Three interleaved pairs, 25 debates each, after two warm-ups:
+
+| Run | Median (baseline) | Median (after) | Allocations, first debate |
+|---|---|---|---|
+| 1 | 1.06 ms | 1.06 ms | 4 730 408 B / 4 730 408 B |
+| 2 | 0.86 ms | 1.45 ms | 4 730 344 B / 4 722 768 B |
+| 3 | 1.05 ms | 1.09 ms | 4 722 768 B / 4 722 768 B |
+
+Allocations are equal, and the run-to-run spread (0.86–1.45 ms) is wider than the difference
+between the two sides. Per the rule this document already follows — sub-millisecond differences
+are not signal — **there is no measurable change here, in either direction.**
+
+That is expected rather than disappointing: the harness drives a three-member debate with a fake
+provider, which exercises orchestration and prompt assembly. It does not chunk documents, does not
+compress context, does not run a voting strategy and does not search a vector store. Those are
+exactly the paths that were changed.
+
+### 9.2 What was changed, and where it should show up
+
+| Change | Path | Expected to matter on |
+|---|---|---|
+| `[with(capacity: n)]` on voting score tables, chunk lists, compression buffers, RAG merge | per round / per chunk | debates with context compression, chunked corpora, multi-corpus RAG |
+| Closed generic `IValidator<>` per argument → cached map | per request, per argument | every HTTP request |
+| Second `ConnectionMultiplexer` → reuse the DI singleton | process lifetime | any deployment using `Delibera.Redis` |
+| SSE frame: 6 writes + flush → one `PipeWriter` frame | per SSE event | every streamed debate |
+
+The server-side changes are **not measured here at all** — `.bench/ServerBench/Measure-Server.ps1`
+drives a running container on `:5200` across REST, SSE, MCP and corpus ingest, and it was not run
+as part of this pass. Their value is structural and static: one fewer reflection call per request
+argument, one fewer TCP pool per process, three fewer writes per event frame. Those are argued
+from the code, not measured, and are labelled as such until someone runs the server harness.
+
+### 9.3 Regression coverage added
+
+Two tests were added rather than relying on the numbers above:
+
+- `RequestValidationTests.Validator_Type_Is_Resolved_Once_Per_Contract_Not_Per_Request` fails if the
+  cached validator type disappears, i.e. if the per-request `MakeGenericType` call returns.
+- `SseHeartbeatTests.Round_Is_Flushed_While_The_Debate_Is_Still_Running` withholds the terminal
+  event and fails unless the round reaches the wire within three seconds. It was verified to have
+  teeth: removing the per-frame flush makes it fail, which is the buffering regression this
+  codebase has hit before.
+
+---
+
 ## Reproducing
 
 | harness | what it measures |

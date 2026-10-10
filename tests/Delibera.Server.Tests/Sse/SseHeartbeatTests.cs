@@ -132,6 +132,95 @@ public sealed class SseHeartbeatTests
    }
 
    /// <summary>
+   ///    A buffering proxy once passed every other test in this file while delivering each
+   ///    round 150–200 seconds late. The other tests here cannot see that failure: they hand
+   ///    the writer a <see cref="MemoryStream" /> and read everything back after the debate is
+   ///    over, so a frame held in a buffer and a frame written promptly look identical.
+   ///    <para>
+   ///       This one watches the wire instead. The terminal event is withheld, so the debate
+   ///       cannot finish on its own; the round must arrive anyway, within the timeout. If it
+   ///       only shows up when the writer returns, the frame was sitting in a buffer — which is
+   ///       precisely the defect being guarded against.
+   ///    </para>
+   /// </summary>
+   [Fact]
+   public async Task Round_Is_Flushed_While_The_Debate_Is_Still_Running()
+   {
+      var orchestrator = ChannelOrchestrator.Open();
+      orchestrator.Publish("d1", new DebateRoundEvent.RoundCompleted("d1", Round(1)));
+
+      using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+      var ctx = new DefaultHttpContext();
+      var wire = new SignalStream();
+      ctx.Response.Body = wire;
+
+      // This never returns on its own: the orchestrator channel is left open and no terminal
+      // event is published, so the write task is still running when the round must arrive.
+      var write = SseDebateStreamWriter.WriteAsync(Record(), orchestrator, ctx, cts.Token, FastHeartbeat);
+
+      var arrived = await Task.WhenAny(wire.SawRound, Task.Delay(TimeSpan.FromSeconds(3)));
+
+      arrived.Should().BeSameAs(wire.SawRound,
+         "a round that only reaches the client when the stream ends is indistinguishable from "
+         + "buffering, which is how this failure shipped in the first place");
+
+      await cts.CancelAsync();
+      await write;
+   }
+
+   /// <summary>
+   ///    Write-only stream that completes a task the first time a round frame lands on it.
+   /// </summary>
+   private sealed class SignalStream : Stream
+   {
+      private readonly TaskCompletionSource _sawRound =
+         new(TaskCreationOptions.RunContinuationsAsynchronously);
+      private readonly StringBuilder _received = new();
+
+      public Task SawRound => _sawRound.Task;
+
+      public override bool CanRead => false;
+      public override bool CanSeek => false;
+      public override bool CanWrite => true;
+      public override long Length => 0;
+      public override long Position { get => 0; set => throw new NotSupportedException(); }
+
+      public override void Write(byte[] buffer, int offset, int count) =>
+         Observe(buffer.AsSpan(offset, count));
+
+      public override void Write(ReadOnlySpan<byte> buffer) => Observe(buffer);
+
+      public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct)
+      {
+         Observe(buffer.AsSpan(offset, count));
+         return Task.CompletedTask;
+      }
+
+      public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
+      {
+         Observe(buffer.Span);
+         return ValueTask.CompletedTask;
+      }
+
+      private void Observe(ReadOnlySpan<byte> chunk)
+      {
+         var text = Encoding.UTF8.GetString(chunk);
+         lock (_received)
+         {
+            _received.Append(text);
+            if (text.Contains("event: debate-round", StringComparison.Ordinal))
+               _sawRound.TrySetResult();
+         }
+      }
+
+      public override void Flush() { }
+      public override Task FlushAsync(CancellationToken ct) => Task.CompletedTask;
+      public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+      public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+      public override void SetLength(long value) => throw new NotSupportedException();
+   }
+
+   /// <summary>
    ///    Channel-backed orchestrator. A real channel is used rather than a hand-rolled
    ///    iterator so the test exercises the same shape the production stream has.
    /// </summary>

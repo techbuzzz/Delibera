@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace Delibera.Server.Api.Filters;
 
 /// <summary>
@@ -6,6 +8,18 @@ namespace Delibera.Server.Api.Filters;
 /// </summary>
 public sealed class ValidationFilter(IServiceProvider sp) : IEndpointFilter
 {
+   /// <summary>
+   ///    Argument runtime type -> closed <c>IValidator&lt;&gt;</c> type.
+   ///    <para>
+   ///       Building a closed generic type is not free: <c>MakeGenericType</c> walks the
+   ///       generic parameters and allocates a fresh runtime type on every call. Doing that
+   ///       once per argument per request repeated work whose result never changes, so the
+   ///       mapping is cached. The key set is finite — arguments come from endpoint
+   ///       contracts, which are sealed records fixed at compile time.
+   ///    </para>
+   /// </summary>
+   private static readonly ConcurrentDictionary<Type, Type> ValidatorTypes = new();
+
    public async ValueTask<object?> InvokeAsync(
       EndpointFilterInvocationContext ctx,
       EndpointFilterDelegate next)
@@ -13,7 +27,9 @@ public sealed class ValidationFilter(IServiceProvider sp) : IEndpointFilter
       foreach (var arg in ctx.Arguments)
       {
          if (arg is null) continue;
-         var validatorType = typeof(IValidator<>).MakeGenericType(arg.GetType());
+         var validatorType = ValidatorTypes.GetOrAdd(
+            arg.GetType(),
+            static argumentType => typeof(IValidator<>).MakeGenericType(argumentType));
          if (sp.GetService(validatorType) is not IValidator validator) continue;
 
          var result = await validator.ValidateAsync(

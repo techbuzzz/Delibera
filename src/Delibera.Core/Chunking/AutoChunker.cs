@@ -192,7 +192,10 @@ public static class AutoChunker
    private static List<DocumentChunk> ChunkBySemanticBoundaries(string doc, int maxTokens)
    {
       var sections = SplitByHeaders(doc);
-      var chunks = new List<DocumentChunk>();
+      // Every section yields at least one chunk, and an oversized one yields more, so the
+      // section count is a floor rather than a guess: it sizes the backing array for the
+      // common case where sections fit whole.
+      List<DocumentChunk> chunks = [with(capacity: sections.Count)];
       var index = 0;
 
       foreach (var (title, content, start, end) in sections)

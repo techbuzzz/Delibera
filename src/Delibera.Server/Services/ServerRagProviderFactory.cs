@@ -1,3 +1,4 @@
+using Delibera.Core;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Providers.LLM;
 
@@ -30,11 +31,11 @@ public sealed class ServerRagProviderFactory(
    private OllamaProvider? _embeddingSource;
    private IRagProvider? _rag;
 
-   /// <summary>Whether <c>Delibera:Rag:Enabled</c> is set.</summary>
-   public bool Enabled => configuration.GetValue("Delibera:Rag:Enabled", false);
-
-   /// <summary>Provider type, e.g. <c>Qdrant</c> or <c>PgVector</c>.</summary>
-   public string ProviderType => configuration["Delibera:Rag:ProviderType"] ?? "Qdrant";
+    /// <summary>Whether <c>Delibera:Rag:Enabled</c> is set.</summary>
+    public bool Enabled => configuration.GetValue(BuiltIn.ConfigKeys.RagEnabled, false);
+ 
+    /// <summary>Provider type, e.g. <c>Qdrant</c> or <c>PgVector</c>.</summary>
+    public string ProviderType => configuration[BuiltIn.ConfigKeys.RagProviderType] ?? "Qdrant";
 
    public void Dispose()
    {
@@ -69,21 +70,21 @@ public sealed class ServerRagProviderFactory(
          if (_rag is not null)
             return _rag;
 
-         var endpoint = configuration["Delibera:Providers:DefaultEndpoint"]
-                        ?? throw new InvalidOperationException(
-                           "Delibera:Providers:DefaultEndpoint is required for RAG.");
-         var apiKey = configuration["Delibera:Providers:ApiKey"];
-         var embeddingModel = configuration["Delibera:Providers:EmbeddingModel"] ?? "nomic-embed-text";
-
-         // The embedding provider borrows its HTTP client from the Ollama provider, so the two
-         // share one endpoint. That is why RAG needs a provider that serves embeddings: Ollama
-         // Cloud exposes none, so this configuration only works against a local Ollama.
-         _embeddingSource = new OllamaProvider(endpoint, apiKey ?? string.Empty, TimeSpan.FromMinutes(2));
-         var embeddings = new OllamaEmbeddingProvider(_embeddingSource, embeddingModel);
-
-         // The factory reads Host/Port (Qdrant) or ConnectionString (PgVector) from the section,
-         // which is exactly the shape of Delibera:Rag in configuration.
-         _rag = vectorStores.Create(embeddingModel, ProviderType, configuration.GetSection("Delibera:Rag"), embeddings);
+          var endpoint = configuration[BuiltIn.ConfigKeys.ProvidersDefaultEndpoint]
+                         ?? throw new InvalidOperationException(
+                            "Delibera:Providers:DefaultEndpoint is required for RAG.");
+          var apiKey = configuration[BuiltIn.ConfigKeys.ProvidersApiKey];
+          var embeddingModel = configuration[BuiltIn.ConfigKeys.ProvidersEmbeddingModel] ?? BuiltIn.Models.DefaultEmbedding;
+ 
+          // The embedding provider borrows its HTTP client from the Ollama provider, so the two
+          // share one endpoint. That is why RAG needs a provider that serves embeddings: Ollama
+          // Cloud exposes none, so this configuration only works against a local Ollama.
+          _embeddingSource = new OllamaProvider(endpoint, apiKey ?? string.Empty, TimeSpan.FromMinutes(2));
+          var embeddings = new OllamaEmbeddingProvider(_embeddingSource, embeddingModel);
+ 
+          // The factory reads Host/Port (Qdrant) or ConnectionString (PgVector) from the section,
+          // which is exactly the shape of Delibera:Rag in configuration.
+          _rag = vectorStores.Create(embeddingModel, ProviderType, configuration.GetSection("Delibera:Rag"), embeddings);
 
          loggerFactory.CreateLogger<ServerRagProviderFactory>()
             .LogInformation(

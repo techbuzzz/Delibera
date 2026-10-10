@@ -1,3 +1,4 @@
+using Delibera.Core;
 using Delibera.Server.Infrastructure;
 using Microsoft.Extensions.Options;
 
@@ -10,12 +11,11 @@ public sealed class TenantResolutionMiddleware(
    RequestDelegate next,
    IOptions<DeliberaServerOptions> options)
 {
-   private const string HeaderName = "X-Tenant-Id";
    public const string ItemKey = "TenantId";
 
    public async Task InvokeAsync(HttpContext ctx)
    {
-      var tenantId = ctx.Request.Headers[HeaderName].FirstOrDefault() ?? options.Value.DefaultTenantId;
+      var tenantId = ctx.Request.Headers[BuiltIn.HttpHeaders.TenantId].FirstOrDefault() ?? options.Value.DefaultTenantId;
       ctx.Items[ItemKey] = tenantId;
       await next(ctx);
    }

@@ -103,7 +103,7 @@ public sealed class ProviderFactory : CachingFactory<Func<IConfigurationSection,
    {
       RegisterBuilder("Ollama", config =>
       {
-         var endpoint = config["Endpoint"] ?? "http://localhost:11434";
+         var endpoint = config["Endpoint"] ?? BuiltIn.Endpoints.OllamaLocal;
          var apiKey = config["ApiKey"] ?? "";
          var maxOutputTokens = int.TryParse(config["MaxOutputTokens"], out var t)
             ? t

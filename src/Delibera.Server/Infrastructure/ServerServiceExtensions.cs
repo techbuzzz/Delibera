@@ -1,3 +1,4 @@
+using Delibera.Core;
 using Delibera.Redis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -17,7 +18,7 @@ public static class ServerServiceExtensions
    ///    when the policy exists — ASP.NET throws at request time for an unknown policy, which is
    ///    a far worse failure mode than simply not enabling CORS.
    /// </summary>
-   public const string CorsPolicyName = "DeliberaCors";
+   public const string CorsPolicyName = BuiltIn.CorsPolicyName;
 
    /// <summary>
    ///    Registers a named CORS policy, but only when origins are explicitly configured.
@@ -70,7 +71,7 @@ public static class ServerServiceExtensions
             .AllowAnyMethod()
             // The correlation id is how a caller finds its entry in the server log; without this
             // the browser hides it from a cross-origin client.
-            .WithExposedHeaders("X-Correlation-Id");
+            .WithExposedHeaders(BuiltIn.HttpHeaders.CorrelationId);
 
          if (cors.AllowCredentials)
             policy.AllowCredentials();

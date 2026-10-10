@@ -1,4 +1,5 @@
-﻿using Delibera.Core.Interfaces;
+﻿using Delibera.Core;
+using Delibera.Core.Interfaces;
 using Delibera.Core.Providers;
 using Delibera.Core.Providers.LLM;
 using Delibera.Core.Voting;
@@ -32,18 +33,17 @@ public sealed class RiskCommitteeTemplate : IServerTemplate
       IServiceProvider services,
       IConfiguration configuration)
    {
-      var providerSection = configuration.GetSection("Delibera:Providers");
-      var endpoint = providerSection["DefaultEndpoint"] ?? "http://localhost:11434";
-      var apiKey = providerSection["ApiKey"];
-      var embeddingModel = providerSection["EmbeddingModel"] ?? "nomic-embed-text";
+       var endpoint = configuration[BuiltIn.ConfigKeys.ProvidersDefaultEndpoint] ?? BuiltIn.Endpoints.OllamaLocal;
+       var apiKey = configuration[BuiltIn.ConfigKeys.ProvidersApiKey];
+       var embeddingModel = configuration[BuiltIn.ConfigKeys.ProvidersEmbeddingModel] ?? BuiltIn.Models.DefaultEmbedding;
 
-      using var factory = new ProviderFactory();
-      var llm = string.IsNullOrEmpty(apiKey)
-         ? factory.CreateOllama(endpoint)
-         : factory.CreateCloudOllama(endpoint, apiKey);
+       using var factory = new ProviderFactory();
+       var llm = string.IsNullOrEmpty(apiKey)
+          ? factory.CreateOllama(endpoint)
+          : factory.CreateCloudOllama(endpoint, apiKey);
 
-      var fastModel = configuration["Delibera:Models:Fast"] ?? "llama3.2:3b";
-      var strongModel = configuration["Delibera:Models:Strong"] ?? "qwen2.5:7b";
+       var fastModel = configuration[BuiltIn.ConfigKeys.ModelsFast] ?? BuiltIn.Models.DefaultFast;
+       var strongModel = configuration[BuiltIn.ConfigKeys.ModelsStrong] ?? BuiltIn.Models.DefaultStrong;
 
       var maxRounds = request.Options?.MaxRounds ?? DefaultMaxRounds;
       var temp = request.Options?.Temperature ?? 0.7f;

@@ -70,8 +70,8 @@ public sealed class Operator : IOperator
       _compressor = compressor;
       _compressionOptions = compressionOptions;
 
-      if (_model.Role is null or "Expert")
-         _model.Role = "Operator";
+       if (_model.Role is null or BuiltIn.Roles.Expert)
+          _model.Role = "Operator";
    }
 
    /// <inheritdoc />

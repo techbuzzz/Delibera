@@ -13,6 +13,7 @@ using Delibera.Core.Voting;
 
 namespace Delibera.Core.Council;
 
+
 /// <summary>
 ///    Fluent builder for assembling and configuring a council debate session.
 /// </summary>
@@ -146,14 +147,14 @@ public sealed class CouncilBuilder : ICouncilBuilder
    {
       ArgumentNullException.ThrowIfNull(chairman);
       _chairman = chairman;
-      _chairman.Role = "Chairman";
+       _chairman.Role = BuiltIn.Roles.Chairman;
       return this;
    }
 
    /// <inheritdoc />
    public ICouncilBuilder SetChairman(string modelName, ILLMProvider provider, string? persona = null)
    {
-      _chairman = new CouncilMember(modelName, provider, "Chairman", persona);
+       _chairman = new CouncilMember(modelName, provider, BuiltIn.Roles.Chairman, persona);
       return this;
    }
 
@@ -714,7 +715,7 @@ public sealed class CouncilBuilder : ICouncilBuilder
       IRagProvider ragProvider,
       string modelName,
       ILLMProvider llmProvider,
-      string collectionName = "council_knowledge")
+       string collectionName = BuiltIn.Paths.CouncilKnowledge)
    {
       ArgumentNullException.ThrowIfNull(ragProvider);
       ArgumentNullException.ThrowIfNull(llmProvider);

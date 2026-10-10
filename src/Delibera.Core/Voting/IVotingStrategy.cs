@@ -78,7 +78,8 @@ public sealed class MajorityVotingStrategy : IVotingStrategy
       ArgumentNullException.ThrowIfNull(ballots);
       ct.ThrowIfCancellationRequested();
 
-      var scores = new Dictionary<string, double>(StringComparer.Ordinal);
+      // At most one distinct winner name per ballot, so the ballot count is an exact bound.
+      Dictionary<string, double> scores = [with(capacity: ballots.Count, comparer: StringComparer.Ordinal)];
       foreach (var ballot in ballots)
       {
          if (ballot.Rankings.Count == 0) continue;
@@ -117,15 +118,18 @@ public sealed class BordaCountVotingStrategy : IVotingStrategy
       ArgumentNullException.ThrowIfNull(ballots);
       ct.ThrowIfCancellationRequested();
 
-      var scores = new Dictionary<string, double>(StringComparer.Ordinal);
+      // A ballot can name options that appear on other ballots too, so ballots.Count is a
+      // starting size rather than a hard cap; the dictionary grows if a survey disagrees.
+      Dictionary<string, double> scores = [with(capacity: ballots.Count, comparer: StringComparer.Ordinal)];
       foreach (var ballot in ballots)
       {
-         var ranked = ballot.Rankings.OrderBy(r => r.Rank).ToList();
-         var n = ranked.Count;
-         for (var i = 0; i < n; i++)
+         // Ranked in rank order without materialising the list: the points descend from n-1,
+         // so the position is tracked as a running value instead of an index into a copy.
+         var bordaPoints = ballot.Rankings.Count - 1;
+         foreach (var ranked in ballot.Rankings.OrderBy(r => r.Rank))
          {
-            var bordaPoints = n - 1 - i; // top rank (i=0) gets n-1 points
-            scores[ranked[i].Name] = scores.GetValueOrDefault(ranked[i].Name) + bordaPoints;
+            scores[ranked.Name] = scores.GetValueOrDefault(ranked.Name) + bordaPoints;
+            bordaPoints--;
          }
       }
 
@@ -172,7 +176,8 @@ public sealed class WeightedVotingStrategy : IVotingStrategy
       if (ballots.All(b => ResolveWeight(b) <= 0))
          throw new InvalidOperationException("At least one ballot must have a positive weight.");
 
-      var scores = new Dictionary<string, double>(StringComparer.Ordinal);
+      // As in MajorityVotingStrategy: one distinct winner name per ballot at most.
+      Dictionary<string, double> scores = [with(capacity: ballots.Count, comparer: StringComparer.Ordinal)];
       foreach (var ballot in ballots)
       {
          var weight = ResolveWeight(ballot);

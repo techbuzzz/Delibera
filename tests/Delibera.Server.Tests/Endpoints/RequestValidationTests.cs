@@ -1,6 +1,11 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Text.Json;
+using Delibera.Server.Api.Contracts;
+using Delibera.Server.Api.Filters;
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Delibera.Server.Tests.Endpoints;
@@ -167,5 +172,44 @@ public sealed class RequestValidationTests : IClassFixture<WebApplicationFactory
 
         response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json",
             "a validation problem has its own media type in RFC 7807");
+    }
+
+    [Fact]
+    public async Task Validator_Type_Is_Resolved_Once_Per_Contract_Not_Per_Request()
+    {
+        // ValidationFilter used to call typeof(IValidator<>).MakeGenericType(arg.GetType()) for
+        // every argument of every request. Building a closed generic type walks the generic
+        // parameters and allocates a runtime type, so that repeated never-changing work ran on
+        // a per-request path. The mapping is cached now.
+        //
+        // This asserts the mapping exists and is correct, rather than comparing cache sizes:
+        // the cache is static and shared, and xUnit runs test classes in parallel, so any count
+        // taken here would also grow from unrelated endpoints landing mid-test.
+        using var client = Client();
+
+        await client.PostAsJsonAsync("/api/v1/scenarios",
+            new { question = "warm up", members = new[] { new { role = "Architect" } } });
+        for (var i = 0; i < 5; i++)
+            await client.PostAsJsonAsync("/api/v1/scenarios",
+                new { question = $"q{i}", members = new[] { new { role = "Architect" } } });
+
+        var cache = ValidatorTypeCache();
+        cache.Should().ContainKey(typeof(ScenarioRequest),
+            "the closed validator type must be cached; if this is empty the per-request "
+            + "MakeGenericType call is back");
+
+        var cached = cache[typeof(ScenarioRequest)];
+        cached.GetGenericTypeDefinition().Should().Be(typeof(IValidator<>));
+        cached.GetGenericArguments().Should().ContainSingle().Which.Should().Be(typeof(ScenarioRequest),
+            "the cached type must be closed over the argument type the request actually bound");
+    }
+
+    private static ConcurrentDictionary<Type, Type> ValidatorTypeCache()
+    {
+        var field = typeof(ValidationFilter)
+            .GetField("ValidatorTypes", BindingFlags.NonPublic | BindingFlags.Static);
+        field.Should().NotBeNull("ValidationFilter must keep the validator-type cache this test "
+            + "asserts on; renaming it is fine, deleting the cache is not");
+        return (ConcurrentDictionary<Type, Type>)field!.GetValue(null)!;
     }
 }

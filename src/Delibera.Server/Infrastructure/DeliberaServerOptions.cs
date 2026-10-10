@@ -1,3 +1,5 @@
+using Delibera.Core;
+
 namespace Delibera.Server.Infrastructure;
 
 public sealed class DeliberaServerOptions
@@ -7,7 +9,7 @@ public sealed class DeliberaServerOptions
    ///    (<c>"Delibera": { "Server": { … } }</c>) — a mismatch here silently leaves
    ///    every option at its default, including the OTLP endpoint.
    /// </summary>
-   public const string SectionName = "Delibera:Server";
+   public const string SectionName = BuiltIn.ConfigSections.Server;
 
    /// <summary>Default tenant id used when X-Tenant-Id header is absent.</summary>
    public string DefaultTenantId { get; init; } = "default";

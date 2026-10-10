@@ -1,3 +1,4 @@
+using Delibera.Core;
 using Delibera.Core.Interfaces;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -102,14 +103,14 @@ public sealed class DebateWorkerService : BackgroundService
       var debateId = (string?)null;
       try
       {
-         debateId = message.Values.FirstOrDefault(v => v.Name == "debateId").Value;
+         debateId = message.Values.FirstOrDefault(v => v.Name == BuiltIn.Redis.Fields.DebateId).Value;
          if (string.IsNullOrEmpty(debateId))
          {
             _logger.LogWarning("Received job message {MessageId} without debateId. Skipping.", message.Id);
             return;
          }
 
-         var jobType = message.Values.FirstOrDefault(v => v.Name == "jobType").Value;
+         var jobType = message.Values.FirstOrDefault(v => v.Name == BuiltIn.Redis.Fields.JobType).Value;
          _logger.LogInformation("Processing job {DebateId} of type {JobType}.", debateId, jobType);
 
          // Future: distributed turn-level execution will be handled here.
@@ -132,7 +133,7 @@ public sealed class DebateWorkerService : BackgroundService
             _options.WorkerConsumerGroup,
             "0-0").ConfigureAwait(false);
       }
-      catch (RedisException ex) when (ex.Message.Contains("BUSYGROUP"))
+      catch (RedisException ex) when (ex.Message.Contains(BuiltIn.BusyGroup))
       {
          // Consumer group already exists — that's fine.
       }

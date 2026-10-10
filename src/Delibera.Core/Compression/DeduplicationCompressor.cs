@@ -73,11 +73,17 @@ public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvide
       double threshold,
       CancellationToken ct)
    {
-      var texts = sentences.Select(s => s.Text).ToList();
+      // One embedding per sentence, and the provider takes the batch as a list.
+      List<string> texts = [with(capacity: sentences.Count)];
+      foreach (var s in sentences)
+         texts.Add(s.Text);
+
       var vectors = await _embeddingProvider!.EmbedBatchAsync(texts, ct).ConfigureAwait(false);
 
-      var kept = new List<string>();
-      var keptVectors = new List<float[]>();
+      // Nothing is ever added more than once, so the sentence count is an exact ceiling for
+      // both lists — deduplication can only shrink them.
+      List<string> kept = [with(capacity: sentences.Count)];
+      List<float[]> keptVectors = [with(capacity: sentences.Count)];
 
       for (var i = 0; i < sentences.Count; i += BatchSize)
       {
@@ -113,8 +119,9 @@ public sealed class DeduplicationCompressor(IEmbeddingProvider? embeddingProvide
       List<SemanticCompressor.SentenceSpan> sentences,
       double threshold)
    {
-      var kept = new List<string>();
-      var keptSets = new List<WordSet>();
+      // As above: at most one entry per input sentence, so the input count is the exact ceiling.
+      List<string> kept = [with(capacity: sentences.Count)];
+      List<WordSet> keptSets = [with(capacity: sentences.Count)];
 
       foreach (var s in sentences)
       {

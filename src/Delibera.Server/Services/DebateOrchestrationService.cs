@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Delibera.Core;
 using Delibera.Core.Interfaces;
 using Delibera.Server.Scenarios;
 
@@ -10,40 +11,35 @@ namespace Delibera.Server.Services;
 ///    execution to <see cref="IDebateOrchestrator" />.
 ///    <para>
 ///       Completed debate records are automatically evicted after
-///       <see cref="CompletedRecordLifetime" /> to prevent unbounded memory growth.
+///       <see cref="BuiltIn.Timeouts.CompletedDebateLifetime" /> to prevent unbounded memory growth.
 ///    </para>
 /// </summary>
 public sealed class DebateOrchestrationService : IDebateOrchestrationService, IDisposable
 {
-   /// <summary>
-   ///    Default lifetime for completed debate records before eviction.
-   /// </summary>
-   public static readonly TimeSpan CompletedRecordLifetime = TimeSpan.FromMinutes(30);
-
-   private readonly TimeSpan _completedRecordLifetime;
-   private readonly IConfiguration _configuration;
-   private readonly Timer _evictionTimer;
-   private readonly ILogger<DebateOrchestrationService> _logger;
-   private readonly IDebateOrchestrator _orchestrator;
-
-   private readonly ConcurrentDictionary<string, DebateRecord> _records = new();
-   private readonly IServiceProvider _services;
-   private readonly ITemplateRegistry _templates;
-
-   public DebateOrchestrationService(
-      ILogger<DebateOrchestrationService> logger,
-      ITemplateRegistry templates,
-      IServiceProvider services,
-      IConfiguration configuration,
-      IDebateOrchestrator orchestrator,
-      TimeSpan? completedRecordLifetime = null)
-   {
-      _logger = logger;
-      _templates = templates;
-      _services = services;
-      _configuration = configuration;
-      _orchestrator = orchestrator;
-      _completedRecordLifetime = completedRecordLifetime ?? CompletedRecordLifetime;
+    private readonly TimeSpan _completedRecordLifetime;
+    private readonly IConfiguration _configuration;
+    private readonly Timer _evictionTimer;
+    private readonly ILogger<DebateOrchestrationService> _logger;
+    private readonly IDebateOrchestrator _orchestrator;
+ 
+    private readonly ConcurrentDictionary<string, DebateRecord> _records = new();
+    private readonly IServiceProvider _services;
+    private readonly ITemplateRegistry _templates;
+ 
+    public DebateOrchestrationService(
+       ILogger<DebateOrchestrationService> logger,
+       ITemplateRegistry templates,
+       IServiceProvider services,
+       IConfiguration configuration,
+       IDebateOrchestrator orchestrator,
+       TimeSpan? completedRecordLifetime = null)
+    {
+       _logger = logger;
+       _templates = templates;
+       _services = services;
+       _configuration = configuration;
+       _orchestrator = orchestrator;
+       _completedRecordLifetime = completedRecordLifetime ?? BuiltIn.Timeouts.CompletedDebateLifetime;
       _evictionTimer = new Timer(EvictCompletedRecords, null, _completedRecordLifetime, _completedRecordLifetime);
    }
 

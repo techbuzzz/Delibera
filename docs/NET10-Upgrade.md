@@ -39,18 +39,49 @@ The changes were made in the files:
 
 ### ⚠️ Important note about "C# 15"
 
-At the time of the upgrade, the GA release **.NET SDK 10.0.301** is installed, in which the Roslyn
-compiler supports language versions up to and including **14.0**, while the next one (the future
-C# 15) is available **only** through the `preview` value. Specifying `<LangVersion>15.0</LangVersion>`
-directly results in a compilation error:
+At the time of the original upgrade, the installed SDK was **10.0.301**, whose Roslyn compiler
+supports language versions up to and including **14.0**; the next one (the future C# 15) was
+available **only** through the `preview` value. Specifying `<LangVersion>15.0</LangVersion>`
+directly resulted in a compilation error:
 
 ```
 error CS1617: Invalid option '15.0' for /langversion
 ```
 
-Therefore `<LangVersion>preview</LangVersion>` is used — this enables the maximum available set of
-language features of the next version (C# 15). When an SDK with official `15.0` support is released,
-the value can be replaced with `15.0` without any other changes to the code.
+Therefore `<LangVersion>preview</LangVersion>` is used. When an SDK with official `15.0` support
+is released, the value can be replaced with `15.0`.
+
+#### What `preview` actually buys, measured
+
+`LangVersion=preview` means different things on different SDKs, because the feature set comes from
+the **compiler**, not from the target framework. Two SDKs of the same major band are not
+equivalent here:
+
+| SDK | Roslyn | Stable language level | C# 15 features present |
+|-----|--------|----------------------|------------------------|
+| 9.0.318 | 4.14 | C# 13 | none |
+| 10.0.112 | 5.0 | C# 14 | none |
+| **10.0.401** | **5.9** | C# 14 | collection expression arguments, labeled `break`/`continue`, extension indexers |
+
+`global.json` now pins `10.0.401` (`rollForward: latestFeature`) so a machine holding only
+10.0.112 cannot silently compile this codebase without the features it is written against.
+
+The gate was run by compiling each feature against `net10.0`, not by reading release notes:
+
+| Feature | Compiles on net10.0? | Note |
+|---------|----------------------|------|
+| Collection expression arguments — `[with(capacity: n), …]` | **yes** | used on the hot paths |
+| Labeled `break` / `continue` | **yes** | ergonomics only; no hot-path candidate |
+| Extension indexers | **yes** | no candidate in this codebase |
+| Union types | **no** | needs `System.Runtime.CompilerServices.IUnion` |
+| Closed hierarchies | **no** | needs `System.Runtime.CompilerServices.IsClosedTypeAttribute` |
+
+Union types and closed hierarchies are blocked by the **BCL**, not by the compiler: `IUnion` and
+`IsClosedTypeAttribute` ship with **.NET 11**, so on `net10.0` the compiler rejects them with
+`error CS0518: Predefined type 'System.Runtime.CompilerServices.IUnion' is not defined` and
+`error CS0656: Missing compiler required member '…IsClosedTypeAttribute..ctor'` respectively.
+They are therefore deferred to the `net11.0` retarget, together with the runtime work that
+retarget unlocks (Runtime Async, JIT improvements, `System.Text.Json` union/JSONL support).
 
 ---
 

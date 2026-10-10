@@ -1,4 +1,5 @@
 using System.Text;
+using Delibera.Core;
 using Delibera.Core.Interfaces;
 using Delibera.Server.Middleware;
 using Delibera.Server.Sse;
@@ -49,7 +50,7 @@ public static class DebateEndpoints
       group.MapGet("/{id}/stream", StreamDebateAsync)
          .WithName("StreamDebate")
          .WithSummary("Server-Sent Events stream of DebateRound payloads.")
-         .Produces(StatusCodes.Status200OK, contentType: "text/event-stream");
+         .Produces(StatusCodes.Status200OK, contentType: BuiltIn.HttpHeaderValues.EventStream);
 
       // GET /api/v1/debates/{id}/rounds  — paginated
       group.MapGet("/{id}/rounds", GetDebateRoundsAsync)

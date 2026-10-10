@@ -1,3 +1,4 @@
+using Delibera.Core;
 using Serilog.Context;
 
 namespace Delibera.Server.Middleware;
@@ -7,14 +8,12 @@ namespace Delibera.Server.Middleware;
 /// </summary>
 public sealed class CorrelationIdMiddleware(RequestDelegate next)
 {
-   private const string HeaderName = "X-Correlation-Id";
-
    public async Task InvokeAsync(HttpContext ctx)
    {
-      var correlationId = ctx.Request.Headers[HeaderName].FirstOrDefault() ?? Guid.NewGuid().ToString("N");
+      var correlationId = ctx.Request.Headers[BuiltIn.HttpHeaders.CorrelationId].FirstOrDefault() ?? Guid.NewGuid().ToString("N");
 
-      ctx.Items[HeaderName] = correlationId;
-      ctx.Response.Headers[HeaderName] = correlationId;
+      ctx.Items[BuiltIn.HttpHeaders.CorrelationId] = correlationId;
+      ctx.Response.Headers[BuiltIn.HttpHeaders.CorrelationId] = correlationId;
 
       using (LogContext.PushProperty("CorrelationId", correlationId))
       {

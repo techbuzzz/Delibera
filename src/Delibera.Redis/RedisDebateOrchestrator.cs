@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Delibera.Core;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Models;
 using Delibera.Core.Voting;
 using Delibera.Redis.Serialization;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
@@ -26,18 +28,14 @@ namespace Delibera.Redis;
 /// </summary>
 public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposable
 {
-   /// <summary>
-   ///    Completed entries are evicted after this timeout to prevent unbounded memory growth.
-   /// </summary>
-   private static readonly TimeSpan CompletedEntryLifetime = TimeSpan.FromMinutes(30);
-
    private readonly IDatabase _db;
    private readonly ConcurrentDictionary<string, DebateEntry> _entries = new();
 
    private readonly Timer _evictionTimer;
    private readonly ILogger<RedisDebateOrchestrator> _logger;
    private readonly RedisOrchestratorOptions _options;
-   private readonly ConnectionMultiplexer _redis;
+   private readonly IConnectionMultiplexer _redis;
+   private readonly bool _ownsRedis;
    private readonly IServiceProvider _services;
    private bool _disposed;
 
@@ -49,10 +47,27 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
       _services = services;
       _logger = logger;
       _options = options.Value;
-      _redis = ConnectionMultiplexer.Connect(_options.ConnectionString);
+
+      // Reuse the multiplexer the host already registered as a singleton instead of opening a
+      // second one. Each multiplexer owns its own TCP pool, handshake and reconnect timers, and
+      // this orchestrator lives for the whole process — RedisDebateCache, which documents
+      // itself as sharing this connection, already takes it from DI. Falling back to a private
+      // connection keeps the type usable outside a DI container.
+      var injected = services.GetService<IConnectionMultiplexer>();
+      if (injected is not null)
+      {
+         _redis = injected;
+         _ownsRedis = false; // the container owns it and will dispose it
+      }
+      else
+      {
+         _redis = ConnectionMultiplexer.Connect(_options.ConnectionString);
+         _ownsRedis = true;
+      }
+
       _db = _redis.GetDatabase();
 
-      _evictionTimer = new Timer(EvictCompletedEntries, null, CompletedEntryLifetime, CompletedEntryLifetime);
+      _evictionTimer = new Timer(EvictCompletedEntries, null, BuiltIn.Timeouts.CompletedDebateLifetime, BuiltIn.Timeouts.CompletedDebateLifetime);
 
       _ = EnsureConsumerGroupsAsync();
    }
@@ -72,7 +87,11 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
          entry.Channel.Writer.TryComplete();
       }
 
-      await _redis.DisposeAsync().ConfigureAwait(false);
+      // Only a connection this orchestrator opened is ours to close. A multiplexer injected by
+      // the container is disposed by the container; disposing it here would break every other
+      // Redis consumer sharing it.
+      if (_ownsRedis)
+         await _redis.DisposeAsync().ConfigureAwait(false);
    }
 
    /// <inheritdoc />
@@ -246,18 +265,18 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
          var key = $"{_options.StateKeyPrefix}{debateId}";
          var hash = new List<HashEntry>
          {
-            new("status", status.ToString()),
-            new("updatedAt", DateTimeOffset.UtcNow.ToString("O"))
+            new(BuiltIn.Redis.Fields.Status, status.ToString()),
+            new(BuiltIn.Redis.Fields.UpdatedAt, DateTimeOffset.UtcNow.ToString("O"))
          };
 
          if (result is not null)
          {
             var redisResult = result.ToRedisResult();
-            hash.Add(new HashEntry("result", RedisSerializer.Serialize(redisResult)));
+            hash.Add(new HashEntry(BuiltIn.Redis.Fields.Result, RedisSerializer.Serialize(redisResult)));
          }
 
          if (errorMessage is not null)
-            hash.Add(new HashEntry("errorMessage", errorMessage));
+            hash.Add(new HashEntry(BuiltIn.Redis.Fields.ErrorMessage, errorMessage));
 
          await _db.HashSetAsync(key, [.. hash]).ConfigureAwait(false);
 
@@ -284,9 +303,9 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
          if (entries.Length == 0)
             return null;
 
-         var statusStr = entries.FirstOrDefault(e => e.Name == "status").Value;
-         var resultStr = entries.FirstOrDefault(e => e.Name == "result").Value;
-         var errorStr = entries.FirstOrDefault(e => e.Name == "errorMessage").Value;
+         var statusStr = entries.FirstOrDefault(e => e.Name == BuiltIn.Redis.Fields.Status).Value;
+         var resultStr = entries.FirstOrDefault(e => e.Name == BuiltIn.Redis.Fields.Result).Value;
+         var errorStr = entries.FirstOrDefault(e => e.Name == BuiltIn.Redis.Fields.ErrorMessage).Value;
 
          if (!Enum.TryParse<DebateOrchestrationStatus>(statusStr, out var status))
             return null;
@@ -316,9 +335,9 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
          var maxLength = _options.StreamMaxLength > 0 ? _options.StreamMaxLength : (int?)null;
          await _db.StreamAddAsync(_options.EventStreamKey,
             [
-               new NameValueEntry("debateId", debateId),
-               new NameValueEntry("eventType", "round-completed"),
-               new NameValueEntry("payload", json)
+               new NameValueEntry(BuiltIn.Redis.Fields.DebateId, debateId),
+               new NameValueEntry(BuiltIn.Redis.Fields.EventType, BuiltIn.Redis.Fields.RoundCompleted),
+               new NameValueEntry(BuiltIn.Redis.Fields.Payload, json)
             ],
             // MAXLEN ~ N: approximate trimming is O(1) and may overshoot the cap slightly,
             // which is the right trade for an event log — an unbounded stream would grow with
@@ -340,7 +359,7 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
          {
             await _db.StreamCreateConsumerGroupAsync(streamKey, groupName, "0-0").ConfigureAwait(false);
          }
-         catch (RedisException ex) when (ex.Message.Contains("BUSYGROUP"))
+         catch (RedisException ex) when (ex.Message.Contains(BuiltIn.BusyGroup))
          {
             // Consumer group already exists — that's fine.
          }
@@ -354,7 +373,7 @@ public sealed class RedisDebateOrchestrator : IDebateOrchestrator, IAsyncDisposa
 
    private void EvictCompletedEntries(object? state)
    {
-      var cutoff = DateTimeOffset.UtcNow - CompletedEntryLifetime;
+      var cutoff = DateTimeOffset.UtcNow - BuiltIn.Timeouts.CompletedDebateLifetime;
       foreach (var kvp in _entries)
          if (kvp.Value.Status is not DebateOrchestrationStatus.Running && kvp.Value.CompletedAt < cutoff)
             _entries.TryRemove(kvp.Key, out _);

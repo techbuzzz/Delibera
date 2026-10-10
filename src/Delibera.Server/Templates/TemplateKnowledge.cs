@@ -1,3 +1,4 @@
+using Delibera.Core;
 using Delibera.Core.Interfaces;
 using Delibera.Core.Providers;
 
@@ -45,10 +46,10 @@ internal static class TemplateKnowledge
       // The keeper's model is a council member, so it uses the configured strong model: retrieval
       // synthesis is a comprehension job, and answering it on the fast model showed up as short,
       // unsourced answers.
-      var configuration = services.GetService<IConfiguration>();
-      var strongModel = configuration?["Delibera:Models:Strong"] ?? "qwen2.5:7b";
-      var endpoint = configuration?["Delibera:Providers:DefaultEndpoint"] ?? "http://localhost:11434";
-      var apiKey = configuration?["Delibera:Providers:ApiKey"];
+       var configuration = services.GetService<IConfiguration>();
+       var strongModel = configuration?[BuiltIn.ConfigKeys.ModelsStrong] ?? BuiltIn.Models.DefaultStrong;
+       var endpoint = configuration?[BuiltIn.ConfigKeys.ProvidersDefaultEndpoint] ?? BuiltIn.Endpoints.OllamaLocal;
+       var apiKey = configuration?[BuiltIn.ConfigKeys.ProvidersApiKey];
 
       // A dedicated factory instance rather than one from DI: disposing it here must not tear
       // down the provider the debate itself is about to use.

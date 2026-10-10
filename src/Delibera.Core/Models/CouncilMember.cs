@@ -24,7 +24,7 @@ public sealed class CouncilMember(
    public ILLMProvider Provider { get; } = provider ?? throw new ArgumentNullException(nameof(provider));
 
    /// <summary>Role in the debate (Expert, Critic, Chairman, etc.).</summary>
-   public string Role { get; set; } = role ?? "Expert";
+   public string Role { get; set; } = role ?? BuiltIn.Roles.Expert;
 
    /// <summary>Optional persona system-prompt that personalises the model's behaviour.</summary>
    public string? PersonaPrompt { get; set; } = personaPrompt;

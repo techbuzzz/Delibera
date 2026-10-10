@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Delibera.Core;
 using Delibera.Core.Models;
 
 namespace Delibera.Redis.Serialization;
@@ -67,7 +68,7 @@ internal static class RedisSerializer
       return new RedisRoundEvent
       {
          DebateId = debateId,
-         EventType = "round-completed",
+         EventType = BuiltIn.Redis.Fields.RoundCompleted,
          RoundNumber = round.RoundNumber,
          RoundName = round.RoundName,
          Description = round.Description,

@@ -137,7 +137,7 @@ public abstract class DebateTemplateBase
    ///    Attaches a Knowledge Keeper built from a RAG provider (F-04 / existing).
    /// </summary>
    public DebateTemplateBase WithKnowledgeKeeper(IRagProvider ragProvider, string modelName,
-      string collectionName = "council_knowledge")
+       string collectionName = BuiltIn.Paths.CouncilKnowledge)
    {
       if (Provider is null)
          throw new InvalidOperationException("Call WithProvider(...) before WithKnowledgeKeeper(...).");

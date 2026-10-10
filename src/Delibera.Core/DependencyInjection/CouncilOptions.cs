@@ -3,6 +3,7 @@ using Delibera.Core.Telemetry;
 
 namespace Delibera.Core.DependencyInjection;
 
+
 /// <summary>
 ///    Root configuration options for the Delibera framework.
 ///    Bind to a configuration section (e.g., "Delibera") via <c>IOptions&lt;CouncilOptions&gt;</c>.
@@ -10,7 +11,7 @@ namespace Delibera.Core.DependencyInjection;
 public sealed class CouncilOptions
 {
    /// <summary>Configuration section name (default: "Delibera").</summary>
-   public const string SectionName = "Delibera";
+   public const string SectionName = BuiltIn.ConfigSections.Root;
 
    /// <summary>Default debate strategy name (e.g., "Standard", "Critique", "Consensus").</summary>
    public string Strategy { get; set; } = "Standard";

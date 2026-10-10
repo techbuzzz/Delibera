@@ -91,11 +91,13 @@ public sealed class SemanticCompressor(IEmbeddingProvider embeddingProvider) : I
       TokenCounter counter,
       CompressionOptions options)
    {
-      var sorted = scored.OrderByDescending(s => s.Score).ToList();
-      var selected = new List<ScoredSentence>();
+      // Ordered but never materialised: the loop below consumes every element, so sorting into a
+      // throwaway list first only bought a second copy of the same sentences.
+      // At most one sentence per input can be selected, which sizes the result up front.
+      List<ScoredSentence> selected = [with(capacity: scored.Count)];
       var currentTokens = 0;
 
-      foreach (var s in sorted)
+      foreach (var s in scored.OrderByDescending(s => s.Score))
       {
          // Preserve code blocks and structured content if requested
          if (options.PreserveCodeBlocks && (s.Text.Contains("```") || s.Text.TrimStart().StartsWith("    ")))
