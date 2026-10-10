@@ -210,6 +210,24 @@ Note `npm run build` (not `generate`) before `npm test` — the SSE suite loads
 `.output/server/index.mjs`, which a static export does not produce, and reports a suite failure
 that looks like a broken test rather than a missing artefact.
 
+### Verify base-path runs from PowerShell, not Git Bash
+
+Git Bash rewrites an environment value that looks like a POSIX path when it exports it to a child
+process. `NUXT_APP_BASE_URL=/Delibera npm run generate` reaches the build as
+`C:/Program Files/Git/Delibera`.
+
+That malformed base produces exactly the output a real Nuxt bug would: `.output/public/index`
+and `.output/public/debates/new` containing `Redirecting...` instead of documents, no `index.html`
+anywhere, and a green build. I spent a cycle "fixing" nuxt.config.ts on the strength of that.
+
+Set these variables from PowerShell, where the value passes through untouched, before believing
+anything about a base-path build:
+
+```powershell
+$env:NUXT_APP_BASE_URL = '/Delibera'
+npm run generate
+```
+
 ---
 
 ## Changing a workflow
