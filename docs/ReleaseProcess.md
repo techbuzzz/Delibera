@@ -145,10 +145,21 @@ administration operation and the automatic `GITHUB_TOKEN` can never administer t
 `permissions:` block changes that. The site is created once, by a human in Settings, or by an
 authenticated `POST /repos/OWNER/REPO/pages -f build_type=workflow`.
 
-**Do not trust `GET /repos/OWNER/REPO/pages` to tell you whether this is set.** It answers 404 for
-an unauthenticated caller whether or not Pages is configured, while the repository object reports
-`"has_pages": true` on the same repository at the same moment. The field that settles it is
-`has_pages` plus the Source dropdown; the 404 only says you asked without credentials.
+**Do not try to diagnose this over the API.** Neither signal answers the question:
+
+| Probe | What it says | What it does not say |
+|---|---|---|
+| `GET /repos/OWNER/REPO/pages` (unauthenticated) | 404 | nothing — it answers 404 for lack of permission just as readily as for a missing site |
+| `"has_pages": true` on the repository | Pages is available to this repo | that a site exists: `https://OWNER.github.io/REPO/` returns a GitHub 404 while the field reads `true` |
+
+The check that settles it is the one GitHub itself serves: does the URL answer 200?
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://techbuzzz.github.io/Delibera/
+```
+
+A 404 there, served by GitHub.com itself, means nothing has ever been deployed to this Pages
+site. Only the Source dropdown in Settings says whether it is configured to accept deploys.
 
 `pages.yml` deploys the Web UI as a **static** export on every merge to `main`. Two consequences:
 
