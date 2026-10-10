@@ -99,14 +99,28 @@ green. That is the failure mode `--skip-duplicate` creates.
 
 ### Backfilling a release page
 
-If a tag already exists and no release page does, run **Actions → release → Run workflow** and
-set the `tag` input. It creates or updates; it never duplicates.
+Normally nothing to do: a merge to `main` refreshes the release page for the newest `v*` tag
+reachable from `main`, so the page picks up the header and the WhatsNew document without a
+handful of clicks.
+
+Run **Actions → release → Run workflow** only to repair a *specific* tag — for instance to rebuild
+the body of a release whose page was created by hand. It creates or updates; it never duplicates.
+
+That workflow distinguishes two situations on purpose, and the difference is what keeps a routine
+merge from reddening `main`:
+
+| Trigger | Behaviour on a tag/`<Version>` mismatch |
+|---|---|
+| `v*` tag pushed, or dispatch naming a tag | **fails** — that tag exists to publish something specific |
+| merge to `main` | **exits 0** — an unreleased version bump is a normal state, not an error |
 
 ### Backfilling Docker Hub cards
 
-Same for **dockerhub-metadata → Run workflow**. The cards are empty by default when a repository
-is created through the API — `docker push` writes no metadata. The overviews live in
-`dockerhub/*.md` and are synced from there.
+Normally also nothing to do: `dockerhub-metadata` runs on any merge to `main` that touches
+`dockerhub/**` or the workflow itself.
+
+**Actions → dockerhub-metadata → Run workflow** forces it without a code change. The cards are
+empty by default when a repository is created through the API — `docker push` writes no metadata.
 
 ### Both backfills need the workflow on `main` first
 

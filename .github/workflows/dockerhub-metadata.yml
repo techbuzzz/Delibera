@@ -15,6 +15,10 @@ on:
   workflow_dispatch:
   push:
     tags: [ 'v*' ]
+    branches: [ main ]
+    paths:
+      - 'dockerhub/**'
+      - '.github/workflows/dockerhub-metadata.yml'
 
 permissions:
   contents: read
