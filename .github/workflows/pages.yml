@@ -109,6 +109,28 @@ jobs:
           echo "prerendered: $(cd "$out" && find . -name '*.html' | sort | tr '\n' ' ')"
           echo "total files: $(find "$out" -type f | wc -l)"
 
+      - name: Fail if the configured API base did not reach the bundle
+        env:
+          API_BASE: ${{ vars.NUXT_PUBLIC_DELIBERA_API_BASE }}
+        run: |
+          set -euo pipefail
+          # Nuxt substitutes `import.meta.env.NUXT_PUBLIC_*` only for keys declared under
+          # runtimeConfig.public. Undeclare or rename `deliberaApiBase` and nothing fails: the
+          # build goes green and the deployed site keeps calling its own origin, which on
+          # Pages is a 404. A green pipeline is exactly the signal that cannot catch this,
+          # so check the artefact instead of the exit code.
+          if [ -z "$API_BASE" ]; then
+            echo "no API base configured — deploying a UI preview whose requests 404"
+            exit 0
+          fi
+          out=src/Delibera.WebUI/.output/public
+          if ! grep -rqF "$API_BASE" "$out"; then
+            echo "::error::$API_BASE is configured but appears nowhere in the export" >&2
+            echo "Check that deliberaApiBase is still declared under runtimeConfig.public." >&2
+            exit 1
+          fi
+          echo "API base $API_BASE is baked into the export"
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

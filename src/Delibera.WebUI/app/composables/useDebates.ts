@@ -25,6 +25,11 @@ import { parseApiError } from './useApiError'
  * context lookup there is unreliable. A build-time constant has no such dependency and is
  * exactly what a static export needs anyway.
  *
+ * The constant only exists if `deliberaApiBase` is declared under `runtimeConfig.public` in
+ * nuxt.config.ts. Nuxt substitutes `import.meta.env.NUXT_PUBLIC_*` for declared keys only, and
+ * an undeclared name is not an error — the build stays green and every request keeps going to
+ * the same origin. Do not rename one without the other.
+ *
  * Empty (the default) → same-origin `/api/delibera`, which is the production container path:
  * `Delibera.Server` registers no CORS policy, so the browser must never call it directly.
  * Set `NUXT_PUBLIC_DELIBERA_API_BASE` to an absolute origin ONLY for a static build, and only

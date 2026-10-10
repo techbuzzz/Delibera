@@ -48,6 +48,13 @@ export default defineNuxtConfig({
       // Sent as X-Tenant-Id by the BFF. The API falls back to "default" when the header is
       // absent, so it is always set explicitly — otherwise every user shares one bucket.
       tenantId: 'default',
+
+      // MUST be declared here even though it is empty. Nuxt only substitutes an
+      // `import.meta.env.NUXT_PUBLIC_*` read that corresponds to a key of runtimeConfig.public;
+      // an undeclared name is left alone and the build succeeds with the variable silently
+      // ignored. That is a static export whose every API call still goes to the same origin,
+      // which on GitHub Pages is a 404 — a deployed site that looks fine and does nothing.
+      deliberaApiBase: '',
     },
   },
 
