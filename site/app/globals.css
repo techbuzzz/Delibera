@@ -129,9 +129,65 @@ a:hover {
   font-size: 1rem;
 }
 
-.site-header__brand img {
-  height: 28px;
-  width: auto;
+/*
+ * Header logo.
+ *
+ * The asset is a 1024x1024 canvas whose scales mark occupies x 244..778, y 170..581, with
+ * the DELIBERA wordmark and the tagline in separate bands below it (measured from the file;
+ * the bands are 172-230, 242-576, 644-756, 788-833). At header size the full 662px lockup
+ * would render the wordmark caps at roughly 3px — a smudge, not a logo — so the header crops
+ * to the mark alone and lets the hero keep the wide lockup where there is room for it.
+ *
+ * The bounds carry a pixel of slack on each side. Measured with a strict threshold the crop
+ * clipped the base of the scales and the left pan, because their antialiased edge pixels sit
+ * just above the cut-off; the source background is a flat 253-254, so the measurement
+ * threshold is 251.
+ *
+ * The crop is a wrapper with negative offsets rather than a rewritten PNG, because the Pages
+ * build runs on ubuntu where System.Drawing does not exist; rewriting the image at
+ * `sync-assets` time would work on this machine and fail in CI.
+ */
+.site-header__logo {
+  --logo-source-w: 1024;
+  --logo-mark-x: 244;
+  --logo-mark-y: 170;
+  --logo-mark-w: 535;
+  --logo-mark-h: 412;
+  --logo-mark-height: 30px;
+
+  position: relative;
+  overflow: hidden;
+  flex: none;
+  width: calc(var(--logo-mark-w) / var(--logo-mark-h) * var(--logo-mark-height));
+  height: var(--logo-mark-height);
+  border-radius: 6px;
+
+  /* The PNG has no alpha channel and its background is opaque near-white, while the mark
+     itself is dark navy. On a dark header it would otherwise read as an invisible glyph on
+     a dark field, so the plate is explicit and identical in both themes — a deliberate chip
+     rather than an accident of the file. */
+  background: #ffffff;
+}
+
+/*
+ * The scale factor is folded into each expression rather than kept as its own custom
+ * property: `calc(30px / 405)` is a *length*, not a unitless number, so multiplying it by
+ * another length is invalid at computed-value time and silently collapses the box to 0px.
+ * Dividing numbers first and multiplying by the height last stays valid in every consumer.
+ */
+.site-header__logo img {
+  position: absolute;
+  top: calc(var(--logo-mark-y) / var(--logo-mark-h) * var(--logo-mark-height) * -1);
+  left: calc(var(--logo-mark-x) / var(--logo-mark-h) * var(--logo-mark-height) * -1);
+  width: calc(var(--logo-source-w) / var(--logo-mark-h) * var(--logo-mark-height));
+  height: auto;
+  max-width: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .site-header__logo {
+    box-shadow: 0 0 0 1px var(--border);
+  }
 }
 
 .site-nav {

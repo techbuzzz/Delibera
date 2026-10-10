@@ -56,6 +56,23 @@ every template change — and this project documents cases where a claim drifted
 code actually did. If the parse finds no templates, the page says so instead of showing a
 stale list.
 
+## Design notes
+
+### Header logo
+
+The header uses `img/delibera-square-1024x1024.png` cropped to the scales mark
+(`x 244..778, y 170..581`). The full lockup — mark, `DELIBERA` wordmark and tagline — is 662px
+tall in a 1024px canvas, so at header size the wordmark caps render at about 3px. The hero keeps
+the wide horizontal lockup, where there is room for it.
+
+The crop is a wrapper with negative offsets rather than a rewritten PNG: the Pages build runs on
+ubuntu, where `System.Drawing` does not exist, so cropping at `sync-assets` time would work on a
+Windows dev machine and fail in CI.
+
+All three brand PNGs are `Format24bppRgb` with an opaque near-white background (253–254) — there is
+no alpha channel to blend. The mark is dark navy, so the logo chip carries an explicit white plate
+in both themes; on a dark header the mark would otherwise be invisible.
+
 ## Commands
 
 ```bash

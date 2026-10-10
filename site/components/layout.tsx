@@ -16,13 +16,15 @@ export function SiteHeader({ current }: { current?: string }) {
     <header className="site-header">
       <div className="wrap site-header__inner">
         <Link href="/" className="site-header__brand">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={brandImage('delibera-horizontal-1920x480.png')}
-            alt="Delibera"
-            width={1920}
-            height={480}
-          />
+          <span className="site-header__logo">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={brandImage('delibera-square-1024x1024.png')}
+              alt="Delibera"
+              width={535}
+              height={412}
+            />
+          </span>
         </Link>
         <nav className="site-nav" aria-label="Main">
           {NAV.map((item) => (
