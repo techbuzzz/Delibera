@@ -43,20 +43,12 @@ authenticating reverse proxy in front before exposing this stack to any network 
 
 ---
 
-## Static build (GitHub Pages)
+## GitHub Pages
 
-The same app is published as a static site at
-<https://techbuzzz.github.io/Delibera/> on every merge to `main`.
-
-A static export has **no Nitro server**, so the `/api/delibera/**` BFF route does not exist there.
-Set `NUXT_PUBLIC_DELIBERA_API_BASE` to a reachable server origin to give the static build an API —
-and that server must allow the Pages origin via CORS, which `Delibera.Server` does not do by
-default. Without it the page deploys and renders, but its requests 404; that is a UI preview, not
-an install.
-
-Two build details worth knowing if you fork it: Nuxt 4 emits to `.output/public`, not `dist`, and
-the prerender routes must be listed explicitly in `nuxt.config.ts` — otherwise the export contains
-only the `200.html`/`404.html` SPA fallbacks and deploys as a blank page.
+The project landing page lives at <https://techbuzzz.github.io/Delibera/>. The Web UI itself is
+**not** deployed there — it ships in this image and is meant to run next to
+[`delibera-server`](https://hub.docker.com/r/techbuzzz/delibera-server), which provides the
+same-origin BFF route `/api/delibera/**`.
 
 ---
 

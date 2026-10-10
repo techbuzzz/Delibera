@@ -175,57 +175,29 @@ curl -s -o /dev/null -w '%{http_code}\n' https://techbuzzz.github.io/Delibera/
 A 404 there, served by GitHub.com itself, means nothing has ever been deployed to this Pages
 site. Only the Source dropdown in Settings says whether it is configured to accept deploys.
 
-`pages.yml` deploys the Web UI as a **static** export on every merge to `main`. Two consequences:
+`pages.yml` deploys the **hand-written landing page** from `site/index.html` on every merge to
+`main`. The version string is injected from `Delibera.Core.csproj` at build time, so the page
+cannot advertise an unpublished version, and the build fails loudly on a leftover `{{VERSION}}`
+placeholder.
 
-- A static export has **no Nitro server**, so the `/api/delibera/**` BFF route does not exist
-  there. The browser needs an absolute origin via `NUXT_PUBLIC_DELIBERA_API_BASE`, and that
-  origin must allow the Pages origin via CORS — which `Delibera.Server` does not do by default.
-  Unset, the site deploys and its requests 404: a UI preview, not an install.
-- Nuxt 4 emits to `.output/public`, **not** `dist`. GitHub's own sample workflow still uploads
-  `./dist` because it predates Nuxt 4.
+The Web UI is **not** deployed to Pages. It ships in the `techbuzzz/delibera-webui` container image
+and is meant to run next to `Delibera.Server`, which provides the same-origin BFF route
+`/api/delibera/**`. A static export has no Nitro server and therefore no BFF, so the UI would need
+a separate CORS-enabled API origin — a deliberate owner decision, not something the Pages workflow
+should configure silently.
 
 ### Reproduce the Pages build locally
 
-`pages.yml` runs steps that PR CI does not: `nuxt generate`, and two assertions about the export.
-That gap is worth closing by hand before every Pages-related change, because none of it can fail
-a pull request:
+`pages.yml` assembles `_site/` from `site/index.html` and `img/delibera-horizontal-1920x480.png`,
+then substitutes `{{VERSION}}` from the csproj. That is a few shell commands:
 
 ```bash
-cd src/Delibera.WebUI
-npm ci
-npm run generate                                  # 6 routes -> .output/public
-test -f .output/public/index.html                 # the gate in pages.yml
-test -f .output/public/debates/new/index.html    # prerender.routes actually took
-
-# the origin must be BAKED IN, not merely configured
-NUXT_PUBLIC_DELIBERA_API_BASE=https://example.test npm run generate
-grep -rqF 'https://example.test' .output/public   # 0 hits = the whole feature is dead
-```
-
-That last `grep` is the check that matters. `NUXT_PUBLIC_*` is substituted only for names declared
-under `runtimeConfig.public`; an undeclared one is dropped silently, the build stays green, and the
-deployed site quietly calls its own origin. It has already happened once here.
-
-Note `npm run build` (not `generate`) before `npm test` — the SSE suite loads
-`.output/server/index.mjs`, which a static export does not produce, and reports a suite failure
-that looks like a broken test rather than a missing artefact.
-
-### Verify base-path runs from PowerShell, not Git Bash
-
-Git Bash rewrites an environment value that looks like a POSIX path when it exports it to a child
-process. `NUXT_APP_BASE_URL=/Delibera npm run generate` reaches the build as
-`C:/Program Files/Git/Delibera`.
-
-That malformed base produces exactly the output a real Nuxt bug would: `.output/public/index`
-and `.output/public/debates/new` containing `Redirecting...` instead of documents, no `index.html`
-anywhere, and a green build. I spent a cycle "fixing" nuxt.config.ts on the strength of that.
-
-Set these variables from PowerShell, where the value passes through untouched, before believing
-anything about a base-path build:
-
-```powershell
-$env:NUXT_APP_BASE_URL = '/Delibera'
-npm run generate
+mkdir -p _site/img
+cp site/index.html _site/index.html
+cp img/delibera-horizontal-1920x480.png _site/img/
+VERSION=$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' src/Delibera.Core/Delibera.Core.csproj | head -1)
+sed -i "s/{{VERSION}}/$VERSION/g" _site/index.html
+grep -q '{{VERSION}}' _site/index.html && echo "Unsubstituted placeholder" && exit 1
 ```
 
 ---

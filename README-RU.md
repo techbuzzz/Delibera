@@ -15,7 +15,7 @@
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-2496ED?logo=docker&logoColor=fff)](https://hub.docker.com/r/techbuzzz/delibera-server)
 [![Pulls: server](https://img.shields.io/docker/pulls/techbuzzz/delibera-server?logo=docker&logoColor=2496ED)](https://hub.docker.com/r/techbuzzz/delibera-server)
 [![Pulls: webui](https://img.shields.io/docker/pulls/techbuzzz/delibera-webui?logo=docker&logoColor=2496ED)](https://hub.docker.com/r/techbuzzz/delibera-webui)
-[![Web UI](https://img.shields.io/badge/Web%20UI-GitHub%20Pages-3E8AFF?logo=githubpages)](https://techbuzzz.github.io/Delibera/)
+[![Website](https://img.shields.io/badge/Website-GitHub%20Pages-3E8AFF?logo=githubpages)](https://techbuzzz.github.io/Delibera/)
 [![CI](https://github.com/techbuzzz/Delibera/actions/workflows/publish-nuget.yml/badge.svg)](https://github.com/techbuzzz/Delibera/actions/workflows/publish-nuget.yml)
 [![Docker CI](https://github.com/techbuzzz/Delibera/actions/workflows/publish-docker.yml/badge.svg)](https://github.com/techbuzzz/Delibera/actions/workflows/publish-docker.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](LICENSE)
@@ -269,23 +269,17 @@ docker compose -f docker-compose.hub.yml up -d
 > Все публикуемые порты слушают `127.0.0.1`. Поставьте аутентифицирующий обратный прокси, прежде чем
 > открывать этот стек в сеть, которой не управляете.
 
-#### 🌐 Веб-интерфейс на GitHub Pages
+#### 🌐 Сайт проекта на GitHub Pages
 
-Тот же интерфейс статически публикуется на <https://techbuzzz.github.io/Delibera/> при каждом
-мердже в `main`.
+Лендинг проекта публикуется на <https://techbuzzz.github.io/Delibera/> при каждом мердже в `main`.
+Там ссылки на документацию, заметки о релизах, пакеты NuGet, образы Docker и исходный код.
 
-У статической сборки **нет сервера**, поэтому same-origin BFF-маршрута в ней не существует — нужен
-абсолютный origin API, и тот сервер должен разрешать origin Pages через CORS:
-
-```yaml
-environment:
-  DELIBERA_CORS_ORIGIN: https://techbuzzz.github.io
-```
-
-CORS **выключен по умолчанию** и остаётся выключенным, пока не перечислены origins. Это намеренно:
-именно отсутствие заголовка не даёт случайной веб-странице прочитать ответ этого API, а контейнерному
-Web UI он не нужен вовсе. Комбинация «wildcard + AllowCredentials» отклоняется на старте с сообщением,
-называющим конкретный ключ конфигурации.
+Сам веб-интерфейс **там не публикуется** — он поставляется в образе
+[`techbuzzz/delibera-webui`](https://hub.docker.com/r/techbuzzz/delibera-webui) и предназначен для
+работы рядом с `Delibera.Server`, который предоставляет same-origin BFF-маршрут
+`/api/delibera/**`, от которого зависит UI. Статическая сборка не имеет Nitro-сервера и, значит,
+BFF, поэтому ей потребовался бы отдельный API-origin с разрешённым CORS — это осознанное решение
+владельца, а не то, что workflow Pages настраивает молча.
 
 #### 📥 Из исходников
 

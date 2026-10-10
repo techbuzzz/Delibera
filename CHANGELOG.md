@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — GitHub Pages deploys the project website, not the Web UI
+
+`pages.yml` previously built and deployed the Nuxt Web UI as a static export. That was wrong: the
+Web UI is meant to ship in the container image (`techbuzzz/delibera-webui`) and run next to
+`Delibera.Server`, which provides the same-origin BFF route `/api/delibera/**`. A static export has
+no Nitro server and therefore no BFF, so the deployed site could only reach an API via a separate
+CORS-enabled origin — a deliberate owner decision, not something the workflow should configure
+silently.
+
+Pages now publishes the hand-written landing page from `site/index.html` — header, install
+instructions, documentation links, NuGet/Docker badges. The version string is injected from
+`Delibera.Core.csproj` at build time, so the page cannot advertise an unpublished version.
+
 ### Added — opt-in CORS for static browser clients
 
 `Delibera:Server:Cors:AllowedOrigins` registers a named CORS policy listing the browser origins
@@ -18,12 +31,11 @@ page from *reading* a response — a cross-origin `fetch` still fires the reques
 cannot see the answer. Turning this on globally would have added a browser-side CSRF vector to an
 API that is unauthenticated, unthrottled, and spends real credits per debate.
 
-Set it only for a deliberately static client — the GitHub Pages build of the Web UI, which has no
-Nitro server and therefore no BFF route. In compose:
+Set it only for a deliberately static client that calls the API cross-origin. In compose:
 
 ```yaml
 environment:
-  DELIBERA_CORS_ORIGIN: https://techbuzzz.github.io
+  DELIBERA_CORS_ORIGIN: https://example.com
 ```
 
 Origins are matched exactly; there is no wildcard switch. `AllowCredentials` together with `*`
@@ -32,20 +44,6 @@ that names nothing. 13 new tests: 8 asserting what gets registered, and 5 drivin
 pipeline over HTTP — that a default host emits no `Access-Control-Allow-Origin`, that a
 configured origin gets its own origin echoed back rather than a wildcard, that an unlisted origin
 gets nothing, that the preflight is answered, and that `X-Correlation-Id` is exposed.
-
-### Fixed â€” the static Web UI build ignored its configured API origin
-
-`NUXT_PUBLIC_DELIBERA_API_BASE` did not reach the bundle, so a GitHub Pages build configured with
-it still called its own origin and every request 404'd. `pages.yml` was green throughout: Nuxt
-substitutes `import.meta.env.NUXT_PUBLIC_*` only for names declared under `runtimeConfig.public`,
-and an undeclared one is silently left as-is rather than rejected. `deliberaApiBase` is now
-declared (empty, so the container's same-origin behaviour is unchanged), and `pages.yml` asserts
-that a configured origin actually appears in the export â€” a dead site is no longer able to report
-a successful deployment.
-
-Verified: a build with the variable set carries it into 4 places in the export; a build without it
-carries it into none; the new gate passes when the origin is present, fails naming the missing
-config key when it is not, and is a no-op in preview mode. Web UI tests 34/34.
 
 ## [10.5.2] - 2026-10-09
 

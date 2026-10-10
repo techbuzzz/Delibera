@@ -15,7 +15,7 @@
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-2496ED?logo=docker&logoColor=fff)](https://hub.docker.com/r/techbuzzz/delibera-server)
 [![Pulls: server](https://img.shields.io/docker/pulls/techbuzzz/delibera-server?logo=docker&logoColor=2496ED)](https://hub.docker.com/r/techbuzzz/delibera-server)
 [![Pulls: webui](https://img.shields.io/docker/pulls/techbuzzz/delibera-webui?logo=docker&logoColor=2496ED)](https://hub.docker.com/r/techbuzzz/delibera-webui)
-[![Web UI](https://img.shields.io/badge/Web%20UI-GitHub%20Pages-3E8AFF?logo=githubpages)](https://techbuzzz.github.io/Delibera/)
+[![Website](https://img.shields.io/badge/Website-GitHub%20Pages-3E8AFF?logo=githubpages)](https://techbuzzz.github.io/Delibera/)
 [![CI](https://github.com/techbuzzz/Delibera/actions/workflows/publish-nuget.yml/badge.svg)](https://github.com/techbuzzz/Delibera/actions/workflows/publish-nuget.yml)
 [![Docker CI](https://github.com/techbuzzz/Delibera/actions/workflows/publish-docker.yml/badge.svg)](https://github.com/techbuzzz/Delibera/actions/workflows/publish-docker.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](LICENSE)
@@ -268,22 +268,18 @@ docker compose -f docker-compose.hub.yml up -d
 > published port binds to `127.0.0.1`. Put an authenticating reverse proxy in front before exposing
 > this stack to any network you do not control.
 
-#### 🌐 Web UI on GitHub Pages
+#### 🌐 Project website on GitHub Pages
 
-The same UI is deployed statically to <https://techbuzzz.github.io/Delibera/> on every merge to
-`main`.
+The project landing page is published at <https://techbuzzz.github.io/Delibera/> on every merge
+to `main`. It links to the documentation, release notes, NuGet packages, Docker images and the
+source repository.
 
-A static export has **no server**, so the UI's same-origin BFF route does not exist there — it needs
-an absolute API origin, and that server must allow the Pages origin via CORS:
-
-```yaml
-environment:
-  DELIBERA_CORS_ORIGIN: https://techbuzzz.github.io
-```
-
-CORS is **off by default** and stays off unless you list origins. That is deliberate: the missing
-header is what stops a random web page from reading this API, and the Web UI in the container does
-not need it. `Wildcard + AllowCredentials` is rejected at startup with a message naming the key.
+The Web UI itself is **not** deployed there — it ships in the
+[`techbuzzz/delibera-webui`](https://hub.docker.com/r/techbuzzz/delibera-webui) container image and
+is meant to run next to `Delibera.Server`, which provides the same-origin BFF route
+`/api/delibera/**` the UI depends on. A static export has no Nitro server and therefore no BFF,
+so it would need a separate CORS-enabled API origin — a deliberate owner decision, not something
+the Pages workflow configures silently.
 
 #### 📥 From source
 

@@ -54,6 +54,20 @@ jobs:
           fi
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
+          # Decode the JWT and refuse to run with an expired/stale token: a 403 five minutes
+          # later is much harder to diagnose than a clear failure here. Hub JWTs live ~5 min.
+          claims="$(jq -rn --arg t "$token" '
+            ($t | split(".")[1] | gsub("-";"+") | gsub("_";"/")
+                 | . + ("=" * ((4 - length % 4) % 4))) as $p
+            | ($p | @base64d | fromjson)')"
+          exp="$(jq -r '.exp // 0' <<< "$claims")"
+          now="$(date +%s)"
+          if [ "$exp" -le "$now" ]; then
+            echo "::error::Docker Hub token is already expired (exp=$exp, now=$now) — re-run the job." >&2
+            exit 1
+          fi
+          echo "   token valid for $(( exp - now )) more seconds"
+
       - name: Push descriptions and categories
         env:
           JWT: ${{ steps.auth.outputs.token }}
@@ -66,14 +80,22 @@ jobs:
             echo "── techbuzzz/$repo"
 
             full="$(jq -Rs . < "dockerhub/$repo.md")"
-            jq -n --arg d "$short" --arg f "$full" \
+            desc_resp="$(jq -n --arg d "$short" --arg f "$full" \
               '{description:$d, full_description:$f}' \
-              | curl -fsS -X PATCH \
-                  -H "Authorization: JWT ${JWT}" \
+              | curl -sS -w $'\n%{http_code}' -X PATCH \
+                  -H "Authorization: Bearer ${JWT}" \
                   -H 'Content-Type: application/json' \
                   --data-binary @- \
-                  "https://hub.docker.com/v2/repositories/techbuzzz/$repo/" > /dev/null
-            echo "   description + overview synced"
+                  "https://hub.docker.com/v2/repositories/techbuzzz/$repo/")"
+            desc_code="${desc_resp##*$'\n'}"
+            if [ "$desc_code" = "200" ] || [ "$desc_code" = "201" ]; then
+              echo "   description + overview synced"
+            else
+              echo "::error::description PATCH rejected for $repo (HTTP $desc_code)" >&2
+              echo "   Docker Hub said: $(printf '%s' "${desc_resp%$'\n'*}" | head -c 600)" >&2
+              echo "   If this is a 403, DOCKERHUB_TOKEN needs Read/Write/Delete scope on the techbuzzz namespace." >&2
+              exit 1
+            fi
 
             # Categories come from a fixed Docker Hub taxonomy keyed by slug, not by the
             # display name shown in the UI, so the slugs below are the part most likely to
@@ -82,7 +104,7 @@ jobs:
             # body, so print it instead of discarding it.
             cats_resp="$(jq -nc --argjson c "$categories" '{categories:$c}' \
               | curl -sS -w $'\n%{http_code}' -X PATCH \
-                  -H "Authorization: JWT ${JWT}" \
+                  -H "Authorization: Bearer ${JWT}" \
                   -H 'Content-Type: application/json' \
                   --data-binary @- \
                   "https://hub.docker.com/v2/repositories/techbuzzz/$repo/")"
@@ -104,7 +126,7 @@ jobs:
         run: |
           set -euo pipefail
           for repo in delibera-server delibera-webui; do
-            body="$(curl -fsS -H "Authorization: JWT ${JWT}" \
+            body="$(curl -fsS -H "Authorization: Bearer ${JWT}" \
               "https://hub.docker.com/v2/repositories/techbuzzz/$repo/")"
             desc="$(jq -r '.description // ""' <<< "$body")"
             len="$(jq -r '(.full_description // "") | length' <<< "$body")"
