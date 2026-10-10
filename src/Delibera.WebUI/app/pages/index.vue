@@ -31,7 +31,7 @@
       No debates yet. Create one from a registered template to get started.
     </p>
 
-    <ul v-else class="list">
+    <ul v-else class="list" :aria-busy="loading">
       <li v-for="debate in debates" :key="debate.debateId">
         <NuxtLink :to="`/debates/${debate.debateId}`" class="row">
           <div class="row__main">
@@ -68,6 +68,10 @@ import { DEBATE_STATUSES } from '#shared/types/delibera'
 import { describeStatus, type ParsedApiError } from '~/composables/useApiError'
 
 const { list, templates: fetchTemplates } = useDebates()
+
+// Without this the tab reads "Delibera — AI council" on every screen, which identifies the
+// product but not the page — and with three routes open there is nothing to tell them apart.
+useHead({ title: 'Debates — Delibera' })
 
 const debates = ref<DebateResponse[]>([])
 const templates = ref<TemplateDto[]>([])
@@ -106,6 +110,17 @@ async function refresh(): Promise<void> {
   page.value = 1
   await load()
 }
+
+// Changing a filter re-queries on the spot.
+//
+// Without this the selects only changed what was *selected*: the list kept rendering the
+// previous filter's results while the controls above it claimed the new one, and the only
+// way to reconcile the two was to guess that Refresh was now the missing step. Paging is
+// reset as well, because page 3 of a filter the user has just replaced is a page that has
+// no meaning under the new selection.
+watch([templateId, status], () => {
+  void refresh()
+})
 
 function goTo(next: number): void {
   page.value = next
@@ -172,6 +187,26 @@ onMounted(async () => {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Hover and keyboard focus.
+   `:focus-visible` rather than `:focus`, so a pointer click does not leave a ring behind on
+   every row while keyboard navigation still shows exactly where the reader is. The app has
+   no :focus styling at all elsewhere, and the browser default is a thin outline that all but
+   disappears against these dark surfaces. */
+.btn:hover:not(:disabled) {
+  border-color: #4a5a7a;
+}
+
+.input:hover {
+  border-color: #3a445c;
+}
+
+.input:focus-visible,
+.btn:focus-visible,
+.row:focus-visible {
+  outline: 2px solid #7fb0ff;
+  outline-offset: 2px;
 }
 
 .list {

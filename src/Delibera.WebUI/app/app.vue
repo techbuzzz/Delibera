@@ -116,6 +116,13 @@ const healthTitle = computed(() =>
   color: #fff;
 }
 
+/* The nav is the only always-visible route control in the app, so a keyboard user crossing
+   the page meets it first. The browser default outline is near-invisible on #151922. */
+.app__nav a:focus-visible {
+  outline: 2px solid #7fb0ff;
+  outline-offset: 2px;
+}
+
 .app__health {
   font-size: 0.72rem;
   padding: 0.2rem 0.55rem;

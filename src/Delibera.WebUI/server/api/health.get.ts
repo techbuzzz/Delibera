@@ -6,6 +6,9 @@
  * honest instead of guessing at a shape the server never produces.
  */
 
+// From `h3`, not `nuxt/server` — see the note in server/api/delibera/[...path].ts. This route
+// only reads a body-less GET and returns a plain object, but the `setResponseStatus` call below
+// resolves to the Nitro auto-import, which is h3's, so the handler event must stay h3-typed.
 import { defineEventHandler } from 'h3'
 import { resolveApiBase, resolveUpstreamPath } from '../utils/delibera'
 

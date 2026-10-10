@@ -98,6 +98,8 @@ import type { ParsedApiError } from '~/composables/useApiError'
 const { create, templates: fetchTemplates } = useDebates()
 const router = useRouter()
 
+useHead({ title: 'New debate — Delibera' })
+
 const templates = ref<TemplateDto[]>([])
 const submitting = ref(false)
 const clientError = ref<string | null>(null)
@@ -260,6 +262,26 @@ onMounted(async () => {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* See the note in app/pages/index.vue: pointer hover without leaving a ring behind, keyboard
+   focus that is actually visible against these dark surfaces. */
+.btn:hover:not(:disabled) {
+  border-color: #4a5a7a;
+}
+
+.btn--primary:hover:not(:disabled) {
+  border-color: #5a8fe0;
+}
+
+.input:hover {
+  border-color: #3a445c;
+}
+
+.input:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid #7fb0ff;
+  outline-offset: 2px;
 }
 
 .alert {

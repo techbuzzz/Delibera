@@ -7,15 +7,27 @@
 # dependency layer is cached on the lockfile alone.
 # ────────────────────────────────────────────────────────────────────────────────
 
+# Node is pinned to an exact patch, and the pin is load-bearing rather than cosmetic:
+# nuxt@4.6.1 declares `engines.node: ^22.22.3 || ^24.15.0 || >=26.0.0`, so a floating
+# `node:22-alpine` tag only works by luck — the tag tracks the newest 22.x, and the build
+# would start failing the moment 22.22.3 were pulled or a lower tag were cached.
+#
+# Keep in step with src/Delibera.WebUI/.nvmrc and the `engines.node` field in package.json.
+# Node 24 ("Krypton", the current LTS) satisfies the range too and is the natural next move
+# before 22 ("Jod") leaves maintenance in April 2027 — but moving to it also moves the
+# bundled npm from 10.x to 11.x, which is a separate change to make on purpose.
+ARG NODE_VERSION=22.23.3
+
 # ── Stage 1: dependencies ─────────────────────────────────────────────────────
 # Keyed on package.json + lockfile only, so a source edit does not re-run npm ci.
-FROM node:22-alpine AS deps
+FROM node:${NODE_VERSION}-alpine AS deps
 WORKDIR /app
 
-# npm is pinned deliberately. node:22-alpine ships npm 12.x while a developer workstation
-# commonly has 10.x, and the two resolve some transitive dependencies differently — a lockfile
-# written by npm 10 fails `npm ci` under npm 12 with EUSAGE ("lock file's cac@7.0.1 does not
-# satisfy cac@6.7.14"). Pinning the installer is what keeps the image build reproducible.
+# npm is pinned deliberately. The base image ships npm 10.9.9 while a developer workstation
+# commonly has a different major, and the two resolve some transitive dependencies
+# differently — a lockfile written by npm 10 fails `npm ci` under npm 12 with EUSAGE
+# ("lock file's cac@7.0.1 does not satisfy cac@6.7.14"). Pinning the installer is what keeps
+# the image build reproducible even if the base tag is ever bumped.
 #
 # Bump this together with the .nvmrc / local npm, never on its own.
 RUN npm install -g npm@10.9.4
@@ -26,7 +38,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 # ── Stage 2: build ────────────────────────────────────────────────────────────
-FROM node:22-alpine AS build
+FROM node:${NODE_VERSION}-alpine AS build
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -39,7 +51,7 @@ COPY . .
 RUN npm run build
 
 # ── Stage 3: runtime ──────────────────────────────────────────────────────────
-FROM node:22-alpine AS runtime
+FROM node:${NODE_VERSION}-alpine AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -47,7 +59,7 @@ ENV NITRO_HOST=0.0.0.0
 ENV NITRO_PORT=3000
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
-# node:22-alpine already ships an unprivileged `node` user (uid/gid 1000). Unlike the
+# The node image already ships an unprivileged `node` user (uid/gid 1000). Unlike the
 # Debian-based .NET image, alpine has adduser but the base user is already correct — using
 # it avoids creating a second account with the same uid.
 USER node

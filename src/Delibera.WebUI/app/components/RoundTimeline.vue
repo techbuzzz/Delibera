@@ -2,6 +2,17 @@
   <div class="timeline">
     <h2 class="timeline__title">Rounds ({{ rounds.length }})</h2>
 
+    <!--
+      The rounds arrive over SSE over a couple of hundred seconds, so the timeline changes
+      while the reader is somewhere else entirely — most likely on the verdict panel above.
+      A visible count is not something a screen reader re-announces on its own; this is.
+
+      Polite, not assertive: rounds arrive as a steady drip, and interrupting whatever is
+      being read for each one would make the page unusable rather than live. One message per
+      round is the right cadence.
+    -->
+    <p class="sr-only" role="status" aria-live="polite">{{ liveMessage }}</p>
+
     <p v-if="rounds.length === 0" class="empty">
       No rounds yet. A debate typically takes 150–200 seconds to complete.
     </p>
@@ -46,10 +57,34 @@
 <script setup lang="ts">
 import type { DebateRoundDto } from '#shared/types/delibera'
 
-defineProps<{ rounds: DebateRoundDto[] }>()
+const props = defineProps<{ rounds: DebateRoundDto[] }>()
+
+/**
+ * What the live region says. Empty before the first round so the region is silent rather
+ * than announcing a zero it has no news about.
+ */
+const liveMessage = computed(() => {
+  const count = props.rounds.length
+  if (count === 0) return ''
+  const latest = props.rounds[count - 1]?.roundNumber ?? count
+  return `Round ${latest} received, ${count} in total.`
+})
 </script>
 
 <style scoped>
+/* Available to assistive technology, absent from the visual layout. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .timeline {
   display: flex;
   flex-direction: column;

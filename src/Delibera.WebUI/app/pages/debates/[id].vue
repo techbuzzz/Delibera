@@ -38,6 +38,11 @@
 
     <p v-if="streamError" class="alert alert--error">{{ streamError }}</p>
 
+    <!-- Polite rather than assertive: the cancel button's own result is the user's cue, and
+         interrupting whatever a screen reader is currently saying to state it would cost
+         more than it communicates. -->
+    <p v-if="notice" class="alert" role="status">{{ notice }}</p>
+
     <VerdictPanel v-if="record" :record="record" />
 
     <ClientOnly>
@@ -63,11 +68,31 @@ const debateId = computed(() => String(route.params.id ?? ''))
 
 const record = ref<DebateResponse | null>(null)
 const loadError = ref<ParsedApiError | null>(null)
+/** Outcome of the last action the user took, when it succeeded but is worth spelling out. */
+const notice = ref<string | null>(null)
 const cancelling = ref(false)
 
 const { rounds, errorMessage: streamError, connected, polling, start } = useDebateStream()
 
 const exportHref = computed(() => exportUrl(debateId.value))
+
+// The debate's own label is the most specific thing this page can be called, and it only
+// arrives after the first render — so the title fills in rather than committing to the
+// opaque id up front. Long labels are cut: a tab strip is not a place for a full question.
+const TITLE_MAX = 60
+
+useHead({
+  title: computed(() => {
+    const current = record.value
+    const specific = current?.label?.trim() || current?.templateId?.trim()
+    if (specific) {
+      const shortened =
+        specific.length > TITLE_MAX ? `${specific.slice(0, TITLE_MAX - 1)}…` : specific
+      return `${shortened} — Delibera`
+    }
+    return `Debate ${debateId.value.slice(0, 8)} — Delibera`
+  }),
+})
 
 /**
  * Backfills rounds from the paginated endpoint when the timeline is still empty.
@@ -119,15 +144,18 @@ async function onStreamFinished(): Promise<void> {
 
 async function onCancel(): Promise<void> {
   cancelling.value = true
+  notice.value = null
   try {
     const outcome = await cancel(debateId.value)
-    // "already finished" is a success from the caller's point of view, not an error — the
-    // server answers 404 for a debate that has already reached a terminal state.
-    if (outcome === 'already-finished') {
-      await loadRecord()
-    } else {
-      await loadRecord()
-    }
+    // Both outcomes mean "this debate will not run any longer", but they are not the same
+    // event and the user pressed a button called Cancel: telling them a debate ended a
+    // second earlier is different information from confirming their own cancellation, and
+    // silently reloading the record conflates the two into an unexplained status change.
+    notice.value =
+      outcome === 'already-finished'
+        ? 'This debate had already reached a final state, so there was nothing to cancel.'
+        : 'Cancellation requested. The debate stops after the round in flight.'
+    await loadRecord()
   } catch (error) {
     loadError.value = error as ParsedApiError
   } finally {
@@ -199,6 +227,20 @@ onMounted(async () => {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* See the note in app/pages/index.vue. */
+.btn:hover:not(:disabled) {
+  border-color: #4a5a7a;
+}
+
+.btn--danger:hover:not(:disabled) {
+  border-color: #8c3a3a;
+}
+
+.btn:focus-visible {
+  outline: 2px solid #7fb0ff;
+  outline-offset: 2px;
 }
 
 .alert {

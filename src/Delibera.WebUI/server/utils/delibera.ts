@@ -12,8 +12,6 @@
  * a proxy or ingress. The UI composes its own URLs from same-origin paths instead.
  */
 
-import type { H3Event } from 'h3'
-
 /** Client-facing prefix that maps onto the server's `/api/v1` group. */
 export const PROXY_PREFIX = '/api/delibera'
 export const API_VERSION_PREFIX = '/api/v1'

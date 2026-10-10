@@ -5,6 +5,18 @@
  * cross-origin call would be blocked. Same-origin proxying is the fix, not a convenience.
  */
 
+// Imported from `h3`, NOT from `nuxt/server` (Nuxt 4.6+).
+//
+// `nuxt/server` is a deliberate server-agnostic surface: it re-declares the request helpers
+// against Nuxt's own `RequestEvent` and omits the response-writing helpers entirely, so that a
+// non-Nitro server builder can satisfy it. That is the wrong trade for THIS route. A BFF whose
+// job is forwarding an upstream body verbatim (`sendWebResponse`) or streaming SSE chunk by
+// chunk (`sendStream`) needs exactly the Nitro-bound helpers `nuxt/server` abstracts away, and
+// Nuxt's `RequestEvent` is not assignable to h3's `H3Event` — mixing the two surfaces fails
+// typecheck with `TS2345`, not at runtime. The app is Nitro-pinned anyway
+// (`nitro.preset: 'node-server'` in nuxt.config.ts).
+//
+// Revisit only if the proxy can stop writing responses directly.
 import {
   defineEventHandler,
   getQuery,
@@ -80,6 +92,24 @@ export default defineEventHandler(async (event) => {
   const hasBody = method !== 'GET' && method !== 'HEAD'
   const upstreamBody = hasBody ? encodeUpstreamBody(await readBody(event)) : undefined
 
+  // Cancel the upstream call when the browser goes away.
+  //
+  // `timeout: 0` above means nothing else ever ends this request, and a debate runs for
+  // 150–200 s with an SSE stream open for longer still. Navigating off the page, closing the
+  // tab, or simply having EventSource reconnect all end the client side while the upstream
+  // connection stays open and burns a server-side stream — one leaked connection per round of
+  // user navigation, for the whole life of the debate.
+  //
+  // `res.close` is the correct hook rather than `req.close`: the request stream ends as soon
+  // as the body is consumed, which for a body-less GET is immediately, so listening there
+  // would abort every call in this route. The guard on `writableEnded` keeps the normal
+  // completion path — where close fires *after* the response was fully written — from
+  // cancelling a request that already succeeded.
+  const abort = new AbortController()
+  event.node.res.on('close', () => {
+    if (!event.node.res.writableEnded) abort.abort()
+  })
+
   // A debate legitimately runs 150–200 s and an SSE stream stays open far longer, so
   // Nitro's default fetch timeout would cut both off mid-flight. `timeout` is a Nitro
   // extension to RequestInit, hence the widened type rather than a bare `as RequestInit`
@@ -87,6 +117,7 @@ export default defineEventHandler(async (event) => {
   const upstreamInit = {
     method,
     body: upstreamBody,
+    signal: abort.signal,
     headers: buildUpstreamHeaders(
       {
         method,
@@ -102,6 +133,12 @@ export default defineEventHandler(async (event) => {
   try {
     upstream = await fetch(target, upstreamInit)
   } catch (error) {
+    // The client hanging up is not an upstream failure. Reporting 502 here would describe a
+    // problem the user cannot act on — and the response they would receive is one nobody is
+    // left to read, because the socket they asked to close is the one this would be written
+    // to.
+    if (abort.signal.aborted) return
+
     setResponseStatus(event, 502)
     return {
       title: 'Delibera API is unreachable',
@@ -124,7 +161,14 @@ export default defineEventHandler(async (event) => {
     setResponseHeader(event, 'Content-Type', 'text/event-stream')
     setResponseHeader(event, 'Cache-Control', 'no-cache')
     setResponseHeader(event, 'X-Accel-Buffering', 'no')
-    await sendStream(event, upstream.body)
+    try {
+      await sendStream(event, upstream.body)
+    } catch (error) {
+      // Same reasoning as the fetch guard: an aborted stream means the browser navigated
+      // away or reconnected, and the resulting read error on `upstream.body` is the abort
+      // working as intended rather than a proxy fault worth surfacing.
+      if (!abort.signal.aborted) throw error
+    }
     return
   }
 

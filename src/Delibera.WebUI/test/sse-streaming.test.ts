@@ -40,6 +40,23 @@ let bff: ReturnType<typeof spawn> | undefined
 const receivedBodies: string[] = []
 
 /**
+ * SSE connections opened against the `abort-probe` path, and how many of those the upstream
+ * saw close. Scoped to one path so the assertion cannot be satisfied by another test's
+ * connection draining.
+ */
+const probe = { opened: 0, closed: 0, lastClosedAt: 0 }
+
+/** Polls a predicate until it holds, so the test does not depend on a fixed sleep. */
+async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return true
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  return predicate()
+}
+
+/**
  * Readiness probe.
  *
  * Deliberately accepts any HTTP response, including 503: `/api/health` reports 503 while
@@ -115,6 +132,17 @@ describe('SSE proxy streaming', () => {
         'Cache-Control': 'no-cache',
         'X-Accel-Buffering': 'no',
       })
+
+      // Counted here, before any write, so `opened` proves the connection reached the
+      // upstream. `close` fires on both a normal end and an aborted one; only the probe path
+      // is counted, which is what makes the disconnect assertion unambiguous.
+      if (req.url?.includes('abort-probe')) {
+        probe.opened += 1
+        res.on('close', () => {
+          probe.closed += 1
+          probe.lastClosedAt = Date.now()
+        })
+      }
 
       setTimeout(() => {
         res.write(
@@ -238,5 +266,57 @@ describe('SSE proxy streaming', () => {
     expect(received).toBeTruthy()
     expect(received).not.toContain('[object Object]')
     expect(JSON.parse(received!)).toEqual(payload)
+  }, 20_000)
+
+  // Regression guard for leaked server-side streams.
+  //
+  // The proxy runs every upstream call with `timeout: 0` because a debate legitimately runs
+  // for 150–200 s, so nothing else ever ended these requests. Closing the tab, navigating
+  // away or letting EventSource reconnect left the upstream connection open for the rest of
+  // the debate — one leaked stream per piece of user navigation, invisible from the UI, which
+  // had simply gone.
+  //
+  // What is asserted is the UPSTREAM side: the proxy cancelling its fetch is what closes the
+  // server's socket, and that is the observable consequence. Without the fix this counter
+  // stays at zero while every other test in this file still passes.
+  it('releases the upstream connection when the client disconnects', async () => {
+    const before = { ...probe }
+
+    const response = await fetch(
+      `http://127.0.0.1:${BFF_PORT}/api/delibera/debates/abort-probe/stream`,
+    )
+    expect(response.status).toBe(200)
+
+    const reader = response.body!.getReader()
+    // Read one chunk first, so the stream is demonstrably established end-to-end and the
+    // disconnect below is a deliberate mid-stream hang-up rather than a race against setup.
+    await reader.read()
+
+    expect(
+      await waitFor(() => probe.opened > before.opened, 5_000),
+      'the upstream SSE connection was never opened',
+    ).toBe(true)
+
+    // The client goes away.
+    const cancelledAt = Date.now()
+    await reader.cancel()
+
+    expect(
+      await waitFor(() => probe.closed > before.closed, COMPLETED_AT_MS),
+      'the upstream connection outlived the client entirely',
+    ).toBe(true)
+
+    // The count alone is not enough, and this is why. The upstream eventually ends its own
+    // response after COMPLETED_AT_MS, and a connection the proxy never cancelled closes at
+    // exactly that moment anyway — measured at 2698 ms after the cancel on this fixture. So
+    // "the connection closed" passes either way, and the timing is the only thing that
+    // distinguishes a proxy that released the stream from one that merely outlived it.
+    //
+    // With the abort wired up the same measurement is 6 ms. The threshold sits at half the
+    // upstream's own lifetime, which is where the two outcomes are furthest apart.
+    const elapsed = probe.lastClosedAt - cancelledAt
+    expect(elapsed, `upstream closed ${elapsed}ms after the client disconnected`).toBeLessThan(
+      COMPLETED_AT_MS / 2,
+    )
   }, 20_000)
 })

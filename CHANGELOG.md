@@ -131,6 +131,74 @@ pipeline over HTTP — that a default host emits no `Access-Control-Allow-Origin
 configured origin gets its own origin echoed back rather than a wildcard, that an unlisted origin
 gets nothing, that the preflight is answered, and that `X-Correlation-Id` is exposed.
 
+### Fixed — the Web UI typecheck was passing while silently checking less
+
+`npm run typecheck` printed `[Vue] Load plugin failed: vue-router/volar/sfc-route-blocks` on every
+run and exited **0**, so CI reported green. The plugin Nuxt writes into the generated tsconfig
+comes from `vue-router`, and the app pinned `vue-router@^4` — a different major from the one
+`nuxt` itself depends on, for a package no source file imports. Two defects sat behind the one
+message: `vue-tsc@2` cannot load a `vue-router@5` plugin at all, and once that is upgraded the
+plugin must also be resolvable from the project root, which it is not while it only exists
+nested under `node_modules/nuxt`. Nuxt is now `4.6.1`, `vue-router@^5.4.0` matching it,
+`vue-tsc@3.3`, `vitest@5`, `@nuxt/test-utils@4`, and the check is clean for the first time.
+
+### Changed — Node is pinned to an exact patch, because the requirement is an exact range
+
+`nuxt@4.6.1` declares `engines.node: ^22.22.3 || ^24.15.0 || >=26.0.0`, so the floating
+`node:22-alpine` and `.nvmrc: 22` that worked by accident stop working the moment the tag moves
+against us. Both are now `22.23.3`, the Dockerfile resolving one `ARG NODE_VERSION` across its
+three stages. Node 24 ("Krypton") satisfies the range too and is the natural move before 22
+("Jod") leaves maintenance in April 2027 — but that also moves the bundled npm from 10.x to
+11.x, which deserves its own change.
+
+### Fixed — the proxy kept upstream SSE connections open after the browser left
+
+Every upstream call runs with `timeout: 0`, because a debate legitimately takes 150–200 s and its
+stream stays open longer still, so nothing else ever ended those requests. Closing the tab,
+navigating away or letting `EventSource` reconnect left the server-side connection running for
+the remainder of the debate — one leaked stream per piece of user navigation, invisible from a UI
+that had simply gone. The proxy now aborts its own fetch when the response closes before it was
+fully written, and the resulting read error is swallowed rather than thrown: a client hanging up
+is not an upstream fault worth reporting to nobody.
+
+Measured on the test fixture, the upstream socket closes **6 ms** after the client disconnects
+with the fix and **2699 ms** without it — the second being the moment the fake upstream ends its
+own response, which is exactly the point: a connection the proxy never cancelled closes anyway.
+The regression test asserts the timing, not the count, because the count passes either way.
+
+### Fixed — three Web UI behaviours that were silently wrong
+
+- **Cancel reported itself without saying anything.** Both branches of `onCancel` called
+  `loadRecord()`, so "cancelled" and "had already finished" produced identical silence and an
+  unexplained status change. They now say which one happened.
+- **Changing a filter did not re-query.** The selects only changed what was *selected*; the list
+  kept rendering the previous filter's results under controls claiming the new one, and paging
+  was never reset. A filter change now reloads from page 1.
+- **`npm test` failed on a clean checkout.** The SSE suite runs the built Nitro server, and CI
+  only passed because its `build` step happens to run first. `pretest` now builds.
+
+### Added — the live view announces itself, and the pages identify themselves
+
+Rounds arriving over SSE were invisible to a screen reader: the count in the heading changed
+silently, and the reader was most likely on the verdict panel. A polite live region now announces
+each round — polite, because rounds arrive as a steady drip and interrupting whatever is being
+read for each one would make the page unusable rather than live. Every tab was titled "Delibera —
+AI council"; each route now titles itself, and a debate names itself by its label once loaded.
+Buttons, inputs and rows gained hover states and a visible `:focus-visible` ring, the browser
+default being near-invisible against these dark surfaces, and the error page now shows the status
+message and clears the error through `clearError` instead of relying on a link that renders
+without the router state it needs.
+
+### Changed — the server route stays on `h3`, and says why
+
+Nuxt 4.6 added `nuxt/server`, a server-agnostic surface that re-declares the request helpers
+against Nuxt's own `RequestEvent` and omits the response-writing helpers, so a non-Nitro builder
+can satisfy it. This route is exactly the case it cannot serve: forwarding an upstream body
+verbatim is `sendWebResponse`, streaming SSE chunk by chunk is `sendStream`, and Nuxt's
+`RequestEvent` is not assignable to h3's `H3Event` — mixing the surfaces fails typecheck, not at
+runtime. The imports stay on `h3` with the reasoning recorded at the import, so the next person
+does not spend the same afternoon on it. An unused `H3Event` type import went with it.
+
 ## [10.5.2] - 2026-10-09
 
 **Contains behaviour changes.** Two are breaking for existing deployments: published ports now
