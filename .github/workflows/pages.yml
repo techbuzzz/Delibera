@@ -69,10 +69,14 @@ jobs:
           cache-dependency-path: src/Delibera.WebUI/${{ steps.detect-package-manager.outputs.lockfile }}
 
       - name: Setup Pages
+        id: pages
         uses: actions/configure-pages@v5
-        with:
-          # Injects `router.base` and sets `target: 'static'` in nuxt.config.ts.
-          static_site_generator: nuxt
+        # No `static_site_generator: nuxt` here, and that is deliberate. That input makes the
+        # action REWRITE the generator config file instead of exporting anything, and it only
+        # understands .js/.cjs/.mjs — our nuxt.config.ts is TypeScript, so it emits a warning and
+        # injects nothing. The keys it would inject (`router.base`, `target`) are Nuxt 3 names
+        # that Nuxt 4 has moved or removed anyway. The base path is taken from this step's
+        # `base_path` output and passed to the build as NUXT_APP_BASE_URL instead.
 
       - name: Install dependencies
         working-directory: src/Delibera.WebUI
@@ -88,6 +92,10 @@ jobs:
           # Empty by default: the site deploys as a UI preview whose API calls 404.
           # Set it as a repository variable to point the static build at a live server.
           NUXT_PUBLIC_DELIBERA_API_BASE: ${{ vars.NUXT_PUBLIC_DELIBERA_API_BASE }}
+          # The site's own base path (e.g. /Delibera). Nuxt reads NUXT_APP_BASE_URL into
+          # app.baseURL, so the export keeps its documents at the artifact root while asset
+          # URLs are prefixed with the base — which is exactly what Pages expects.
+          NUXT_APP_BASE_URL: ${{ steps.pages.outputs.base_path }}
         run: ${{ steps.detect-package-manager.outputs.manager }} run generate
 
       - name: Fail if the export produced a real site
@@ -130,6 +138,28 @@ jobs:
             exit 1
           fi
           echo "API base $API_BASE is baked into the export"
+
+      - name: Fail if the Pages base path did not reach the export
+        run: |
+          set -euo pipefail
+          # configure-pages injects the site's base path into nuxt.config before the build, so
+          # a project site (techbuzzz.github.io/Delibera) emits /Delibera/_nuxt/... asset URLs
+          # while the files themselves stay at the root of the artifact. If the injection ever
+          # stops happening, the HTML keeps root-relative URLs: the deploy succeeds, and the
+          # site renders unstyled over a client bundle that 404s.
+          base="${{ steps.pages.outputs.base_path }}"
+          if [ -z "$base" ]; then
+            echo "no base path reported — an owner/org Pages site, nothing to check"
+            exit 0
+          fi
+          html=src/Delibera.WebUI/.output/public/index.html
+          if grep -q "href=\"$base/_nuxt/" "$html"; then
+            echo "base path $base is applied to the export's asset URLs"
+            exit 0
+          fi
+          echo "::error::expected asset URLs under $base/_nuxt/ in $html" >&2
+          grep -o 'href="[^"]*_nuxt/[^"]*"' "$html" | head -3 >&2 || true
+          exit 1
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
