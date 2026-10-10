@@ -129,8 +129,26 @@ path writes metadata on its own.
 
 ## GitHub Pages (one-time setup)
 
-**Settings → Pages → Source → GitHub Actions.** The API returns 404 until this is set, and
-creating it needs an admin token — it is not automatable from CI.
+**Settings → Pages → Source → GitHub Actions.** Do this **before** merging the workflow that
+deploys: `pages.yml` runs on every push to `main`, and merging it into a repository whose Pages
+site does not exist yet produces a red run on `main` with
+
+```
+Get Pages site failed.
+Please verify that the repository has Pages enabled and configured to build using GitHub Actions
+Error: Not Found
+```
+
+That failure is about the **site**, not the workflow: pushing a workflow file does not create a
+Pages site, and `enablement: true` does not help either, because creating one is a repository
+administration operation and the automatic `GITHUB_TOKEN` can never administer the repository — no
+`permissions:` block changes that. The site is created once, by a human in Settings, or by an
+authenticated `POST /repos/OWNER/REPO/pages -f build_type=workflow`.
+
+**Do not trust `GET /repos/OWNER/REPO/pages` to tell you whether this is set.** It answers 404 for
+an unauthenticated caller whether or not Pages is configured, while the repository object reports
+`"has_pages": true` on the same repository at the same moment. The field that settles it is
+`has_pages` plus the Source dropdown; the 404 only says you asked without credentials.
 
 `pages.yml` deploys the Web UI as a **static** export on every merge to `main`. Two consequences:
 
