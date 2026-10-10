@@ -141,6 +141,32 @@ creating it needs an admin token — it is not automatable from CI.
 - Nuxt 4 emits to `.output/public`, **not** `dist`. GitHub's own sample workflow still uploads
   `./dist` because it predates Nuxt 4.
 
+### Reproduce the Pages build locally
+
+`pages.yml` runs steps that PR CI does not: `nuxt generate`, and two assertions about the export.
+That gap is worth closing by hand before every Pages-related change, because none of it can fail
+a pull request:
+
+```bash
+cd src/Delibera.WebUI
+npm ci
+npm run generate                                  # 6 routes -> .output/public
+test -f .output/public/index.html                 # the gate in pages.yml
+test -f .output/public/debates/new/index.html    # prerender.routes actually took
+
+# the origin must be BAKED IN, not merely configured
+NUXT_PUBLIC_DELIBERA_API_BASE=https://example.test npm run generate
+grep -rqF 'https://example.test' .output/public   # 0 hits = the whole feature is dead
+```
+
+That last `grep` is the check that matters. `NUXT_PUBLIC_*` is substituted only for names declared
+under `runtimeConfig.public`; an undeclared one is dropped silently, the build stays green, and the
+deployed site quietly calls its own origin. It has already happened once here.
+
+Note `npm run build` (not `generate`) before `npm test` — the SSE suite loads
+`.output/server/index.mjs`, which a static export does not produce, and reports a suite failure
+that looks like a broken test rather than a missing artefact.
+
 ---
 
 ## Changing a workflow
