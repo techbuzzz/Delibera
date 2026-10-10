@@ -1,0 +1,182 @@
+name: Deploy Nuxt site to Pages
+
+# Publishes the real Delibera Web UI to GitHub Pages as a static build.
+#
+# This is a STATIC export of the same app that ships in the container. The important
+# consequence, which is not obvious from the workflow: `nuxt generate` produces no Nitro server,
+# so the BFF route `/api/delibera/**` does not exist in the deployed site. The browser then needs
+# an absolute API origin, supplied at build time by NUXT_PUBLIC_DELIBERA_API_BASE and resolved in
+# app/composables/useDebates.ts. That server must allow this origin via CORS — Delibera.Server
+# registers no CORS policy by default, because in its normal container deployment the browser
+# only ever talks to the same-origin proxy.
+#
+# Without that env var the site still deploys and still renders, but every request 404s. That is
+# a legitimate state for a UI preview; it is not a working install.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the in-progress and the
+# latest queued. Do NOT cancel in-progress runs — let a production deploy finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect package manager
+        id: detect-package-manager
+        run: |
+          set -euo pipefail
+          if [ -f "${{ github.workspace }}/src/Delibera.WebUI/pnpm-lock.yaml" ]; then
+            echo "manager=pnpm" >> "$GITHUB_OUTPUT"
+            echo "lockfile=pnpm-lock.yaml" >> "$GITHUB_OUTPUT"
+            echo "command=install" >> "$GITHUB_OUTPUT"
+          elif [ -f "${{ github.workspace }}/src/Delibera.WebUI/yarn.lock" ]; then
+            echo "manager=yarn" >> "$GITHUB_OUTPUT"
+            echo "lockfile=yarn.lock" >> "$GITHUB_OUTPUT"
+            echo "command=install" >> "$GITHUB_OUTPUT"
+          elif [ -f "${{ github.workspace }}/src/Delibera.WebUI/package-lock.json" ]; then
+            echo "manager=npm" >> "$GITHUB_OUTPUT"
+            echo "lockfile=package-lock.json" >> "$GITHUB_OUTPUT"
+            echo "command=ci" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::no lockfile found in src/Delibera.WebUI" >&2
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: ${{ steps.detect-package-manager.outputs.manager }}
+          # Must follow the manager the detect step chose. Hardcoding the npm lockfile works
+          # today because package-lock.json is the only one in the tree — but if this repo ever
+          # adopts pnpm, a pnpm cache keyed on a file that does not exist never invalidates, and
+          # a stale node_modules is restored forever under a green build.
+          cache-dependency-path: src/Delibera.WebUI/${{ steps.detect-package-manager.outputs.lockfile }}
+
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v5
+        # No `static_site_generator: nuxt` here, and that is deliberate. That input makes the
+        # action REWRITE the generator config file instead of exporting anything, and it only
+        # understands .js/.cjs/.mjs — our nuxt.config.ts is TypeScript, so it emits a warning and
+        # injects nothing. The keys it would inject (`router.base`, `target`) are Nuxt 3 names
+        # that Nuxt 4 has moved or removed anyway. The base path is taken from this step's
+        # `base_path` output and passed to the build as NUXT_APP_BASE_URL instead.
+
+      - name: Install dependencies
+        working-directory: src/Delibera.WebUI
+        run: ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }}
+
+      - name: Typecheck
+        working-directory: src/Delibera.WebUI
+        run: ${{ steps.detect-package-manager.outputs.manager }} run typecheck
+
+      - name: Static HTML export with Nuxt
+        working-directory: src/Delibera.WebUI
+        env:
+          # Empty by default: the site deploys as a UI preview whose API calls 404.
+          # Set it as a repository variable to point the static build at a live server.
+          NUXT_PUBLIC_DELIBERA_API_BASE: ${{ vars.NUXT_PUBLIC_DELIBERA_API_BASE }}
+          # The site's own base path (e.g. /Delibera). Nuxt reads NUXT_APP_BASE_URL into
+          # app.baseURL, so the export keeps its documents at the artifact root while asset
+          # URLs are prefixed with the base — which is exactly what Pages expects.
+          NUXT_APP_BASE_URL: ${{ steps.pages.outputs.base_path }}
+        run: ${{ steps.detect-package-manager.outputs.manager }} run generate
+
+      - name: Fail if the export produced a real site
+        run: |
+          set -euo pipefail
+          # `.output/public`, NOT `dist` — Nuxt 4 moved the static output there. GitHub's own
+          # sample workflow still uploads ./dist because it predates Nuxt 4, and copying it
+          # verbatim uploads nothing at all.
+          #
+          # The second assertion matters more: without an explicit nitro.prerender.routes list
+          # the export contains only 200.html + 404.html and NO document for the real pages,
+          # which deploys as a blank site that still reports a green build.
+          out=src/Delibera.WebUI/.output/public
+          if [ ! -f "$out/index.html" ]; then
+            echo "::error::$out/index.html is missing — the site would deploy blank" >&2
+            ls -la "$out" || true
+            exit 1
+          fi
+          echo "prerendered: $(cd "$out" && find . -name '*.html' | sort | tr '\n' ' ')"
+          echo "total files: $(find "$out" -type f | wc -l)"
+
+      - name: Fail if the configured API base did not reach the bundle
+        env:
+          API_BASE: ${{ vars.NUXT_PUBLIC_DELIBERA_API_BASE }}
+        run: |
+          set -euo pipefail
+          # Nuxt substitutes `import.meta.env.NUXT_PUBLIC_*` only for keys declared under
+          # runtimeConfig.public. Undeclare or rename `deliberaApiBase` and nothing fails: the
+          # build goes green and the deployed site keeps calling its own origin, which on
+          # Pages is a 404. A green pipeline is exactly the signal that cannot catch this,
+          # so check the artefact instead of the exit code.
+          if [ -z "$API_BASE" ]; then
+            echo "no API base configured — deploying a UI preview whose requests 404"
+            exit 0
+          fi
+          out=src/Delibera.WebUI/.output/public
+          if ! grep -rqF "$API_BASE" "$out"; then
+            echo "::error::$API_BASE is configured but appears nowhere in the export" >&2
+            echo "Check that deliberaApiBase is still declared under runtimeConfig.public." >&2
+            exit 1
+          fi
+          echo "API base $API_BASE is baked into the export"
+
+      - name: Fail if the Pages base path did not reach the export
+        run: |
+          set -euo pipefail
+          # configure-pages injects the site's base path into nuxt.config before the build, so
+          # a project site (techbuzzz.github.io/Delibera) emits /Delibera/_nuxt/... asset URLs
+          # while the files themselves stay at the root of the artifact. If the injection ever
+          # stops happening, the HTML keeps root-relative URLs: the deploy succeeds, and the
+          # site renders unstyled over a client bundle that 404s.
+          base="${{ steps.pages.outputs.base_path }}"
+          if [ -z "$base" ]; then
+            echo "no base path reported — an owner/org Pages site, nothing to check"
+            exit 0
+          fi
+          html=src/Delibera.WebUI/.output/public/index.html
+          if grep -q "href=\"$base/_nuxt/" "$html"; then
+            echo "base path $base is applied to the export's asset URLs"
+            exit 0
+          fi
+          echo "::error::expected asset URLs under $base/_nuxt/ in $html" >&2
+          grep -o 'href="[^"]*_nuxt/[^"]*"' "$html" | head -3 >&2 || true
+          exit 1
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: src/Delibera.WebUI/.output/public
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        # v5 is current (5.0.1, Sep 2026) and is what GitHub's own sample pairs with
+        # upload-pages-artifact@v3. It stays on upload-artifact@v4 internals, so v3 artifacts
+        # are still the supported input — no reason to move the upload major and re-test a
+        # tarball format nobody here can reproduce locally.
+        uses: actions/deploy-pages@v5

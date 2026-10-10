@@ -11,6 +11,74 @@ namespace Delibera.Server.Infrastructure;
 
 public static class ServerServiceExtensions
 {
+   /// <summary>
+   ///    Name of the CORS policy registered when <c>Delibera:Server:Cors:AllowedOrigins</c> is
+   ///    non-empty. <c>UseCors</c> must be given this exact name, and may only be called at all
+   ///    when the policy exists — ASP.NET throws at request time for an unknown policy, which is
+   ///    a far worse failure mode than simply not enabling CORS.
+   /// </summary>
+   public const string CorsPolicyName = "DeliberaCors";
+
+   /// <summary>
+   ///    Registers a named CORS policy, but only when origins are explicitly configured.
+   /// </summary>
+   /// <remarks>
+   ///    <para>
+   ///       The default registration path is empty on purpose: with no origins nothing is added
+   ///       to the container, so a deployment that never heard of this option behaves exactly as
+   ///       it did before. <c>AddCors</c> on its own emits no headers, but leaving the policy
+   ///       absent also means <c>UseCors</c> can be guarded by
+   ///       <see cref="IsCorsEnabled"/> instead of throwing on first request.
+   ///    </para>
+   ///    <para>
+   ///       Origins are matched exactly by the CORS middleware. There is no
+   ///       <c>SetIsOriginAllowed(_ =&gt; true)</c> path here on purpose: this API is
+   ///       unauthenticated, so "any origin" would let any page on the internet spend credits
+   ///       through someone else's browser.
+   ///    </para>
+   /// </remarks>
+   public static IServiceCollection AddDeliberaCors(
+      this IServiceCollection services,
+      IConfiguration configuration)
+   {
+      var cors = configuration
+         .GetSection(DeliberaServerOptions.SectionName)
+         .Get<DeliberaServerOptions>()?.Cors ?? new CorsGateOptions();
+
+      var origins = cors.AllowedOrigins
+         .Where(o => !string.IsNullOrWhiteSpace(o))
+         .Select(o => o.Trim())
+         .Distinct(StringComparer.OrdinalIgnoreCase)
+         .ToArray();
+
+      if (origins.Length == 0)
+         return services;
+
+      // `*` with credentials is rejected by the framework at policy-build time with a message
+      // that does not name the config key. Fail here instead, where the operator can see it.
+      if (cors.AllowCredentials && origins.Contains("*", StringComparer.OrdinalIgnoreCase))
+         throw new InvalidOperationException(
+            $"{DeliberaServerOptions.SectionName}:Cors:AllowCredentials is true while " +
+            $"AllowedOrigins contains '*'. Name the origins explicitly — a wildcard is never " +
+            "valid alongside credentials.");
+
+      services.AddCors(options => options.AddPolicy(CorsPolicyName, policy =>
+      {
+         policy
+            .WithOrigins(origins)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            // The correlation id is how a caller finds its entry in the server log; without this
+            // the browser hides it from a cross-origin client.
+            .WithExposedHeaders("X-Correlation-Id");
+
+         if (cors.AllowCredentials)
+            policy.AllowCredentials();
+      }));
+
+      return services;
+   }
+
    public static IServiceCollection AddDeliberaServer(
       this IServiceCollection services,
       IConfiguration configuration)
@@ -25,6 +93,10 @@ public static class ServerServiceExtensions
       // Redis — opt-in, off by default, and validated eagerly so a typo in the
       // connection string names itself at startup rather than at the first debate.
       services.AddDeliberaRedis(configuration);
+
+      // CORS — opt-in, off by default. The Web UI's same-origin BFF route is the supported path;
+      // this exists only for a deliberately static client such as the GitHub Pages build.
+      services.AddDeliberaCors(configuration);
 
       // Business services
       services.AddSingleton<ITemplateRegistry, TemplateRegistry>();

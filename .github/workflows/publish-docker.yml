@@ -90,6 +90,9 @@ jobs:
     needs: [ build, webui-tests ]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    # Two multi-arch builds plus the smoke checks finish in ~15 min. 45 leaves room for a
+    # slow runner without letting a stuck step burn the default 6 hours.
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
@@ -161,12 +164,37 @@ jobs:
       - name: Runtime smoke (amd64)
         run: |
           set -euo pipefail
-          # Runs the actual entrypoint binary from each published image. The WebUI
-          # container would exit immediately, so --version is the cheapest proof that
-          # the runtime stage has a working interpreter and the right file layout.
-          docker run --rm --platform linux/amd64 \
+          # Proves the runtime stage has a working interpreter and the right file layout.
+          #
+          # --entrypoint is REQUIRED, not decorative: both images declare ENTRYPOINT
+          # (dotnet Delibera.Server.dll / node .output/server/index.mjs), and `docker run
+          # IMAGE <args>` APPENDS <args> to an ENTRYPOINT instead of replacing it. Without
+          # the override this runs `dotnet Delibera.Server.dll dotnet --version` — which
+          # boots the web host and never exits, so the step hangs silently instead of
+          # failing loudly.
+          #
+          # --list-runtimes, NOT --version: the server image ships the ASP.NET Core
+          # RUNTIME, not the SDK, so `dotnet --version` exits 155 with "No .NET SDKs were
+          # found" and would fail a perfectly good image. Listing runtimes proves the
+          # interpreter works AND asserts the AspNetCore runtime the host actually needs.
+          #
+          # `timeout` bounds it so a future regression costs minutes, not the job timeout.
+          timeout --kill-after=10 180 docker run --rm --platform linux/amd64 \
+            --entrypoint dotnet \
             "${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.SERVER_IMG }}:${{ steps.meta.outputs.full }}" \
-            dotnet --version
-          docker run --rm --platform linux/amd64 \
+            --list-runtimes | tee /tmp/runtimes
+          grep -q 'Microsoft.AspNetCore.App' /tmp/runtimes
+          timeout --kill-after=10 180 docker run --rm --platform linux/amd64 \
+            --entrypoint node \
             "${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.WEBUI_IMG }}:${{ steps.meta.outputs.full }}" \
-            node --version
+            --version
+          # The interpreter can be fine while the published payload is missing — a build
+          # that silently drops /app would sail past the two checks above.
+          timeout --kill-after=10 180 docker run --rm --platform linux/amd64 \
+            --entrypoint ls \
+            "${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.SERVER_IMG }}:${{ steps.meta.outputs.full }}" \
+            -la /app/Delibera.Server.dll
+          timeout --kill-after=10 180 docker run --rm --platform linux/amd64 \
+            --entrypoint ls \
+            "${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.WEBUI_IMG }}:${{ steps.meta.outputs.full }}" \
+            -la /app/.output/server/index.mjs

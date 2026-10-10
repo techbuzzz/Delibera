@@ -9,6 +9,15 @@
 **Коллективное принятие решений через структурированное обсуждение ИИ — с RAG, pgvector, Knowledge Keeper, 🛠️ Operator (MCP-инструменты), Chairman, 🔥 сжатием контекста, ✂️ AutoChunking, 💉 Dependency Injection и 📋 журналированием выполнения**
 
 [![NuGet](https://img.shields.io/nuget/v/Delibera.Core.svg)](https://www.nuget.org/packages/Delibera.Core)
+[![NuGet: Server](https://img.shields.io/nuget/v/Delibera.Server.svg)](https://www.nuget.org/packages/Delibera.Server)
+[![NuGet: Redis](https://img.shields.io/nuget/v/Delibera.Redis.svg)](https://www.nuget.org/packages/Delibera.Redis)
+[![Release](https://img.shields.io/github/v/release/techbuzzz/Delibera?label=Release)](https://github.com/techbuzzz/Delibera/releases/latest)
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-2496ED?logo=docker&logoColor=fff)](https://hub.docker.com/r/techbuzzz/delibera-server)
+[![Pulls: server](https://img.shields.io/docker/pulls/techbuzzz/delibera-server?logo=docker&logoColor=2496ED)](https://hub.docker.com/r/techbuzzz/delibera-server)
+[![Pulls: webui](https://img.shields.io/docker/pulls/techbuzzz/delibera-webui?logo=docker&logoColor=2496ED)](https://hub.docker.com/r/techbuzzz/delibera-webui)
+[![Web UI](https://img.shields.io/badge/Web%20UI-GitHub%20Pages-3E8AFF?logo=githubpages)](https://techbuzzz.github.io/Delibera/)
+[![CI](https://github.com/techbuzzz/Delibera/actions/workflows/publish-nuget.yml/badge.svg)](https://github.com/techbuzzz/Delibera/actions/workflows/publish-nuget.yml)
+[![Docker CI](https://github.com/techbuzzz/Delibera/actions/workflows/publish-docker.yml/badge.svg)](https://github.com/techbuzzz/Delibera/actions/workflows/publish-docker.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-1F2937.svg)](https://dotnet.microsoft.com)
 [![C# 15](https://img.shields.io/badge/C%23-15.0--preview-239120.svg)](https://learn.microsoft.com/dotnet/csharp/)
@@ -227,9 +236,71 @@ Breaking changes нет — всё опционально, ни один пуб�
 
 ### Установка
 
+Delibera публикуется как три пакета NuGet и два образа Docker. Выберите подходящий путь.
+
+#### 📦 NuGet
+
 ```bash
-dotnet add package Delibera.Core
+dotnet add package Delibera.Core      # сам фреймворк — начните отсюда
+dotnet add package Delibera.Server    # хост ASP.NET Core (Minimal API, SSE, MCP)
+dotnet add package Delibera.Redis     # распределённые дебаты + общий кэш результатов
 ```
+
+Все три выходят в каждом релизе с одной версией. `Delibera.Server` подтягивает `Delibera.Redis`
+транзитивно, поэтому явная ссылка нужна только если вы используете Redis-интеграцию напрямую.
+Redis остаётся **выключенным**, пока не задан `Delibera:Redis:Enabled`.
+
+#### 🐳 Docker Hub — без сборки
+
+Образы публикуются на каждом теге `v*` для `linux/amd64` **и** `linux/arm64`:
+
+| Образ | Что это |
+| --- | --- |
+| `techbuzzz/delibera-server` | API, SSE-стриминг дебат, MCP-эндпоинты |
+| `techbuzzz/delibera-webui` | браузерный интерфейс на Nuxt 4 |
+
+```bash
+curl -O https://raw.githubusercontent.com/techbuzzz/Delibera/main/deploy/docker-compose.hub.yml
+export DELIBERA_VERSION=10.5.2      # зафиксировать релиз; без переменной тянется :latest
+docker compose -f docker-compose.hub.yml up -d
+```
+
+> ⚠️ **API не аутентифицирован и не ограничен по частоте, а дебата тратит реальные кредиты LLM.**
+> Все публикуемые порты слушают `127.0.0.1`. Поставьте аутентифицирующий обратный прокси, прежде чем
+> открывать этот стек в сеть, которой не управляете.
+
+#### 🌐 Веб-интерфейс на GitHub Pages
+
+Тот же интерфейс статически публикуется на <https://techbuzzz.github.io/Delibera/> при каждом
+мердже в `main`.
+
+У статической сборки **нет сервера**, поэтому same-origin BFF-маршрута в ней не существует — нужен
+абсолютный origin API, и тот сервер должен разрешать origin Pages через CORS:
+
+```yaml
+environment:
+  DELIBERA_CORS_ORIGIN: https://techbuzzz.github.io
+```
+
+CORS **выключен по умолчанию** и остаётся выключенным, пока не перечислены origins. Это намеренно:
+именно отсутствие заголовка не даёт случайной веб-странице прочитать ответ этого API, а контейнерному
+Web UI он не нужен вовсе. Комбинация «wildcard + AllowCredentials» отклоняется на старте с сообщением,
+называющим конкретный ключ конфигурации.
+
+#### 📥 Из исходников
+
+```bash
+git clone https://github.com/techbuzzz/Delibera.git
+cd Delibera
+dotnet build Delibera.slnx -c Release
+```
+
+Из клона `docker compose up -d` поднимает весь стек — сервер, веб-интерфейс, Ollama, Qdrant,
+pgvector и Redis. Пошаговое руководство: [docs/QuickStart-RU.md](docs/QuickStart-RU.md).
+
+> 🧑‍🔧 **Публикуете релиз или обновляетесь со старой версии?** Смотрите
+> [docs/ReleaseProcess.md](docs/ReleaseProcess.md) — там описан порядок, который важен, и два
+> шага, которые падают молча, а не с ошибкой.
 
 ### Минимальный пример
 

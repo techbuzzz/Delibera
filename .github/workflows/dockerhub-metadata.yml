@@ -1,0 +1,117 @@
+name: dockerhub-metadata
+
+# Syncs the Docker Hub repository cards (short description, long overview, categories) from the
+# markdown files in dockerhub/.
+#
+# Deliberately a SEPARATE workflow from publish-docker.yml: the images are already pushed by the
+# time this runs, so a rejected description or an expired token must never turn a successful image
+# publish into a red run. It re-runs on every v* tag and can be re-triggered by hand.
+#
+# The cards are empty by default when a repository is created through the API — `docker push` does
+# not write metadata. That is why the text lives in the repository rather than only in someone's
+# browser session.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: [ 'v*' ]
+    branches: [ main ]
+    paths:
+      - 'dockerhub/**'
+      - '.github/workflows/dockerhub-metadata.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync Docker Hub metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sign in to the Docker Hub API
+        id: auth
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOCKERHUB_USERNAME}" ] || [ -z "${DOCKERHUB_TOKEN}" ]; then
+            echo "DOCKERHUB_USERNAME / DOCKERHUB_TOKEN are not set on this repository." >&2
+            echo "Set them under Settings -> Secrets and variables -> Actions." >&2
+            exit 1
+          fi
+          # hub.docker.com issues a short-lived JWT for metadata edits; the push token itself is
+          # scoped to the registry and cannot change repository settings.
+          token="$(curl -fsS -X POST https://hub.docker.com/v2/users/login/ \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg u "$DOCKERHUB_USERNAME" --arg p "$DOCKERHUB_TOKEN" '{username:$u,password:$p}')" \
+            | jq -r '.token // empty')"
+          if [ -z "$token" ]; then
+            echo "Docker Hub did not return a token — the username or token is wrong." >&2
+            exit 1
+          fi
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Push descriptions and categories
+        env:
+          JWT: ${{ steps.auth.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          # repo | short description (the card headline, 100 chars) | categories
+          while IFS='|' read -r repo short categories; do
+            [ -z "$repo" ] && continue
+            echo "── techbuzzz/$repo"
+
+            full="$(jq -Rs . < "dockerhub/$repo.md")"
+            jq -n --arg d "$short" --arg f "$full" \
+              '{description:$d, full_description:$f}' \
+              | curl -fsS -X PATCH \
+                  -H "Authorization: JWT ${JWT}" \
+                  -H 'Content-Type: application/json' \
+                  --data-binary @- \
+                  "https://hub.docker.com/v2/repositories/techbuzzz/$repo/" > /dev/null
+            echo "   description + overview synced"
+
+            # Categories come from a fixed Docker Hub taxonomy keyed by slug, not by the
+            # display name shown in the UI, so the slugs below are the part most likely to
+            # need fixing. A rejected value must not cost us the description above, but it
+            # must not be silent either — Docker Hub echoes the accepted values in the error
+            # body, so print it instead of discarding it.
+            cats_resp="$(jq -nc --argjson c "$categories" '{categories:$c}' \
+              | curl -sS -w $'\n%{http_code}' -X PATCH \
+                  -H "Authorization: JWT ${JWT}" \
+                  -H 'Content-Type: application/json' \
+                  --data-binary @- \
+                  "https://hub.docker.com/v2/repositories/techbuzzz/$repo/")"
+            cats_code="${cats_resp##*$'\n'}"
+            if [ "$cats_code" = "200" ] || [ "$cats_code" = "201" ]; then
+              echo "   categories synced: $categories"
+            else
+              echo "   ::warning::categories rejected for $repo (HTTP $cats_code): $categories"
+              echo "   Docker Hub said: $(printf '%s' "${cats_resp%$'\n'*}" | head -c 600)"
+            fi
+          done <<'REPOS'
+          delibera-server|ASP.NET Core host for multi-model AI council debates: REST, SSE streaming, MCP|["web","messaging","ai-machine-learning","network"]
+          delibera-webui|Nuxt 4 browser front end for Delibera AI council debates|["web","ai-machine-learning"]
+          REPOS
+
+      - name: Verify the cards are populated
+        env:
+          JWT: ${{ steps.auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          for repo in delibera-server delibera-webui; do
+            body="$(curl -fsS -H "Authorization: JWT ${JWT}" \
+              "https://hub.docker.com/v2/repositories/techbuzzz/$repo/")"
+            desc="$(jq -r '.description // ""' <<< "$body")"
+            len="$(jq -r '(.full_description // "") | length' <<< "$body")"
+            cats="$(jq -r '(.categories // []) | join(", ")' <<< "$body")"
+            printf '%-18s %-72s overview=%s chars categories=[%s]\n' "$repo" "$desc" "$len" "$cats"
+            if [ "$len" -lt 200 ]; then
+              echo "::error::overview for $repo is only $len chars — did the PATCH land?" >&2
+              exit 1
+            fi
+          done
