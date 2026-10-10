@@ -271,8 +271,11 @@ docker compose -f docker-compose.hub.yml up -d
 
 #### 🌐 Сайт проекта на GitHub Pages
 
-Лендинг проекта публикуется на <https://techbuzzz.github.io/Delibera/> при каждом мердже в `main`.
-Там ссылки на документацию, заметки о релизах, пакеты NuGet, образы Docker и исходный код.
+Сайт проекта публикуется на <https://techbuzzz.github.io/Delibera/> при каждом мердже в `main`.
+Он рендерит собственный Markdown этого репозитория — руководства из `docs/`, заметки о релизах,
+отчёт о замерах, changelog и шаблоны дебатов, разобранные из `Delibera.Core.cs`, — поэтому
+страница не может показывать версию, функцию или число, которых нет в коде. Подробности:
+[`site/README.md`](site/README.md).
 
 Сам веб-интерфейс **там не публикуется** — он поставляется в образе
 [`techbuzzz/delibera-webui`](https://hub.docker.com/r/techbuzzz/delibera-webui) и предназначен для

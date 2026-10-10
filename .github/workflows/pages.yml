@@ -1,17 +1,17 @@
 name: pages
 
-# Publishes site/index.html to GitHub Pages on every merge to main.
+# Builds the Next.js site in site/ and publishes it to GitHub Pages on every merge to main.
 #
-# The site is hand-written HTML, not a generated one: a static landing page does not justify a
-# docs toolchain (MkDocs/Docusaurus) in a repo that has no Python. The one thing that must stay
-# in sync is the version string, so it is injected here from the csproj that actually drives
-# `dotnet pack` — meaning the page can never advertise a version that was not published.
+# The site is a *view* over files that already live in this repository: the guides and
+# release notes in docs/, the changelog, the version in Delibera.Core.csproj, and the debate
+# templates in DebateTemplate.cs. Nothing is copied into a second location, so a page cannot
+# advertise a version, a feature or a measurement the code does not have.
 #
 # The Nuxt Web UI is NOT deployed here. It ships in the container image
 # (techbuzzz/delibera-webui) and is meant to run next to Delibera.Server, which provides the
-# same-origin BFF route /api/delibera/**. A static export has no Nitro server and therefore no
-# BFF, so the UI would need a separate CORS-enabled API origin — a deliberate owner decision,
-# not something this workflow should configure silently.
+# same-origin BFF route /api/delibera/**. A static export has no Nitro server and therefore
+# no BFF, so the UI would need a separate CORS-enabled API origin — a deliberate owner
+# decision, not something this workflow should configure silently.
 
 on:
   push:
@@ -30,53 +30,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Build and deploy Pages
+  build:
+    name: Build
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve version from the packable project
-        id: version
-        run: |
-          set -euo pipefail
-          # Read the version from the project that publish-nuget.yml packs. Do NOT read it from
-          # a tag or from CHANGELOG.md: those can disagree with what is on nuget.org, and a
-          # landing page claiming an unpublished version is worse than a stale one.
-          version="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' src/Delibera.Core/Delibera.Core.csproj | head -1)"
-          if [ -z "$version" ]; then
-            echo "Could not resolve <Version> from src/Delibera.Core/Delibera.Core.csproj" >&2
-            exit 1
-          fi
-          echo "Resolved Delibera version: $version"
-          echo "value=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: site
 
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
 
-      - name: Assemble site
-        run: |
-          set -euo pipefail
-          mkdir -p _site/img
-          cp site/index.html _site/index.html
-          # The banner is the same asset the README uses — one file, two consumers.
-          cp img/delibera-horizontal-1920x480.png _site/img/
-          sed -i "s/{{VERSION}}/${{ steps.version.outputs.value }}/g" _site/index.html
-          if grep -q '{{VERSION}}' _site/index.html; then
-            echo "Unsubstituted {{VERSION}} placeholder left in the built site" >&2
-            exit 1
-          fi
-          ls -la _site _site/img
+      - name: Build
+        run: npm run build
+        working-directory: site
+        env:
+          # configure-pages computes the prefix for this repo's Pages URL (/Delibera) and
+          # Next.js needs it at build time — it is baked into every emitted href.
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+
+      - name: Verify the export
+        run: node scripts/verify-export.mjs
+        working-directory: site
+        env:
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: site/out
 
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@v4

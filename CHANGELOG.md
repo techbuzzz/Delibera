@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — C# 15 where it compiles, and the two features that need .NET 11
+
+`LangVersion=preview` was already set across the solution, but what that actually buys depended
+on which SDK was installed: 10.0.112 ships Roslyn 5.0 and knows no C# 15 at all, while 10.0.401
+ships Roslyn 5.9. A `global.json` now pins `10.0.401` (`rollForward: latestFeature`) so a machine
+without it cannot silently fail to compile. `Delibera.Redis` gained the `LangVersion=preview` the
+other six source projects already had.
+
+Union types and closed hierarchies compile as keywords but are rejected on `net10.0` — they need
+`System.Runtime.CompilerServices.IUnion` and `IsClosedTypeAttribute`, which ship with **.NET 11**.
+They are deferred to the `net11.0` retarget along with the runtime work it unlocks. The full
+feature gate is recorded in `docs/NET10-Upgrade.md`.
+
+What did ship is collection expression arguments on the paths that build a collection whose final
+size is known: voting score tables, chunk lists, sentence-selection and deduplication buffers, and
+the Knowledge Keeper's multi-corpus merge. Borda counting also stops materialising a sorted copy of
+each ballot, and the semantic compressor no longer materialises a sorted copy of every sentence it
+is about to iterate over.
+
+### Fixed — three per-request costs on the server
+
+- `ValidationFilter` called `typeof(IValidator<>).MakeGenericType(arg.GetType())` for every
+  argument of every request. Building a closed generic type allocates a runtime type; the mapping
+  is now cached per argument type.
+- `RedisDebateOrchestrator` opened its own `ConnectionMultiplexer`, bypassing the singleton the
+  host registers — a second TCP pool, handshake and reconnect timers for the life of the process,
+  for a class whose own documentation claimed it shared the connection with `RedisDebateCache`.
+  It now reuses the injected multiplexer when there is one, and still opens its own when
+  constructed outside DI.
+- The SSE writer emitted each frame as six writes plus a flush, and re-encoded the event name from
+  string to UTF-8 on every event. A frame is now assembled once in the response pipe and flushed
+  once, with event names as `u8` literals. Per-frame flushing is unchanged deliberately: a
+  buffering proxy once passed every functional test here while delivering rounds 150–200 seconds
+  late.
+
+### Added — regression tests for both
+
+`Validator_Type_Is_Resolved_Once_Per_Contract_Not_Per_Request` fails if the cached validator type
+disappears. `Round_Is_Flushed_While_The_Debate_Is_Still_Running` withholds the terminal event and
+requires the round to reach the wire within three seconds; it was verified to fail when the
+per-frame flush is removed.
+
+`docs/performance-measurements.md` records the before/after measurement, including the result that
+the framework-overhead benchmark shows **no change** — those paths are not exercised by that
+workload, and the server-side figures were not measured at all in this pass.
+
 ### Changed — GitHub Pages deploys the project website, not the Web UI
 
 `pages.yml` previously built and deployed the Nuxt Web UI as a static export. That was wrong: the
@@ -16,9 +62,49 @@ no Nitro server and therefore no BFF, so the deployed site could only reach an A
 CORS-enabled origin — a deliberate owner decision, not something the workflow should configure
 silently.
 
-Pages now publishes the hand-written landing page from `site/index.html` — header, install
-instructions, documentation links, NuGet/Docker badges. The version string is injected from
-`Delibera.Core.csproj` at build time, so the page cannot advertise an unpublished version.
+Pages now publishes a real project site rather than a single hand-written page.
+
+**The site is a view over this repository, not a copy of it.** `site/` is a Next.js app
+configured for `output: 'export'` (following
+[nextjs/deploy-github-pages](https://github.com/nextjs/deploy-github-pages)). Every page is
+rendered at build time from content that already lives here:
+
+| Page | Source |
+| --- | --- |
+| `/` | version from `Delibera.Core.csproj`, release cards from `docs/WhatsNew-*.md` |
+| `/docs/<slug>/` | every Markdown file under `docs/`, at any depth |
+| `/blog/<version>/` | `docs/WhatsNew-*.md` |
+| `/measurements/` | `docs/performance-measurements.md` |
+| `/templates/` | `src/Delibera.Core/Templates/DebateTemplate.cs` |
+| `/changelog/` | `CHANGELOG.md`, split per release |
+
+The docs route is a catch-all, so nested files keep their directory in the URL and a
+directory's `README.md` collapses to the directory itself — `docs/TASKS/README.md` is
+`/docs/tasks/`, the URL the previous landing page already linked to. The work log in
+`docs/TASKS/` and the planning notes in `docs/scope/` are published for the same reason:
+they are committed and public, and dropping them would be a coverage regression dressed up
+as a curation decision.
+
+Consequences worth stating, because they are the point:
+
+- **The version cannot be wrong.** It is read from the csproj that `publish-nuget.yml` actually
+  packs — not from a tag (which can be pushed before the package reaches nuget.org) and not from
+  this changelog (which is edited by hand). If it cannot be resolved, the build fails.
+- **The templates page cannot be stale.** Roles, strategy, chairman stance and round count are
+  extracted from `DebateTemplate.cs` at build time. If the parse finds nothing, the page says so
+  rather than showing a list that no longer matches the package.
+- **Adding a Markdown file adds a page.** No route list to update, and every existing cross-link
+  to that file starts resolving. Repository-relative links (`../CHANGELOG.md`,
+  `docs/performance-measurements.md#3-context-compression`) are rewritten to site routes; targets
+  the site does not serve become absolute GitHub links.
+- **A broken cross-link fails the deploy.** `scripts/verify-export.mjs` walks the export and fails
+  on an internal href with no file behind it, a missing `/Delibera` prefix, or a `#fragment`
+  pointing at a renamed heading. All three pass a green `next build` and 404 in production —
+  GitHub Pages is case-sensitive while every local check is not.
+
+Code blocks are highlighted with Shiki using GitHub's own TextMate grammars, in both light and dark
+themes, following `prefers-color-scheme`. The site ships no CSS framework and no client-side
+JavaScript beyond the Next.js runtime.
 
 ### Added — opt-in CORS for static browser clients
 

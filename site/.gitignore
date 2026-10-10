@@ -1,0 +1,20 @@
+# dependencies
+node_modules/
+
+# next.js build output
+.next/
+out/
+
+# Brand images copied from ../img by scripts/sync-assets.mjs - never committed twice.
+public/img/
+
+# typescript
+next-env.d.ts
+*.tsbuildinfo
+
+# local env files
+.env*.local
+
+# OS
+.DS_Store
+Thumbs.db

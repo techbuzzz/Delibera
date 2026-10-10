@@ -175,10 +175,16 @@ curl -s -o /dev/null -w '%{http_code}\n' https://techbuzzz.github.io/Delibera/
 A 404 there, served by GitHub.com itself, means nothing has ever been deployed to this Pages
 site. Only the Source dropdown in Settings says whether it is configured to accept deploys.
 
-`pages.yml` deploys the **hand-written landing page** from `site/index.html` on every merge to
-`main`. The version string is injected from `Delibera.Core.csproj` at build time, so the page
-cannot advertise an unpublished version, and the build fails loudly on a leftover `{{VERSION}}`
-placeholder.
+`pages.yml` builds the **Next.js site** in `site/` and publishes the static export in `site/out`
+on every merge to `main`. The site is a view over this repository: the guides and release notes in
+`docs/`, `CHANGELOG.md`, and the debate templates in `DebateTemplate.cs`. Nothing is copied into a
+second location, so a page cannot advertise a version, a feature or a measurement the code does not
+have.
+
+The version is read from `Delibera.Core.csproj` at build time — the project `publish-nuget.yml`
+actually packs. A tag can be pushed before the package reaches nuget.org and the changelog is edited
+by hand, so neither is a trustworthy source. If the version cannot be resolved the build fails
+rather than publishing a placeholder.
 
 The Web UI is **not** deployed to Pages. It ships in the `techbuzzz/delibera-webui` container image
 and is meant to run next to `Delibera.Server`, which provides the same-origin BFF route
@@ -188,17 +194,21 @@ should configure silently.
 
 ### Reproduce the Pages build locally
 
-`pages.yml` assembles `_site/` from `site/index.html` and `img/delibera-horizontal-1920x480.png`,
-then substitutes `{{VERSION}}` from the csproj. That is a few shell commands:
+The workflow runs `npm ci`, then `next build` with `PAGES_BASE_PATH` set to the base path
+`actions/configure-pages` computes for this repo (`/Delibera`). Set the same variable locally or the
+export will differ from production:
 
 ```bash
-mkdir -p _site/img
-cp site/index.html _site/index.html
-cp img/delibera-horizontal-1920x480.png _site/img/
-VERSION=$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' src/Delibera.Core/Delibera.Core.csproj | head -1)
-sed -i "s/{{VERSION}}/$VERSION/g" _site/index.html
-grep -q '{{VERSION}}' _site/index.html && echo "Unsubstituted placeholder" && exit 1
+cd site
+npm ci
+PAGES_BASE_PATH=/Delibera npm run build   # writes out/
+npm run verify                            # every internal link, asset and anchor resolves
 ```
+
+`npm run verify` is not decoration. A green `next build` proves the pages compiled, not that they
+link to each other, and three failure modes only appear on the live site: an internal href with no
+emitted file behind it, a missing `/Delibera` prefix, and a `#fragment` pointing at a renamed
+heading. `verify` fails the deploy on all three.
 
 ---
 

@@ -270,9 +270,11 @@ docker compose -f docker-compose.hub.yml up -d
 
 #### 🌐 Project website on GitHub Pages
 
-The project landing page is published at <https://techbuzzz.github.io/Delibera/> on every merge
-to `main`. It links to the documentation, release notes, NuGet packages, Docker images and the
-source repository.
+The project site is published at <https://techbuzzz.github.io/Delibera/> on every merge to
+`main`. It renders this repository's own Markdown — the guides in `docs/`, the release notes, the
+measured-behaviour report, the changelog, and the debate templates parsed from
+`Delibera.Core.cs` — so a page cannot advertise a version, a feature or a number the code does
+not have. See [`site/README.md`](site/README.md).
 
 The Web UI itself is **not** deployed there — it ships in the
 [`techbuzzz/delibera-webui`](https://hub.docker.com/r/techbuzzz/delibera-webui) container image and
