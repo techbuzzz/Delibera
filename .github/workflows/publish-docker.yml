@@ -95,6 +95,19 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+    # Same protection layer NuGet has, and the reason it is not enough to rely on the tag
+    # gate above.
+    #
+    # The `if:` already stops a merge to `main` from publishing — but it does nothing about a
+    # mistyped tag, or about anyone able to push a `v*` tag. That path overwrites a published
+    # `latest` on a registry consumers pull from, which is not undoable by re-tagging.
+    #
+    # The environment is where `Required reviewers` lives. With it enabled on
+    # `dockerhub-prod`, the run pauses at this job and a human approves the push; without it
+    # the block is only scoping for secrets, the URL below, and the deployment history.
+    environment:
+      name: dockerhub-prod
+      url: https://hub.docker.com/r/techbuzzz/delibera-server
     steps:
       - uses: actions/checkout@v4
 

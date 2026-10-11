@@ -85,6 +85,28 @@ the tell: a wrong token takes about a second and says `unauthorized`.
 
 ## After tagging
 
+### Approve the publish
+
+Both publish workflows run their publish job inside a GitHub environment — `nuget-prod` and
+`dockerhub-prod`. A tag push queues the run and it **waits** at that job for approval, once
+`Required reviewers` is enabled on the environment.
+
+To approve: **Actions → the run → the waiting job → Review deployments → Approve and deploy.**
+
+This is a separate layer from the tag gate, and it is the one that actually protects the
+registries. `if: startsWith(github.ref, 'refs/tags/v')` already stops a merge to `main` from
+publishing anything — but it does nothing about a mistyped tag, or about anyone able to push a
+`v*` tag. That path overwrites `latest` on a registry consumers pull from, and re-tagging does
+not undo it.
+
+Enabling required reviewers is a repository setting, not a workflow change:
+**Settings → Environments → `nuget-prod` / `dockerhub-prod` → Required reviewers.** Until then
+the environment only scopes secrets, the deployment URL and the history.
+
+The `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` secrets can be moved from repository scope into
+`dockerhub-prod` at the same time — the job already runs inside that environment, so they stop
+being readable by every other workflow.
+
 ### Check what actually landed
 
 Green pipelines are not proof that something was published:
