@@ -10,6 +10,8 @@
 // only reads a body-less GET and returns a plain object, but the `setResponseStatus` call below
 // resolves to the Nitro auto-import, which is h3's, so the handler event must stay h3-typed.
 import { defineEventHandler } from 'h3'
+// Explicit under `future.compatibilityVersion: 5` — see server/api/delibera/[...path].ts.
+import { useRuntimeConfig } from 'nitropack/runtime'
 import { resolveApiBase, resolveUpstreamPath } from '../utils/delibera'
 
 export default defineEventHandler(async (event) => {

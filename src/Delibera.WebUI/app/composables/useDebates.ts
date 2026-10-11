@@ -5,7 +5,7 @@
  * origin. `tenantId` is sent by the BFF from runtime config, not by the browser.
  *
  * The one exception is a STATIC build (`nuxt generate`, i.e. GitHub Pages), where no Nitro
- * server exists and therefore no BFF route either — see `resolveApiBase()`.
+ * server exists and therefore no BFF route either — see `resolveClientApiBase()`.
  */
 
 import type {
@@ -14,7 +14,24 @@ import type {
   DebateRoundDto,
   TemplateDto,
 } from '#shared/types/delibera'
+import { PROXY_PREFIX } from '#shared/deliberaApi'
 import { parseApiError } from './useApiError'
+
+/** The configured API origin, or '' when the app is served through its own BFF. */
+function configuredApiOrigin(): string {
+  return String(import.meta.env.NUXT_PUBLIC_DELIBERA_API_BASE ?? '').trim()
+}
+
+/**
+ * True for a STATIC build (`nuxt generate`, i.e. GitHub Pages).
+ *
+ * The signal is the one `resolveClientApiBase` is already built on: the public API base is
+ * only ever set for that build, because only that build has no Nitro server to proxy through.
+ * `useApiQuery` keys its SSR decision off this.
+ */
+export function isStaticExport(): boolean {
+  return configuredApiOrigin().length > 0
+}
 
 /**
  * Resolves the API base, defaulting to the same-origin BFF.
@@ -38,12 +55,22 @@ import { parseApiError } from './useApiError'
  * Note the tenant header in that case: EventSource cannot set headers, so the BFF no longer
  * supplies X-Tenant-Id and the API falls back to its `default` tenant.
  */
-function resolveApiBase(): string {
-  const configured = String(import.meta.env.NUXT_PUBLIC_DELIBERA_API_BASE ?? '').trim()
-  return `${configured.replace(/\/+$/, '')}/api/delibera`
+export function resolveClientApiBase(): string {
+  return `${configuredApiOrigin().replace(/\/+$/, '')}${PROXY_PREFIX}`
 }
 
-async function request<T>(base: string, path: string, init: RequestInit = {}): Promise<T> {
+/**
+ * Performs one API call and normalises a failure into a `ParsedApiError`.
+ *
+ * Exported because `useApiQuery` reuses this exact request/error contract on the SSR path.
+ * A second implementation would eventually parse one of the four upstream error shapes
+ * differently, and the difference would surface only as a wrong message in production.
+ */
+export async function apiRequest<T>(
+  base: string,
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
   const response = await fetch(`${base}${path}`, {
     ...init,
     headers: {
@@ -67,7 +94,7 @@ export interface DebateListFilters {
 }
 
 export function useDebates() {
-  const base = resolveApiBase()
+  const base = resolveClientApiBase()
 
   /** `GET /debates` — returns DebateResponse[]. */
   function list(filters: DebateListFilters = {}) {
@@ -77,12 +104,12 @@ export function useDebates() {
     query.set('page', String(filters.page ?? 1))
     query.set('pageSize', String(filters.pageSize ?? 20))
 
-    return request<DebateResponse[]>(base, `/debates?${query.toString()}`)
+    return apiRequest<DebateResponse[]>(base, `/debates?${query.toString()}`)
   }
 
   /** `GET /debates/{id}` — 404 once the ~30 min record eviction has run. */
   function get(id: string) {
-    return request<DebateResponse>(base, `/debates/${encodeURIComponent(id)}`)
+    return apiRequest<DebateResponse>(base, `/debates/${encodeURIComponent(id)}`)
   }
 
   /**
@@ -92,7 +119,7 @@ export function useDebates() {
    * 150–200 s a debate takes; the async form is what makes the live view possible.
    */
   function create(payload: CreateDebateRequest) {
-    return request<DebateResponse>(base, '/debates/async', {
+    return apiRequest<DebateResponse>(base, '/debates/async', {
       method: 'POST',
       body: JSON.stringify(payload),
     })
@@ -105,7 +132,7 @@ export function useDebates() {
    */
   async function cancel(id: string): Promise<'cancelled' | 'already-finished'> {
     try {
-      await request<void>(base, `/debates/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      await apiRequest<void>(base, `/debates/${encodeURIComponent(id)}`, { method: 'DELETE' })
       return 'cancelled'
     } catch (error) {
       if (typeof error === 'object' && error !== null && (error as { status?: number }).status === 404) {
@@ -117,7 +144,7 @@ export function useDebates() {
 
   /** `GET /debates/{id}/rounds` — paginated snapshot, for a completed debate. */
   function rounds(id: string, page = 1, pageSize = 50) {
-    return request<DebateRoundDto[]>(
+    return apiRequest<DebateRoundDto[]>(
       base,
       `/debates/${encodeURIComponent(id)}/rounds?page=${page}&pageSize=${pageSize}`,
     )
@@ -125,7 +152,7 @@ export function useDebates() {
 
   /** `GET /templates` — the source of truth for the template picker. Never hardcoded. */
   function templates() {
-    return request<TemplateDto[]>(base, '/templates')
+    return apiRequest<TemplateDto[]>(base, '/templates')
   }
 
   /**

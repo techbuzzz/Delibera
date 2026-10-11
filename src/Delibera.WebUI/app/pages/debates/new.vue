@@ -2,7 +2,7 @@
   <section>
     <h1 class="title">New debate</h1>
 
-    <p v-if="templates.length === 0" class="alert">
+    <p v-if="!templatesPending && templateList.length === 0" class="alert">
       No council templates are registered on the server, so a debate cannot be created.
       Check that <code>Delibera.Server</code> started with its template registry populated.
     </p>
@@ -12,7 +12,7 @@
         <span class="field__label">Template</span>
         <select v-model="form.templateId" class="input" required>
           <option value="" disabled>Select a template…</option>
-          <option v-for="t in templates" :key="t.templateId" :value="t.templateId">
+          <option v-for="t in templateList" :key="t.templateId" :value="t.templateId">
             {{ t.displayName }}
           </option>
         </select>
@@ -95,12 +95,27 @@ import type { CreateDebateRequest, TemplateDto } from '#shared/types/delibera'
 import { LIMITS } from '#shared/types/delibera'
 import type { ParsedApiError } from '~/composables/useApiError'
 
-const { create, templates: fetchTemplates } = useDebates()
+const { create } = useDebates()
 const router = useRouter()
 
 useHead({ title: 'New debate — Delibera' })
 
-const templates = ref<TemplateDto[]>([])
+/**
+ * Templates are fetched client-side only, including on the container build.
+ *
+ * This route is one of the two prerendered pages, and the registry is tenant-scoped
+ * configuration rather than this page's own content — rendering it server-side would bake one
+ * tenant's templates into a file published for every reader. A failed load is deliberately not
+ * surfaced here: the empty-registry block below already says what it means and what to check.
+ */
+const { data: templates, pending: templatesPending } = await useApiQuery<TemplateDto[]>(
+  'templates',
+  '/templates',
+  { server: false },
+)
+
+/** Empty until the load resolves, so the form below never iterates over a null. */
+const templateList = computed(() => templates.value ?? [])
 const submitting = ref(false)
 const clientError = ref<string | null>(null)
 const apiError = ref<ParsedApiError | null>(null)
@@ -114,7 +129,7 @@ const form = reactive({
 })
 
 const selected = computed(() =>
-  templates.value.find((t) => t.templateId === form.templateId),
+  templateList.value.find((t) => t.templateId === form.templateId),
 )
 
 // Pre-fill the round count from the chosen template so the UI does not contradict the
@@ -172,14 +187,6 @@ async function submit(): Promise<void> {
     submitting.value = false
   }
 }
-
-onMounted(async () => {
-  try {
-    templates.value = await fetchTemplates()
-  } catch {
-    templates.value = []
-  }
-})
 </script>
 
 <style scoped>
@@ -209,31 +216,37 @@ onMounted(async () => {
 
 .field__label {
   font-size: 0.8rem;
-  color: #9fb0d0;
+  color: var(--text-soft);
   font-weight: 600;
 }
 
 .field__hint {
   font-size: 0.72rem;
-  color: #7d879c;
+  color: var(--text-muted);
 }
 
 .field__hint.is-over {
-  color: #ff9a9a;
+  color: var(--danger-fg);
+}
+
+/* The question is the argument the council will be asked to settle, so it is set as prose in
+   the serif face. It is the one field on this page where the reader composes something rather
+   than selects something, and it should not look like the selects above it. */
+.input--area {
+  resize: vertical;
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  line-height: 1.6;
 }
 
 .input {
-  background: #151922;
-  color: #e6e6e6;
-  border: 1px solid #2b3242;
-  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
   padding: 0.5rem 0.6rem;
   font-size: 0.9rem;
   font-family: inherit;
-}
-
-.input--area {
-  resize: vertical;
 }
 
 .actions {
@@ -243,20 +256,21 @@ onMounted(async () => {
 }
 
 .btn {
-  background: #24314a;
-  color: #dce6ff;
-  border: 1px solid #33415c;
-  border-radius: 6px;
+  background: var(--accent-btn-bg);
+  color: var(--accent-btn-text);
+  border: 1px solid var(--border-btn);
+  border-radius: var(--radius-sm);
   padding: 0.45rem 0.9rem;
   font-size: 0.85rem;
+  font-family: inherit;
   cursor: pointer;
   text-decoration: none;
 }
 
 .btn--primary {
-  background: #2f5fb3;
-  border-color: #3d74cc;
-  color: #fff;
+  background: var(--accent-primary);
+  border-color: var(--accent-strong);
+  color: var(--text-strong);
 }
 
 .btn:disabled {
@@ -267,46 +281,67 @@ onMounted(async () => {
 /* See the note in app/pages/index.vue: pointer hover without leaving a ring behind, keyboard
    focus that is actually visible against these dark surfaces. */
 .btn:hover:not(:disabled) {
-  border-color: #4a5a7a;
+  border-color: var(--border-btn-hover);
 }
 
 .btn--primary:hover:not(:disabled) {
-  border-color: #5a8fe0;
+  border-color: var(--accent-primary-hover);
 }
 
 .input:hover {
-  border-color: #3a445c;
+  border-color: var(--border-input-hover);
 }
 
 .input:focus-visible,
 .btn:focus-visible {
-  outline: 2px solid #7fb0ff;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .alert {
   padding: 0.8rem 1rem;
-  border-radius: 8px;
-  background: #151922;
-  border: 1px solid #262b36;
-  color: #9fb0d0;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-soft);
   margin: 0;
 }
 
 .alert--error {
-  border-color: #6b2c2c;
-  background: #241212;
-  color: #ff9a9a;
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-fg);
 }
 
 .alert__meta {
-  color: #7d879c;
+  color: var(--text-muted);
   font-size: 0.75rem;
+  font-family: var(--font-mono);
+  word-break: break-word;
 }
 
 code {
-  background: #1c2230;
+  font-family: var(--font-mono);
+  background: var(--code-bg);
   padding: 0.1rem 0.3rem;
   border-radius: 4px;
+}
+
+/* ── Narrow screens ─────────────────────────────────────────────────────────
+   The two-column row holds number inputs side by side, which only works while both are wide
+   enough to show their value and the browser's spinner without clipping. */
+@media (max-width: 640px) {
+  .field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .actions .btn {
+    text-align: center;
+  }
 }
 </style>

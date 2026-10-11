@@ -82,9 +82,9 @@ const prettyRaw = computed(() => {
 
 <style scoped>
 .panel {
-  background: #151922;
-  border: 1px solid #262b36;
-  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 1rem 1.15rem;
   margin-bottom: 1.25rem;
 }
@@ -92,19 +92,24 @@ const prettyRaw = computed(() => {
 .panel__title {
   margin: 0 0 0.75rem;
   font-size: 1rem;
-  color: #9fb0d0;
+  color: var(--text-soft);
 }
 
+/* The verdict is the one piece of prose the reader came for, so it is set in the serif at a
+   larger size than any other body text and capped to a readable measure. Everything else on
+   this panel is instrumentation and stays in the interface face. */
 .verdict {
   margin: 0 0 1rem;
-  font-size: 1rem;
-  line-height: 1.6;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  line-height: 1.65;
+  max-width: 68ch;
   white-space: pre-wrap;
 }
 
 .error {
   margin: 0 0 0.75rem;
-  color: #ff9a9a;
+  color: var(--danger-fg);
   font-size: 0.85rem;
 }
 
@@ -116,35 +121,46 @@ const prettyRaw = computed(() => {
 }
 
 .stat {
-  background: #1b202b;
-  border-radius: 6px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
   padding: 0.5rem 0.65rem;
+  /* Grid items default to `min-width: auto`, which lets a long value push the track wider than
+     its share and spill over the neighbouring stat. `ArchitectureReviewStrategy` is a CLR type
+     name and is the longest value this panel ever shows. */
+  min-width: 0;
 }
 
 .stat dt {
   font-size: 0.68rem;
-  color: #7d879c;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
+/* Readouts, not prose: fixed pitch so a six-digit token count lines up with the one beside it
+   instead of drifting a few pixels. */
 .stat dd {
   margin: 0.15rem 0 0;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  /* Breaks inside an identifier rather than overflowing it. Numbers never need this; names do. */
+  overflow-wrap: anywhere;
 }
 
 .details summary {
   cursor: pointer;
   font-size: 0.8rem;
-  color: #9fb0d0;
+  color: var(--text-soft);
 }
 
 .json {
   margin: 0.6rem 0 0;
   padding: 0.75rem;
-  background: #0d1016;
-  border-radius: 6px;
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   line-height: 1.5;
   overflow-x: auto;
@@ -154,6 +170,6 @@ const prettyRaw = computed(() => {
 .cache {
   margin: 0.5rem 0 0;
   font-size: 0.72rem;
-  color: #7ee2a8;
+  color: var(--ok-fg);
 }
 </style>

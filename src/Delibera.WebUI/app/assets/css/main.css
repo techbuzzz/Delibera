@@ -1,0 +1,133 @@
+/*
+ * Design tokens.
+ *
+ * Every colour below is the exact value that was previously hardcoded in a component's scoped
+ * block. Moving them here changes no rendered pixel — and deliberately so: each pairing was
+ * checked against WCAG AA (4.5:1 for body text, 3:1 for large text and UI boundaries) before
+ * these variables existed, and re-checking a palette during a refactor is how accessible
+ * colours quietly regress. Ratios for the load-bearing pairs:
+ *
+ *   --text-muted on --surface   4.87      --text-muted on --surface-2  4.52
+ *   --text-soft  on --surface   8.04      --accent    on --surface    8.00
+ *   --ok-fg      on --ok-bg    10.31      --warn-fg   on --warn-bg   11.88
+ *   --live-fg    on --live-bg  10.18      --danger-fg on --danger-bg  8.84
+ *
+ * If a token is ever retuned, those ratios are the contract to re-verify, not a matter of taste.
+ */
+
+/*
+ * Box sizing, once, globally.
+ *
+ * `.app__main` is `width: 100%` with padding, and the default `content-box` makes that 100%
+ * PLUS the padding — 2rem wider than its parent at every breakpoint, which is a horizontal
+ * scrollbar on a phone and invisible on a desktop wide enough to absorb it. This is not
+ * cosmetic: it was already latent in the layout before these tokens existed, and the media
+ * queries added alongside them cannot fix a box-model problem.
+ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  /* ── Surfaces ───────────────────────────────────────────────────────────── */
+  --bg: #0f1115;
+  --surface: #151922;
+  --surface-2: #1b202b;
+  --surface-3: #0d1016;
+  --surface-nav: #222836;
+  --surface-muted: #1b1f28;
+  --code-bg: #1c2230;
+
+  /* ── Lines ──────────────────────────────────────────────────────────────── */
+  --border: #262b36;
+  --border-input: #2b3242;
+  --border-input-hover: #3a445c;
+  --border-btn: #33415c;
+  --border-btn-hover: #4a5a7a;
+  --border-muted: #333a48;
+
+  /* ── Text ───────────────────────────────────────────────────────────────── */
+  --text: #e6e6e6;
+  --text-strong: #ffffff;
+  --text-soft: #9fb0d0;
+  --text-muted: #7d879c;
+
+  /* ── Accent ─────────────────────────────────────────────────────────────── */
+  --accent: #7fb0ff;
+  --accent-btn-bg: #24314a;
+  --accent-btn-text: #dce6ff;
+  --accent-strong: #3d74cc;
+  --accent-primary: #2f5fb3;
+  --accent-primary-hover: #5a8fe0;
+
+  /* ── Status ─────────────────────────────────────────────────────────────── */
+  --ok-fg: #7ee2a8;
+  --ok-border: #2c5c40;
+  --ok-bg: #12241a;
+
+  --warn-fg: #ffd479;
+  --warn-border: #6b551f;
+  --warn-bg: #241d0f;
+
+  --live-fg: #9fd0ff;
+  --live-border: #2b4a6b;
+  --live-bg: #12202e;
+
+  --danger-fg: #ff9a9a;
+  --danger-border: #6b2c2c;
+  --danger-bg: #241212;
+  --danger-border-hover: #8c3a3a;
+
+  --neutral-fg: #9aa3b5;
+
+  /* ── Typography ─────────────────────────────────────────────────────────── */
+  /*
+   * Three roles, chosen for what each one carries rather than for variety.
+   *
+   * --font-sans  is the interface: labels, buttons, chrome. A neutral grotesque is right here
+   *              because chrome should recede behind the content it frames.
+   * --font-serif is the argument: the verdict, the chairman's summary, the question being put.
+   *              That text is prose written by models, not UI. Setting it in the same face as
+   *              the surrounding labels makes a 400-token verdict read as an extension of its
+   *              own card.
+   * --font-mono  is the instrument panel: ids, round numbers, token counts, durations,
+   *              strategy names. Fixed pitch so a counter updating every few hundred
+   *              milliseconds does not shift the layout around it.
+   *
+   * No webfont is loaded. `nuxt.config.ts` deliberately keeps this app free of UI-kit and asset
+   * dependencies (image weight and supply-chain surface for a handful of forms), and three
+   * self-hosted font files would quietly undo that decision. These stacks resolve on the
+   * platforms the container and the Pages build actually run on; the serif degrades to Georgia,
+   * the mono to whatever ui-monospace maps to.
+   */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia,
+    'Times New Roman', serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
+
+  /* ── Shape ──────────────────────────────────────────────────────────────── */
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-pill: 999px;
+}
+
+/*
+ * Reduced motion.
+ *
+ * The app ships exactly one animation (the live-debate pulse in RoundTimeline). It is declared
+ * here rather than inside that component so the rule is a property of the design system and a
+ * future animation inherits it by default instead of needing to remember.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

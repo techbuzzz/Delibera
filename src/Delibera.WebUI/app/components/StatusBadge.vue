@@ -29,38 +29,38 @@ const tone = computed(() => {
   font-size: 0.7rem;
   font-weight: 600;
   padding: 0.12rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid transparent;
   white-space: nowrap;
 }
 
 .badge--ok {
-  color: #7ee2a8;
-  border-color: #2c5c40;
-  background: #12241a;
+  color: var(--ok-fg);
+  border-color: var(--ok-border);
+  background: var(--ok-bg);
 }
 
 .badge--live {
-  color: #9fd0ff;
-  border-color: #2b4a6b;
-  background: #12202e;
+  color: var(--live-fg);
+  border-color: var(--live-border);
+  background: var(--live-bg);
 }
 
 .badge--pending {
-  color: #ffd479;
-  border-color: #6b551f;
-  background: #241d0f;
+  color: var(--warn-fg);
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
 }
 
 .badge--error {
-  color: #ff9a9a;
-  border-color: #6b2c2c;
-  background: #241212;
+  color: var(--danger-fg);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
 }
 
 .badge--muted {
-  color: #9aa3b5;
-  border-color: #333a48;
-  background: #1b1f28;
+  color: var(--neutral-fg);
+  border-color: var(--border-muted);
+  background: var(--surface-muted);
 }
 </style>

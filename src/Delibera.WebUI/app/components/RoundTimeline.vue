@@ -17,40 +17,56 @@
       No rounds yet. A debate typically takes 150–200 seconds to complete.
     </p>
 
-    <article v-for="round in rounds" :key="round.roundNumber" class="round">
-      <header class="round__header">
-        <span class="round__number">Round {{ round.roundNumber }}</span>
-        <!--
-          `strategy` is a CLR type name such as `StandardDebateStrategy`, or an empty string
-          (DebateMapper.cs:84). Raw display is intentional — prettifying it would invent a
-          name the server never sent.
-        -->
-        <span v-if="round.strategy" class="round__strategy">{{ round.strategy }}</span>
-        <span v-if="round.isFinal" class="round__final">final</span>
-      </header>
-
-      <div v-if="round.messages?.length" class="messages">
-        <ParticipantMessage
-          v-for="(message, index) in round.messages"
-          :key="`${round.roundNumber}-${index}`"
-          :message="message"
-        />
-      </div>
-      <p v-else class="empty">No participant messages in this round.</p>
-
-      <div v-if="round.chairmanSummary" class="chairman">
-        <span class="chairman__label">Chairman</span>
-        <p class="chairman__text">{{ round.chairmanSummary }}</p>
-      </div>
-
-      <details v-if="round.operatorInteractions?.length" class="operator">
-        <summary>Operator interactions ({{ round.operatorInteractions.length }})</summary>
-        <div v-for="(item, index) in round.operatorInteractions" :key="index" class="operator__item">
-          <span class="operator__task">{{ item.task }}</span>
-          <pre class="operator__result">{{ item.result }}</pre>
+    <!--
+      An ordered list, not a stack of articles. Rounds are a sequence and the number carries
+      meaning — a reader who lands mid-debate counts the marker down the rule to see where
+      they are, which a set of visually identical cards cannot express. The <ol> also gives
+      assistive technology the count for free.
+    -->
+    <ol v-else class="proceedings">
+      <li v-for="round in rounds" :key="round.roundNumber" class="round">
+        <div class="round__marker" aria-hidden="true">
+          <span class="round__number">{{ round.roundNumber }}</span>
         </div>
-      </details>
-    </article>
+
+        <div class="round__body">
+          <header class="round__header">
+            <h3 class="round__heading">Round {{ round.roundNumber }}</h3>
+            <!--
+              `strategy` is a CLR type name such as `StandardDebateStrategy`, or an empty
+              string (DebateMapper.cs:84). Raw display is intentional — prettifying it would
+              invent a name the server never sent.
+            -->
+            <span v-if="round.strategy" class="round__strategy">{{ round.strategy }}</span>
+            <span v-if="round.isFinal" class="round__final">final</span>
+          </header>
+
+          <div v-if="round.messages?.length" class="messages">
+            <ParticipantMessage
+              v-for="(message, index) in round.messages"
+              :key="`${round.roundNumber}-${index}`"
+              :message="message"
+            />
+          </div>
+          <p v-else class="empty">No participant messages in this round.</p>
+
+          <!-- The chairman's summary is the minute of the round, so it is set apart from the
+               speeches it condenses rather than presented as another participant. -->
+          <section v-if="round.chairmanSummary" class="minutes">
+            <span class="minutes__label">Chairman</span>
+            <p class="minutes__text">{{ round.chairmanSummary }}</p>
+          </section>
+
+          <details v-if="round.operatorInteractions?.length" class="operator">
+            <summary>Operator interactions ({{ round.operatorInteractions.length }})</summary>
+            <div v-for="(item, index) in round.operatorInteractions" :key="index" class="operator__item">
+              <span class="operator__task">{{ item.task }}</span>
+              <pre class="operator__result">{{ item.result }}</pre>
+            </div>
+          </details>
+        </div>
+      </li>
+    </ol>
   </div>
 </template>
 
@@ -94,20 +110,73 @@ const liveMessage = computed(() => {
 .timeline__title {
   margin: 0;
   font-size: 1rem;
-  color: #9fb0d0;
+  color: var(--text-soft);
 }
 
 .empty {
-  color: #7d879c;
+  color: var(--text-muted);
   font-size: 0.85rem;
   margin: 0.25rem 0;
 }
 
+/* The rule the rounds hang from. It is the whole structure of this view: one continuous line
+   down the left, with each round marked on it, so the passage of a live debate reads as
+   progress along a line rather than as an accumulating pile. */
+.proceedings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  position: relative;
+}
+
+.proceedings::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  width: 1px;
+  background: var(--border);
+}
+
 .round {
-  background: #151922;
-  border: 1px solid #262b36;
-  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 0.9rem;
+  position: relative;
+}
+
+/* Sits on the rule rather than beside it, so consecutive markers form a single sequence. */
+.round__marker {
+  display: flex;
+  justify-content: center;
+}
+
+.round__number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-input);
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.round__body {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 0.9rem 1rem;
+  min-width: 0;
 }
 
 .round__header {
@@ -115,28 +184,32 @@ const liveMessage = computed(() => {
   align-items: center;
   gap: 0.6rem;
   margin-bottom: 0.7rem;
+  flex-wrap: wrap;
 }
 
-.round__number {
-  font-weight: 600;
+.round__heading {
+  margin: 0;
   font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .round__strategy {
   font-size: 0.68rem;
-  color: #7d879c;
-  background: #1b202b;
+  color: var(--text-muted);
+  background: var(--surface-2);
   padding: 0.1rem 0.45rem;
   border-radius: 4px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 .round__final {
   font-size: 0.68rem;
-  color: #7ee2a8;
-  border: 1px solid #2c5c40;
+  color: var(--ok-fg);
+  border: 1px solid var(--ok-border);
   padding: 0.05rem 0.4rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .messages {
@@ -145,25 +218,31 @@ const liveMessage = computed(() => {
   gap: 0.7rem;
 }
 
-.chairman {
-  margin-top: 0.8rem;
-  padding: 0.65rem 0.8rem;
-  background: #1b202b;
-  border-left: 2px solid #3d74cc;
-  border-radius: 0 6px 6px 0;
+.minutes {
+  margin-top: 0.85rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--surface-2);
+  border-left: 2px solid var(--accent-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
-.chairman__label {
+.minutes__label {
+  display: block;
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #7d879c;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
 }
 
-.chairman__text {
-  margin: 0.3rem 0 0;
-  font-size: 0.88rem;
-  line-height: 1.6;
+/* The summary is prose written for the reader, not a status line — hence the serif and the
+   measure cap, so a chairman writing at length does not produce one 1100px-wide line. */
+.minutes__text {
+  margin: 0.35rem 0 0;
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  line-height: 1.65;
+  max-width: 68ch;
   white-space: pre-wrap;
 }
 
@@ -174,7 +253,7 @@ const liveMessage = computed(() => {
 .operator summary {
   cursor: pointer;
   font-size: 0.78rem;
-  color: #9fb0d0;
+  color: var(--text-soft);
 }
 
 .operator__item {
@@ -183,15 +262,40 @@ const liveMessage = computed(() => {
 
 .operator__task {
   font-size: 0.72rem;
-  color: #7d879c;
+  color: var(--text-muted);
 }
 
 .operator__result {
   margin: 0.2rem 0 0;
   padding: 0.5rem;
-  background: #0d1016;
-  border-radius: 6px;
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   overflow-x: auto;
+}
+
+/* ── Narrow screens ─────────────────────────────────────────────────────────
+   The 28px marker column is worth keeping on a phone — it is what makes the sequence
+   readable — but the speaker layout inside a round stops being a two-column margin. */
+@media (max-width: 640px) {
+  .proceedings::before {
+    left: 10px;
+  }
+
+  .round {
+    grid-template-columns: 21px 1fr;
+    gap: 0.6rem;
+  }
+
+  .round__number {
+    width: 21px;
+    height: 21px;
+    font-size: 0.65rem;
+  }
+
+  .round__body {
+    padding: 0.75rem 0.8rem;
+  }
 }
 </style>

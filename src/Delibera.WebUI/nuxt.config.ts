@@ -17,6 +17,25 @@ export default defineNuxtConfig({
 
   devtools: { enabled: false },
 
+  // Design tokens. Nuxt's default `css` already lists this exact path, but it is set explicitly
+  // so the stylesheet is a declared dependency of the app rather than an implicit one that a
+  // future default change could silently drop.
+  css: ['~/assets/css/main.css'],
+
+  // Nuxt 5 readiness. This opts into the v5 defaults *that can be enabled on Nuxt 4* — typed
+  // pages, typed `$fetch`, the Vite Environment API, inline error rendering, comment-node
+  // placeholders for client-only components, Nitro auto-imports turned off, and the Options API
+  // compiled out of the client bundle. Running under it on every build means the migration cost
+  // shows up as a typecheck failure here rather than as a surprise when Nuxt 5 ships.
+  //
+  // What it does NOT cover is Nitro v3 itself, which is the part of Nuxt 5 that still needs
+  // manual work: `server/api/delibera/[...path].ts` reaches for `event.node.res` to abort a
+  // client-disconnected upstream call, and `nuxt/server` has no `event.node`. See the note at
+  // the top of that file.
+  future: {
+    compatibilityVersion: 5,
+  },
+
   // Required for the accessibility tree and for a usable browser tab title — Lighthouse
   // fails the document without all three of these.
   app: {

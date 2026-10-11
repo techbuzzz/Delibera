@@ -27,6 +27,10 @@ import {
   setResponseHeader,
   setResponseStatus,
 } from 'h3'
+// Explicit under `future.compatibilityVersion: 5`, which turns off the Nitro auto-import
+// compatibility layer. `nitropack/runtime` rather than `#imports` so the dependency is stated
+// instead of inferred — and it is the same path Nitro v3 keeps, so this survives Nuxt 5.
+import { useRuntimeConfig } from 'nitropack/runtime'
 import {
   buildUpstreamHeaders,
   isEventStreamResponse,

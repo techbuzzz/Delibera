@@ -1,5 +1,12 @@
 <template>
   <div class="app">
+    <!--
+      The skip link is the first focusable element on the page, so a keyboard user crosses the
+      header without meeting the navigation. It is hidden until focused rather than
+      `display: none`, which would remove it from the tab order entirely and defeat the point.
+    -->
+    <a class="skip-link" href="#main">Skip to content</a>
+
     <header class="app__header">
       <NuxtLink to="/" class="app__brand">
         <span class="app__brand-mark">Delibera</span>
@@ -18,7 +25,9 @@
       </ClientOnly>
     </header>
 
-    <main class="app__main">
+    <!-- `tabindex="-1"` so the skip link can actually move focus here. Without it the link
+         scrolls the page but leaves the next Tab press back at the top of the header. -->
+    <main id="main" class="app__main" tabindex="-1">
       <NuxtPage />
     </main>
   </div>
@@ -64,9 +73,28 @@ const healthTitle = computed(() =>
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #0f1115;
-  color: #e6e6e6;
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: -3rem;
+  z-index: 10;
+  padding: 0.5rem 0.85rem;
+  background: var(--accent-primary);
+  color: var(--text-strong);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  text-decoration: none;
+  /* Moves into view rather than appearing, so focus is not lost to an abrupt layout change. */
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 0.5rem;
 }
 
 .app__header {
@@ -74,8 +102,9 @@ const healthTitle = computed(() =>
   align-items: center;
   gap: 1.5rem;
   padding: 0.85rem 1.5rem;
-  border-bottom: 1px solid #262b36;
-  background: #151922;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-wrap: wrap;
 }
 
 .app__brand {
@@ -93,7 +122,7 @@ const healthTitle = computed(() =>
 
 .app__brand-sub {
   font-size: 0.72rem;
-  color: #7d879c;
+  color: var(--text-muted);
 }
 
 .app__nav {
@@ -103,50 +132,50 @@ const healthTitle = computed(() =>
 }
 
 .app__nav a {
-  color: #9fb0d0;
+  color: var(--text-soft);
   text-decoration: none;
   font-size: 0.9rem;
   padding: 0.35rem 0.6rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .app__nav a:hover,
 .app__nav a.router-link-active {
-  background: #222836;
-  color: #fff;
+  background: var(--surface-nav);
+  color: var(--text-strong);
 }
 
 /* The nav is the only always-visible route control in the app, so a keyboard user crossing
-   the page meets it first. The browser default outline is near-invisible on #151922. */
+   the page meets it first. The browser default outline is near-invisible on --surface. */
 .app__nav a:focus-visible {
-  outline: 2px solid #7fb0ff;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .app__health {
   font-size: 0.72rem;
   padding: 0.2rem 0.55rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid transparent;
   white-space: nowrap;
 }
 
 .is-ok {
-  color: #7ee2a8;
-  border-color: #2c5c40;
-  background: #12241a;
+  color: var(--ok-fg);
+  border-color: var(--ok-border);
+  background: var(--ok-bg);
 }
 
 .is-degraded {
-  color: #ffd479;
-  border-color: #6b551f;
-  background: #241d0f;
+  color: var(--warn-fg);
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
 }
 
 .is-down {
-  color: #ff9a9a;
-  border-color: #6b2c2c;
-  background: #241212;
+  color: var(--danger-fg);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
 }
 
 .app__main {
@@ -155,5 +184,34 @@ const healthTitle = computed(() =>
   max-width: 1100px;
   width: 100%;
   margin: 0 auto;
+}
+
+/* Focusing <main> via the skip link should not draw a ring around the entire content area —
+   the skip link itself is the visible indication that focus moved. */
+.app__main:focus {
+  outline: none;
+}
+
+@media (max-width: 640px) {
+  .app__header {
+    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+  }
+
+  /* Without the wrap, the brand, the nav and the health badge cannot share a phone-width row
+     and the badge is pushed off the edge entirely. */
+  .app__nav {
+    margin-left: 0;
+    order: 3;
+    width: 100%;
+  }
+
+  .app__health {
+    margin-left: auto;
+  }
+
+  .app__main {
+    padding: 1rem;
+  }
 }
 </style>
