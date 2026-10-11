@@ -216,7 +216,7 @@ from the per-member admission check, whose state machine was allocated on every 
 Method: `.bench/PerfCheck` — a fake provider returning instantly, three members, three rounds, long
 deterministic responses, baseline checkouts supplied as git worktrees via `-p:DeliberaCorePath=`.
 Full numbers and caveats in
-[performance-measurements.md](../performance-measurements.md#8-framework-overhead-and-retrieval-measured-across-checkouts-v1051).
+[performance-measurements.md](../performance-measurements.md#2-debate-overhead).
 
 ### W5-09 · indexing produces the same corpus regardless of run count
 
