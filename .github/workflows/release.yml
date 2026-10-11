@@ -12,6 +12,13 @@ name: release
 # knows which of those commits mattered.
 #
 # Kept separate from publish-nuget.yml so a release-page failure cannot fail a package publish.
+#
+# Tag-only since the merge-squash cleanup. It used to also run on every push to `main`, where it
+# resolved the newest reachable v* tag and rewrote that release's body. That cost a full
+# fetch-depth-0 clone, a PR-notes generation and a release API call on every merge, to produce
+# a body that usually had not changed — and "usually" is the problem: a merge that happened to
+# touch the header or the WhatsNew doc rewrote a *published* release's notes after the fact.
+# The repair path is still one click: Actions -> release -> Run workflow.
 
 on:
   workflow_dispatch:
@@ -22,7 +29,6 @@ on:
         type: string
   push:
     tags: [ 'v*' ]
-    branches: [ main ]
 
 permissions:
   contents: write

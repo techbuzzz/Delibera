@@ -37,8 +37,15 @@ Then release notes:
 ### 2. Open a PR and merge it
 
 CI runs three gates on the PR: `build & test`, `build (verify only)`, `webui tests`. Wait for all
-three. Squash-merge — the repo squash-merges, so a feature branch's SHAs never become ancestors
-of `main`.
+three. **Merge with a merge commit** — not squash.
+
+Squash was what made branch handling expensive: the squashed PR's commits are not ancestors of
+`main`, so `git merge-base --is-ancestor <branch> main` cannot answer whether the work shipped,
+and merging `main` back into a long-lived feature branch produces a disconnected merge rather
+than a fast-forward. A merge commit keeps the ancestry, which makes the back-merge ordinary and
+the ancestry check meaningful. `git log --first-parent main` still reads as the release list.
+
+Delete the branch after merging. It is never reopened: a new change starts from a fresh branch.
 
 ### 3. Verify before tagging
 
@@ -121,20 +128,21 @@ green. That is the failure mode `--skip-duplicate` creates.
 
 ### Backfilling a release page
 
-Normally nothing to do: a merge to `main` refreshes the release page for the newest `v*` tag
-reachable from `main`, so the page picks up the header and the WhatsNew document without a
-handful of clicks.
+Nothing happens on a merge any more. `release` is tag-only, so the page is written once when the
+tag lands and is not rewritten by unrelated commits afterwards — which matters, because a merge
+that happened to touch the header or the WhatsNew document used to silently edit an already
+published release.
 
-Run **Actions → release → Run workflow** only to repair a *specific* tag — for instance to rebuild
-the body of a release whose page was created by hand. It creates or updates; it never duplicates.
+**Actions → release → Run workflow** repairs a page: name the tag in the `tag` input to rebuild
+that release, or leave it empty to refresh the newest reachable one. It creates or updates; it
+never duplicates.
 
-That workflow distinguishes two situations on purpose, and the difference is what keeps a routine
-merge from reddening `main`:
+The workflow still distinguishes two situations on purpose:
 
 | Trigger | Behaviour on a tag/`<Version>` mismatch |
 |---|---|
 | `v*` tag pushed, or dispatch naming a tag | **fails** — that tag exists to publish something specific |
-| merge to `main` | **exits 0** — an unreleased version bump is a normal state, not an error |
+| dispatch with no tag (sync mode) | **exits 0** — an unreleased version bump is a normal state, not an error |
 
 ### Backfilling Docker Hub cards
 

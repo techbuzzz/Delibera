@@ -133,19 +133,30 @@ W5-09).
 
 ## 🌿 Branch & Commit Conventions
 
-- Create a feature branch: `git checkout -b feature/short-description`.
+- Create a feature branch from an up-to-date `main`: `git checkout -b feature/short-description`.
 - Write clear, imperative commit messages (e.g., `Add consensus debate timeout option`).
 - Reference related issues in the body (e.g., `Closes #42`).
+- Delete the branch after it merges. A branch is never reopened — a new change starts from a
+  fresh one off `main`.
 
 ---
 
 ## 🔀 Pull Request Process
 
-1. Ensure your branch is up to date with `main`.
+1. Ensure your branch is up to date with `main`: `git checkout main && git pull && git checkout <branch> && git merge main`.
 2. Confirm the solution builds clean (0 errors, 0 warnings) and examples run.
 3. Update documentation (`README.md`, `QuickStart.md`) when behaviour changes.
 4. Open a PR using the [pull-request template](.github/PULL_REQUEST_TEMPLATE.md) and fill in all sections.
 5. A maintainer will review; address feedback by pushing additional commits.
+6. **Merge with a merge commit, not squash.** The PR's commits have to become ancestors of `main`:
+   that is what keeps `git merge main` inside an open branch an ordinary fast-forward, and what
+   makes `git merge-base --is-ancestor <branch> main` able to answer whether the work actually
+   shipped. Squash-merge discards exactly that. `git log --first-parent main` is unaffected and
+   still reads as the release list.
+
+   *Repository setting, not a workflow file:* **Settings → General → Pull Requests → Merge
+   options → Allow merge commits.** Squash and rebase can stay enabled for convenience — the
+   team just uses merge.
 
 ---
 
