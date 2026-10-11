@@ -12,7 +12,7 @@
 
       <!-- NuGet Package Metadata -->
       <PackageId>Delibera.Core</PackageId>
-      <Version>10.5.2</Version>
+      <Version>10.5.3</Version>
       <Title>Delibera</Title>
       <Description>Delibera — Thoughtful AI Decisions. A framework for collective decision making through structured AI deliberation. v10.4.0 is the API-truth release and carries ONE BREAKING CHANGE: IDebateStrategy.ExecuteAsync takes Func&lt;DebateRound, CancellationToken, ValueTask&gt;? instead of Action&lt;DebateRound&gt;? for onRoundCompleted, because a synchronous callback pinned a thread-pool thread for the duration of every per-round checkpoint write and repackaged OperationCanceledException as AggregateException. The public CouncilExecutor.OnRoundCompleted event is unchanged and existing subscribers keep working. Platform surface: the IDebateOrchestrator abstraction for distributed debate execution (in-process and Redis-backed), a pluggable result-caching layer (in-memory, file, Redis) with per-debate behavior control, and removed deprecated APIs (Moderator→Chairman, ModelCapabilities non-nullable, VectorStoreFactory, DebateStatus/DebateOrchestrationStatus dead values). Performance &amp; integrity: timer-based eviction of completed debate entries, IDisposable on internal caches, volatile int backing for cross-thread status, ConcurrentDictionary throughout, ConfigureAwait(false) library-wide, ValueTask on synchronous cache/store paths, ArrayPool buffers on the debate cache-key and text-similarity paths, and a rule-based model-context-window lookup (exact pattern first, then longest matching substring) instead of the previous order-dependent enumeration. Full feature set: multi-model councils with RAG (Qdrant, PgVector), debate strategies, Knowledge Keeper, Chairman roles, dependency injection, context compression, AutoChunking (progressive disclosure for large documents), Microsoft.Extensions.Logging, Microsoft.Extensions.Http.Resilience (Polly v8 retry pipelines), IHttpClientFactory wiring, response-language enforcement, parallel Operator requests, async streaming council (IAsyncEnumerable&lt;DebateRound&gt;), pluggable voting engine (Majority/BordaCount/Weighted), debate persistence &amp; resume via checkpoints, agent memory (in-memory/Qdrant/pgvector), OpenTelemetry-style observability (spans + metrics), structured JSON output (schema-validated verdicts with retry), adaptive strategy switching on stagnation, debate templates &amp; presets library, multi-modal attachments via IFileContentReader, HTML export, debate timeout, persona presets, benchmark mode, and participant limit guard.</Description>
       <Authors>Victor Buzin</Authors>
@@ -26,7 +26,31 @@
       <RepositoryUrl>https://github.com/techbuzzz/Delibera</RepositoryUrl>
       <RepositoryType>git</RepositoryType>
       <PackageProjectUrl>https://github.com/techbuzzz/Delibera</PackageProjectUrl>
-      <PackageReleaseNotes>v10.5.2 — Web UI, Redis as an opt-in server feature, Docker Hub images. CONTAINS BEHAVIOUR CHANGES.
+      <PackageReleaseNotes>v10.5.3 — BuiltIn constants, opt-in CORS, project website, Web UI fixes and server performance. No breaking changes.
+
+New — opt-in CORS for static browser clients. `Delibera:Server:Cors:AllowedOrigins` registers a named CORS policy listing the browser origins permitted to call the API cross-origin, and `UseCors` is wired only when that list is non-empty. Off by default: the Web UI reaches the API through its own same-origin BFF route and never needs CORS. Origins are matched exactly; there is no wildcard switch. `AllowCredentials` together with `*` is rejected at startup.
+
+New — BuiltIn constants extracted across Delibera.Core. A single source of truth for HTTP headers, SSE event names, config sections, role names and other magic strings that previously drifted between projects. 13 new CORS tests: 8 asserting what gets registered, and 5 driving the real pipeline over HTTP.
+
+Fixed — three per-request costs on the server. ValidationFilter cached validator type resolution per argument type. RedisDebateOrchestrator now reuses the injected ConnectionMultiplexer instead of opening its own. The SSE writer assembles each frame once in the response pipe and flushes once, with event names as u8 literals.
+
+Fixed — the Web UI proxy kept upstream SSE connections open after the browser left. Measured: the upstream socket closes 6 ms after the client disconnects with the fix and 2699 ms without it.
+
+New — GitHub Pages deploys the project website (Next.js static export in site/), not the Web UI. The site reads the version from the csproj at build time and renders docs, release notes, measurements and debate templates extracted from source.
+
+Fixed — Web UI typecheck was passing while silently checking less. Nuxt 4.6.1, vue-router ^5.4.0, vue-tsc 3.3, vitest 5, @nuxt/test-utils 4. Three more Web UI behaviours fixed: cancel distinguishes "cancelled" from "already finished", filter change reloads from page 1, npm test builds first via pretest.
+
+New — accessibility: polite live region announces rounds to screen readers, every route titles itself, hover states and visible focus rings.
+
+Changed — Node pinned to 22.23.3 (exact patch) because nuxt@4.6.1 declares engines.node: ^22.22.3 || ^24.15.0 || >=26.0.0.
+
+CI — Docker Hub publish behind an environment (dockerhub-prod), like NuGet (nuget-prod). Release workflow creates the GitHub Release page from docs/WhatsNew-*.md. Merge commits instead of squash so ancestry checks remain meaningful.
+
+Fixed — Web UI lockfile out of sync with package.json under npm 10 (unplugin@3.4.0 peer dependency entries missing). Regenerated with npm@10.9.4 matching the Dockerfile pin.
+
+Tests: Core + Server + gRPC tests passing, plus Web UI tests (API contract + SSE streaming). Clean under -warnaserror.
+
+v10.5.2 — Web UI, Redis as an opt-in server feature, Docker Hub images. CONTAINS BEHAVIOUR CHANGES.
 
 ⚠️ BREAKING (deployment): docker-compose.yml now binds every published port to 127.0.0.1 instead of 0.0.0.0. The API is unauthenticated and unthrottled and a debate spends real LLM credits, so localhost-only is the enforcement. A host reaching Delibera.Server from another machine on its LAN will stop being able to after this upgrade; bind explicitly if that is intended.
 

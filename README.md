@@ -69,6 +69,27 @@ well-reasoned outcomes** rather than single-model guesses.
 | **🛑 Cooperative Cancellation**| Every public async method accepts a `CancellationToken`; a host shutdown or user cancel aborts the debate mid-flight (rounds, LLM calls, MCP tools, RAG, file saves) |
 | **🧱 Modern C# 15 (preview)** | Built on .NET 10 with `LangVersion=preview`, file-scoped namespaces, records, span/SIMD hot paths |
 
+### 🆕 What's new in v10.5.3
+
+Opt-in CORS for static browser clients, a project website on GitHub Pages, Web UI
+accessibility and behaviour fixes, server-side performance improvements, and a BuiltIn
+constants refactor. **No breaking changes.**
+
+| Feature | Description |
+| --- | --- |
+| **🌐 Project website** | Next.js static site on GitHub Pages — docs at any depth, release notes, measurements, debate templates extracted from source. The version is read from the csproj at build time and cannot be wrong. |
+| **🔓 Opt-in CORS** | `Delibera:Server:Cors:AllowedOrigins` registers a named CORS policy for deliberately static browser clients. Off by default — the Web UI uses its same-origin BFF route. Origins matched exactly; no wildcard switch. |
+| **♿ Accessibility** | Rounds announced to screen readers via a polite live region, every route titles itself, hover states and visible focus rings. |
+| **⚡ Performance** | ValidationFilter caches validator type resolution, RedisDebateOrchestrator reuses the injected ConnectionMultiplexer, SSE writer assembles frames once and flushes once. |
+| **🔧 BuiltIn constants** | Single source of truth for HTTP headers, SSE event names, config sections, and role names across all Delibera projects. |
+| **🐛 Web UI fixes** | Cancel distinguishes "cancelled" from "already finished", filter change reloads from page 1, npm test builds first via pretest, proxy aborts upstream SSE on client disconnect (6 ms vs 2699 ms). |
+| **🔄 CI improvements** | Docker Hub publish behind approval environment `dockerhub-prod`, release pages built from WhatsNew docs, merge commits instead of squash. |
+| **✅ Fixed** | Web UI typecheck was passing while silently checking less — Nuxt 4.6.1, vue-router ^5.4.0, vue-tsc 3.3, vitest 5. Lockfile regenerated under npm 10 to match Dockerfile pin. |
+
+Full account: [docs/WhatsNew-v10.5.3.md](docs/WhatsNew-v10.5.3.md).
+
+---
+
 ### 🆕 What's new in v10.5.2
 
 A browser front end for the debate workflow, Redis actually reachable from inside the server, Docker
@@ -260,7 +281,7 @@ Images are published on every `v*` tag for `linux/amd64` **and** `linux/arm64`:
 
 ```bash
 curl -O https://raw.githubusercontent.com/techbuzzz/Delibera/main/deploy/docker-compose.hub.yml
-export DELIBERA_VERSION=10.5.2      # pin a release; omit to track :latest
+export DELIBERA_VERSION=10.5.3      # pin a release; omit to track :latest
 docker compose -f docker-compose.hub.yml up -d
 ```
 
@@ -942,7 +963,7 @@ docker compose -f docker-compose.hub.yml up -d
 ```
 
 Pulls `techbuzzz/delibera-server` and `techbuzzz/delibera-webui` from Docker Hub. Set
-`DELIBERA_VERSION=10.5.2` to pin a specific release.
+`DELIBERA_VERSION=10.5.3` to pin a specific release.
 
 ### Web UI
 

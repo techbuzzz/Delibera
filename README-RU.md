@@ -69,6 +69,27 @@
 | **🤝 Microsoft.Extensions.AI**     | Поддержка `IChatClient` / `IEmbeddingGenerator` — подключайте OpenAI, Azure OpenAI, Ollama и любые совместимые бэкенды, с middleware (function calling, логирование) |
 | **🧱 Современный C# 15 (preview)** | Построено на .NET 10 с `LangVersion=preview`, file-scoped namespaces, records, span/SIMD горячие пути |
 
+### 🆕 Что нового в v10.5.3
+
+Опциональный CORS для статических браузерных клиентов, сайт проекта на GitHub Pages,
+улучшения доступности и исправления поведения Web UI, улучшения производительности сервера
+и рефакторинг констант BuiltIn. **Без ломающих изменений.**
+
+| Возможность | Описание |
+| --- | --- |
+| **🌐 Сайт проекта** | Статический сайт на Next.js на GitHub Pages — документация на любой глубине, заметки о релизах, измерения, шаблоны дебатов, извлечённые из исходников. Версия читается из csproj во время сборки и не может быть неверной. |
+| **🔓 Опциональный CORS** | `Delibera:Server:Cors:AllowedOrigins` регистрирует именованную CORS-политику для намеренно статических браузерных клиентов. По умолчанию выключен — Web UI использует свой same-origin BFF-маршрут. Origins сопоставляются точно; wildcard-выключателя нет. |
+| **♿ Доступность** | Раунды объявляются скринридерам через polite live region, каждая страница имеет свой заголовок, добавлены hover-состояния и видимые кольца фокуса. |
+| **⚡ Производительность** | ValidationFilter кэширует резолв типов валидаторов, RedisDebateOrchestrator переиспользует инжектированный ConnectionMultiplexer, SSE-писатель собирает фреймы один раз и флашит один раз. |
+| **🔧 Константы BuiltIn** | Единый источник истинности для HTTP-заголовков, имён SSE-событий, секций конфигурации и имён ролей во всех проектах Delibera. |
+| **🐛 Исправления Web UI** | Отмена различает «отменено» и «уже завершено», изменение фильтра перезагружает с первой страницы, npm test собирает перед запуском через pretest, прокси прерывает upstream SSE при отключении клиента (6 мс против 2699 мс). |
+| **🔄 Улучшения CI** | Публикация в Docker Hub за окружением одобрения `dockerhub-prod`, страницы релизов строятся из WhatsNew-документов, merge-коммиты вместо squash. |
+| **✅ Исправлено** | Typecheck Web UI проходил, молча проверяя меньше — Nuxt 4.6.1, vue-router ^5.4.0, vue-tsc 3.3, vitest 5. Lockfile перегенерирован под npm 10 в соответствии с пином в Dockerfile. |
+
+Подробности: [docs/WhatsNew-v10.5.3.md](docs/WhatsNew-v10.5.3.md).
+
+---
+
 ### 🆕 Что нового в v10.5.2
 
 Браузерный интерфейс для работы с дебатами, реально подключённый Redis внутри сервера, образы в
@@ -261,7 +282,7 @@ Redis остаётся **выключенным**, пока не задан `Del
 
 ```bash
 curl -O https://raw.githubusercontent.com/techbuzzz/Delibera/main/deploy/docker-compose.hub.yml
-export DELIBERA_VERSION=10.5.2      # зафиксировать релиз; без переменной тянется :latest
+export DELIBERA_VERSION=10.5.3      # зафиксировать релиз; без переменной тянется :latest
 docker compose -f docker-compose.hub.yml up -d
 ```
 
@@ -926,7 +947,7 @@ docker compose -f docker-compose.hub.yml up -d
 ```
 
 Забирает `techbuzzz/delibera-server` и `techbuzzz/delibera-webui` из Docker Hub. Укажите
-`DELIBERA_VERSION=10.5.2`, чтобы зафиксировать релиз.
+`DELIBERA_VERSION=10.5.3`, чтобы зафиксировать релиз.
 
 ### Веб-интерфейс
 

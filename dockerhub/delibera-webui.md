@@ -25,7 +25,7 @@ Or bring up the full stack:
 
 ```bash
 curl -O https://raw.githubusercontent.com/techbuzzz/Delibera/main/deploy/docker-compose.hub.yml
-export DELIBERA_VERSION=10.5.2
+export DELIBERA_VERSION=10.5.3
 docker compose -f docker-compose.hub.yml up -d
 ```
 
@@ -83,7 +83,7 @@ the debate.
 
 ## Tags
 
-- `10.5.2`, `10.5` — pinned releases
+- `10.5.3`, `10.5` — pinned releases
 - `latest` — newest release
 
 ## Links

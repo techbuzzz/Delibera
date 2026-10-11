@@ -5,7 +5,64 @@ All notable changes to **Delibera** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [10.5.3] - 2026-10-11
+
+**No breaking changes.** This release adds opt-in CORS, a project website on GitHub Pages,
+Web UI accessibility and behaviour fixes, server performance improvements, and a BuiltIn
+constants refactor. Docker Hub and NuGet publish workflows are now behind approval
+environments.
+
+### Added — project website on GitHub Pages
+
+`pages.yml` now builds and deploys a Next.js static site in `site/` rather than the Nuxt
+Web UI. The site is a view over this repository: every page is rendered at build time from
+content that already lives here — the version from `Delibera.Core.csproj`, docs from
+`docs/`, release notes from `docs/WhatsNew-*.md`, measurements from
+`docs/performance-measurements.md`, and debate templates extracted from `DebateTemplate.cs`.
+
+The docs route is a catch-all, so nested files keep their directory in the URL. Adding a
+Markdown file under `docs/` adds a page automatically. A broken cross-link fails the deploy:
+`scripts/verify-export.mjs` walks the export and fails on an internal href with no file
+behind it, a missing `/Delibera` prefix, or a `#fragment` pointing at a renamed heading.
+
+The Web UI is **not** deployed to Pages. It ships in the `techbuzzz/delibera-webui`
+container image and is meant to run next to `Delibera.Server`, which provides the
+same-origin BFF route `/api/delibera/**`.
+
+### Added — opt-in CORS for static browser clients
+
+`Delibera:Server:Cors:AllowedOrigins` registers a named CORS policy listing the browser
+origins permitted to call the API cross-origin, and `UseCors` is wired only when that
+list is non-empty.
+
+**Off by default, and the default is the point.** The Web UI reaches the API through its
+own same-origin BFF route and never needs CORS. The absent header is also what stops an
+arbitrary web page from *reading* a response — a cross-origin `fetch` still fires the
+request without it, it just cannot see the answer. Turning this on globally would have
+added a browser-side CSRF vector to an API that is unauthenticated, unthrottled, and spends
+real credits per debate.
+
+Set it only for a deliberately static client that calls the API cross-origin:
+
+```yaml
+environment:
+  DELIBERA_CORS_ORIGIN: https://example.com
+```
+
+Origins are matched exactly; there is no wildcard switch. `AllowCredentials` together with
+`*` is rejected at startup with a message naming the config key, rather than by the
+framework with one that names nothing. 13 new tests: 8 asserting what gets registered, and
+5 driving the real pipeline over HTTP — that a default host emits no
+`Access-Control-Allow-Origin`, that a configured origin gets its own origin echoed back
+rather than a wildcard, that an unlisted origin gets nothing, that the preflight is
+answered, and that `X-Correlation-Id` is exposed.
+
+### Added — BuiltIn constants
+
+`src/Delibera.Core/BuiltIn.cs` — a single source of truth for HTTP headers, SSE event names,
+config sections, role names, model names, timeouts, Redis keys, and other magic strings that
+previously drifted between Delibera.Core, Delibera.Redis, Delibera.Server and consumer
+applications. SSE event names remain a contract with the Web UI.
 
 ### Changed — C# 15 where it compiles, and the two features that need .NET 11
 
