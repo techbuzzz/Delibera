@@ -14,30 +14,41 @@ export default async function NotFoundPage() {
 
   return (
     <PageShell version={version}>
-      <div className="hero">
+      <div className="hero" style={{ padding: '120px 0 80px' }}>
         <div className="wrap">
-          <h1>404</h1>
-          <p>
+          <div style={{
+            fontSize: '8rem',
+            fontWeight: 800,
+            lineHeight: 1,
+            background: 'var(--gradient-hero)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            marginBottom: 16,
+          }}>
+            404
+          </div>
+          <h1 style={{ fontSize: 'clamp(1.5rem, 3vw, 2rem)', marginBottom: 16 }}>
+            Page not found
+          </h1>
+          <p style={{ fontSize: '1.1rem', maxWidth: 480, margin: '0 auto' }}>
             That page is not here. It may have moved when the documentation moved from GitHub
             onto this site.
           </p>
-          <p style={{ marginTop: 20 }}>
-            <Link className="pill pill--accent" href="/">
-              Home
-            </Link>{' '}
-            <Link className="pill" href="/docs/">
-              Docs
-            </Link>{' '}
-            <Link className="pill" href="/blog/">
-              Releases
-            </Link>{' '}
-            <Link className="pill" href="/measurements/">
-              Measurements
-            </Link>{' '}
-            <Link className="pill" href="/changelog/">
-              Changelog
+          <div className="hero-actions" style={{ marginTop: 32 }}>
+            <Link className="btn btn-primary" href="/">
+              ← Back to Home
             </Link>
-          </p>
+            <Link className="btn btn-secondary" href="/docs/">
+              Browse Documentation
+            </Link>
+          </div>
+          <div className="hero-tags" style={{ marginTop: 32 }}>
+            <Link className="pill" href="/blog/">Releases</Link>
+            <Link className="pill" href="/measurements/">Measurements</Link>
+            <Link className="pill" href="/templates/">Templates</Link>
+            <Link className="pill" href="/changelog/">Changelog</Link>
+          </div>
         </div>
       </div>
     </PageShell>

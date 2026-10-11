@@ -11,6 +11,7 @@ import { PageShell, PageHead } from '@/components/layout'
 import { buildRouteIndex, releaseRoute, normalisedReleaseSlug, CHANGELOG_ROUTE } from '@/lib/routes'
 import { renderMarkdown } from '@/lib/markdown'
 import { githubBlob } from '@/lib/site'
+import { ChangelogTimeline } from '@/components/changelog-timeline'
 
 export const metadata: Metadata = {
   title: 'Changelog',
@@ -49,6 +50,15 @@ export default async function ChangelogPage() {
     (await listReleaseNotes()).map((note) => normalisedReleaseSlug(note.slug)),
   )
 
+  // Data for the timeline component
+  const timelineItems = rendered.map(({ release }) => ({
+    version: release.version,
+    date: release.date,
+    slug: normalisedReleaseSlug(release.version),
+    hasNotes: notedVersions.has(release.version),
+    isUnreleased: release.version === 'unreleased',
+  }))
+
   return (
     <PageShell version={version} current="/changelog/">
       <PageHead
@@ -56,12 +66,24 @@ export default async function ChangelogPage() {
         description={`All notable changes to Delibera — ${published} published releases plus the unreleased section.`}
       />
 
+      <ChangelogTimeline items={timelineItems} />
+
       <div className="wrap doc-layout">
         <div className="prose">
           {rendered.map(({ release, html }) => (
-            <section key={release.version} id={`v${release.version}`}>
-              <h2 className="md-heading" id={`v${release.version}`}>
-                v{release.version}
+            <section key={release.version} id={`v${release.version}`} style={{ scrollMarginTop: 'calc(var(--header-height) + 24px)' }}>
+              <h2 className="md-heading" id={`v${normalisedReleaseSlug(release.version)}`}>
+                {release.version === 'unreleased' ? (
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}>
+                    <span className="pill pill--accent">Unreleased</span>
+                  </span>
+                ) : (
+                  <>v{release.version}</>
+                )}
                 {release.date ? (
                   <span style={{ color: 'var(--fg-dim)', fontWeight: 400, fontSize: '0.85rem' }}>
                     {' '}
@@ -75,7 +97,7 @@ export default async function ChangelogPage() {
                       applied automatically. A raw anchor would point at /blog/... and 404
                       on the deployed site under /Delibera. */}
                   <Link href={releaseRoute(normalisedReleaseSlug(release.version))}>
-                    Read the long-form notes for v{release.version}
+                    → Read the long-form notes for v{release.version}
                   </Link>
                 </p>
               ) : null}
@@ -89,16 +111,19 @@ export default async function ChangelogPage() {
           <ol>
             {rendered.map(({ release }) => (
               <li key={release.version}>
-                <a href={`#v${normalisedReleaseSlug(release.version)}`}>v{release.version}</a>
+                <a href={`#v${normalisedReleaseSlug(release.version)}`}>
+                  {release.version === 'unreleased' ? 'Unreleased' : `v${release.version}`}
+                </a>
               </li>
             ))}
           </ol>
-          <p style={{ marginTop: 16, fontSize: '0.85rem' }}>
+          <p style={{ marginTop: 20, fontSize: '0.85rem', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
             Source:{' '}
             <a href={githubBlob('CHANGELOG.md')}>
               <code>CHANGELOG.md</code>
             </a>
-            . Route: <code>{CHANGELOG_ROUTE}</code>
+            <br />
+            Route: <code>{CHANGELOG_ROUTE}</code>
           </p>
         </nav>
       </div>

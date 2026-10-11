@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getVersion, getReleases, byVersionDescending, isReleased, listReleaseNotes } from '@/lib/content'
 import { PageShell, PageHead } from '@/components/layout'
+import { Reveal } from '@/components/reveal'
 import { releaseRoute, normalisedReleaseSlug } from '@/lib/routes'
 
 export const metadata: Metadata = {
@@ -33,24 +34,45 @@ export default async function BlogIndexPage() {
       <section className="band">
         <div className="wrap">
           {latestReleased ? (
-            <p className="band__hint">
-              Latest published release: <strong>v{latestReleased.version}</strong>
-              {latestReleased.date ? ` (${latestReleased.date})` : null}.
-            </p>
+            <Reveal>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '12px 20px',
+                background: 'var(--accent-soft)',
+                border: '1px solid var(--accent)',
+                borderRadius: 'var(--radius-lg)',
+                marginBottom: 32,
+              }}>
+                <span style={{ fontSize: '1.5rem' }}>🎉</span>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Latest release
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>
+                    v{latestReleased.version}
+                    {latestReleased.date ? ` — ${latestReleased.date}` : null}
+                  </div>
+                </div>
+              </div>
+            </Reveal>
           ) : null}
 
           <div className="post-list">
-            {notes.map((note) => (
-              <article key={note.source} className="post">
-                <h3>
-                  <Link href={releaseRoute(note.slug)}>{note.title}</Link>
-                </h3>
-                {note.description ? <p>{note.description}</p> : null}
-                <div className="post-meta">
-                  <span>v{normalisedReleaseSlug(note.slug)}</span>
-                  {note.lang === 'ru' ? <span className="pill">RU</span> : null}
-                </div>
-              </article>
+            {notes.map((note, index) => (
+              <Reveal key={note.source} delay={(index % 3 + 1) as 1 | 2 | 3}>
+                <article className="post">
+                  <h3>
+                    <Link href={releaseRoute(note.slug)}>{note.title}</Link>
+                  </h3>
+                  {note.description ? <p>{note.description}</p> : null}
+                  <div className="post-meta">
+                    <span className="pill pill--accent">v{normalisedReleaseSlug(note.slug)}</span>
+                    {note.lang === 'ru' ? <span className="pill">🇷🇺 RU</span> : <span className="pill">🇬🇧 EN</span>}
+                  </div>
+                </article>
+              </Reveal>
             ))}
           </div>
         </div>

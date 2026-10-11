@@ -2,7 +2,9 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getVersion, listDocPages } from '@/lib/content'
 import { PageShell, PageHead } from '@/components/layout'
+import { Reveal } from '@/components/reveal'
 import { docRoute } from '@/lib/routes'
+import { DocsSearch } from '@/components/docs-search'
 
 export const metadata: Metadata = {
   title: 'Documentation',
@@ -61,12 +63,24 @@ export default async function DocsIndexPage() {
     (a, b) => order.indexOf(a.key) - order.indexOf(b.key),
   )
 
+  // Flatten for search
+  const allPages = pages.map((page) => ({
+    title: page.title,
+    description: page.description,
+    href: docRoute(page.slug),
+    group: page.source.replace(/^docs\//, '').includes('/')
+      ? (page.source.replace(/^docs\//, '').split('/')[0] ?? 'guides').toLowerCase()
+      : 'guides',
+  }))
+
   return (
     <PageShell version={version} current="/docs/">
       <PageHead
         title="Documentation"
         description="Everything under docs/, rendered on the site. Each page is the same Markdown that lives in the repository."
       />
+
+      <DocsSearch pages={allPages} />
 
       <section className="band">
         <div className="wrap">
@@ -75,28 +89,34 @@ export default async function DocsIndexPage() {
             const russian = group.pages.filter((page) => page.lang === 'ru')
 
             return (
-              <div key={group.key} style={index === 0 ? undefined : { marginTop: 36 }}>
-                <h2 className="band__title">{group.title}</h2>
-                {group.hint ? <p className="band__hint">{group.hint}</p> : null}
+              <div key={group.key} style={index === 0 ? undefined : { marginTop: 48 }} data-group={group.key}>
+                <Reveal>
+                  <h2 className="band__title">{group.title}</h2>
+                  {group.hint ? <p className="band__hint">{group.hint}</p> : null}
+                </Reveal>
 
                 <div className="cards">
-                  {english.map((page) => (
-                    <Link key={page.source} href={docRoute(page.slug)} className="card">
-                      <div className="t">{page.title}</div>
-                      {page.description ? <div className="d">{page.description}</div> : null}
-                    </Link>
+                  {english.map((page, pageIndex) => (
+                    <Reveal key={page.source} delay={(pageIndex % 3 + 1) as 1 | 2 | 3}>
+                      <Link href={docRoute(page.slug)} className="card">
+                        <div className="t">{page.title}</div>
+                        {page.description ? <div className="d">{page.description}</div> : null}
+                      </Link>
+                    </Reveal>
                   ))}
                 </div>
 
                 {russian.length > 0 ? (
                   <>
-                    <h3 style={{ marginTop: 24, fontSize: '0.95rem' }}>Русский</h3>
+                    <h3 style={{ marginTop: 32, fontSize: '1rem', fontWeight: 600 }}>Русский</h3>
                     <div className="cards">
-                      {russian.map((page) => (
-                        <Link key={page.source} href={docRoute(page.slug)} className="card">
-                          <div className="t">{page.title}</div>
-                          {page.description ? <div className="d">{page.description}</div> : null}
-                        </Link>
+                      {russian.map((page, pageIndex) => (
+                        <Reveal key={page.source} delay={(pageIndex % 3 + 1) as 1 | 2 | 3}>
+                          <Link href={docRoute(page.slug)} className="card">
+                            <div className="t">{page.title}</div>
+                            {page.description ? <div className="d">{page.description}</div> : null}
+                          </Link>
+                        </Reveal>
                       ))}
                     </div>
                   </>
